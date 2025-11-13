@@ -8,6 +8,8 @@ import { cardRoutes } from './routes/cards.js';
 import { tokenizeRoutes } from './routes/tokenize.js';
 import { importExportRoutes } from './routes/import-export.js';
 import { assetRoutes } from './routes/assets.js';
+import { llmRoutes } from './routes/llm.js';
+import { ragRoutes } from './routes/rag.js';
 import type Database from 'better-sqlite3';
 import { join } from 'path';
 
@@ -66,6 +68,8 @@ async function start() {
   await fastify.register(tokenizeRoutes);
   await fastify.register(importExportRoutes);
   await fastify.register(assetRoutes);
+  await fastify.register(llmRoutes);
+  await fastify.register(ragRoutes);
 
   // Graceful shutdown
   process.on('SIGTERM', async () => {
