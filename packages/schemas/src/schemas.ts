@@ -2,8 +2,8 @@
  * JSON Schemas for validation
  */
 
-export const ccv2Schema = {
-  $schema: 'http://json-schema.org/draft-07/schema#',
+// Common v2 card data schema (used for both legacy and wrapped formats)
+const ccv2DataSchema = {
   type: 'object',
   required: ['name', 'description', 'personality', 'scenario', 'first_mes', 'mes_example'],
   properties: {
@@ -72,6 +72,31 @@ export const ccv2Schema = {
     },
     extensions: { type: 'object' },
   },
+};
+
+// v2 schema supports both legacy (direct fields) and wrapped (with spec/data) formats
+export const ccv2Schema = {
+  $schema: 'http://json-schema.org/draft-07/schema#',
+  oneOf: [
+    // Wrapped v2 format (CharacterHub, modern tools)
+    {
+      type: 'object',
+      required: ['spec', 'spec_version', 'data'],
+      properties: {
+        spec: {
+          type: 'string',
+          const: 'chara_card_v2',
+        },
+        spec_version: {
+          type: 'string',
+          const: '2.0',
+        },
+        data: ccv2DataSchema,
+      },
+    },
+    // Legacy v2 format (direct fields at root)
+    ccv2DataSchema,
+  ],
 };
 
 export const ccv3Schema = {

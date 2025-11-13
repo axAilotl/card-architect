@@ -29,8 +29,19 @@ export function validateV2(data: unknown): ValidationResult {
 
   // Semantic validation
   if (valid) {
-    const card = data as CCv2Data;
-    errors.push(...performSemanticValidation(card));
+    const card = data as CCv2Data | { spec: string; spec_version: string; data: CCv2Data };
+
+    // Handle both wrapped and legacy v2 formats
+    let cardData: CCv2Data;
+    if ('data' in card && typeof card.data === 'object' && card.data !== null) {
+      // Wrapped v2 format
+      cardData = card.data as CCv2Data;
+    } else {
+      // Legacy v2 format
+      cardData = card as CCv2Data;
+    }
+
+    errors.push(...performSemanticValidation(cardData));
   }
 
   return {
