@@ -105,19 +105,46 @@ export async function importExportRoutes(fastify: FastifyInstance) {
 
     warnings.push(...validation.errors.filter((e) => e.severity !== 'error').map((e) => e.message));
 
-    // Extract name
+    // Extract name and prepare card data for storage
     let name = 'Untitled';
+    let storageData: CCv2Data | CCv3Data;
+
     if (cardData && typeof cardData === 'object') {
-      if ('name' in cardData && typeof cardData.name === 'string') {
-        name = cardData.name;
-      } else if ('data' in cardData && typeof cardData.data === 'object' && cardData.data && 'name' in cardData.data) {
-        name = (cardData.data as { name: string }).name;
+      // Handle wrapped v2 cards (CharacterHub format)
+      if (spec === 'v2' && 'data' in cardData && typeof cardData.data === 'object' && cardData.data) {
+        const wrappedData = cardData.data as CCv2Data;
+        name = wrappedData.name || 'Untitled';
+        // Store unwrapped v2 data (CCv2Data type expects unwrapped format)
+        storageData = wrappedData;
       }
+      // Handle legacy v2 cards (direct fields)
+      else if (spec === 'v2' && 'name' in cardData && typeof cardData.name === 'string') {
+        name = cardData.name;
+        storageData = cardData as CCv2Data;
+      }
+      // Handle v3 cards (always wrapped)
+      else if (spec === 'v3' && 'data' in cardData && typeof cardData.data === 'object' && cardData.data) {
+        const v3Data = cardData as CCv3Data;
+        name = v3Data.data.name || 'Untitled';
+        // Store wrapped v3 data (CCv3Data type includes wrapper)
+        storageData = v3Data;
+      }
+      else {
+        // Fallback
+        if ('name' in cardData && typeof cardData.name === 'string') {
+          name = cardData.name;
+        } else if ('data' in cardData && typeof cardData.data === 'object' && cardData.data && 'name' in cardData.data) {
+          name = (cardData.data as { name: string }).name;
+        }
+        storageData = cardData as (CCv2Data | CCv3Data);
+      }
+    } else {
+      storageData = cardData as (CCv2Data | CCv3Data);
     }
 
     // Create card
     const card = cardRepo.create({
-      data: cardData as (CCv2Data | CCv3Data),
+      data: storageData,
       meta: {
         name,
         spec,
