@@ -7,28 +7,103 @@ import type { Card, CCv2Data, CCv3Data } from '@card-architect/schemas';
  * Different frontends use different keys
  */
 const TEXT_CHUNK_KEYS = {
-  v2: ['chara', 'ccv2', 'character'],
-  v3: ['ccv3', 'chara_card_v3'],
+  // Try all possible keys for both v2 and v3
+  // Order matters - try more specific keys first
+  all: [
+    // v3 keys
+    'ccv3',
+    'chara_card_v3',
+    // v2 keys
+    'chara',
+    'ccv2',
+    'character',
+    // Alternative/legacy keys used by various tools
+    'charactercard',
+    'card',
+    'CharacterCard',
+    'Chara',
+  ],
 };
+
+/**
+ * Manually parse PNG text chunks from buffer
+ * pngjs library doesn't reliably read text chunks, so we parse them ourselves
+ */
+function parseTextChunks(buffer: Buffer): Record<string, string> {
+  const textChunks: Record<string, string> = {};
+
+  // Verify PNG signature
+  const signature = buffer.slice(0, 8);
+  if (signature.toString('hex') !== '89504e470d0a1a0a') {
+    console.error('[PNG Extract] Invalid PNG signature');
+    return textChunks;
+  }
+
+  let offset = 8; // Skip PNG signature
+
+  while (offset < buffer.length) {
+    // Read chunk length (4 bytes, big-endian)
+    if (offset + 4 > buffer.length) break;
+    const length = buffer.readUInt32BE(offset);
+    offset += 4;
+
+    // Read chunk type (4 bytes ASCII)
+    if (offset + 4 > buffer.length) break;
+    const type = buffer.slice(offset, offset + 4).toString('ascii');
+    offset += 4;
+
+    // Read chunk data
+    if (offset + length > buffer.length) break;
+    const data = buffer.slice(offset, offset + length);
+    offset += length;
+
+    // Skip CRC (4 bytes)
+    if (offset + 4 > buffer.length) break;
+    offset += 4;
+
+    // Parse tEXt chunks
+    if (type === 'tEXt') {
+      const nullIndex = data.indexOf(0);
+      if (nullIndex !== -1) {
+        const keyword = data.slice(0, nullIndex).toString('latin1');
+        const text = data.slice(nullIndex + 1).toString('latin1');
+        textChunks[keyword] = text;
+        console.log(`[PNG Extract] Found tEXt chunk: "${keyword}" (${text.length} bytes)`);
+      }
+    }
+
+    // Stop after IEND chunk
+    if (type === 'IEND') break;
+  }
+
+  return textChunks;
+}
 
 /**
  * Extract character card JSON from PNG tEXt chunks
  */
 export async function extractFromPNG(buffer: Buffer): Promise<{ data: CCv2Data | CCv3Data; spec: 'v2' | 'v3' } | null> {
   return new Promise((resolve, reject) => {
+    // Validate PNG format using pngjs
     const png = new PNG();
 
-    png.parse(buffer, (err, data) => {
+    png.parse(buffer, (err) => {
       if (err) {
         reject(err);
         return;
       }
 
-      // Look for character card data in text chunks
-      const textChunks = (data as PNG & { text?: Record<string, string> }).text || {};
+      // Manually parse text chunks (pngjs doesn't read them reliably)
+      const textChunks = parseTextChunks(buffer);
       const availableKeys = Object.keys(textChunks);
 
       console.log('[PNG Extract] Available text chunks:', availableKeys);
+
+      if (availableKeys.length === 0) {
+        console.error('[PNG Extract] PNG has no text chunks at all - this PNG was not exported with embedded character data');
+        resolve(null);
+        return;
+      }
 
       // Helper function to try parsing JSON (supports plain and base64)
       const tryParseChunk = (chunkData: string): any => {
@@ -46,22 +121,43 @@ export async function extractFromPNG(buffer: Buffer): Promise<{ data: CCv2Data |
         }
       };
 
-      // Try v3 keys first
-      for (const key of TEXT_CHUNK_KEYS.v3) {
+      // Try all known keys
+      for (const key of TEXT_CHUNK_KEYS.all) {
         if (textChunks[key]) {
           try {
             const json = tryParseChunk(textChunks[key]);
             const spec = detectSpec(json);
             console.log(`[PNG Extract] Found data in chunk '${key}', detected spec: ${spec}`);
-            if (spec === 'v3') {
-              resolve({ data: json, spec: 'v3' });
+
+            if (spec === 'v3' || spec === 'v2') {
+              resolve({ data: json, spec });
               return;
             }
-            // Even if spec detection says v2, if we found it in a v3 key, it might still be v3
-            if (spec === 'v2' && json.spec === 'chara_card_v3') {
-              console.log(`[PNG Extract] Found v3 card with relaxed validation in chunk '${key}'`);
-              resolve({ data: json, spec: 'v3' });
-              return;
+
+            // If detectSpec failed but we have JSON that looks like a card, try to infer
+            if (!spec && json && typeof json === 'object') {
+              console.log(`[PNG Extract] Spec detection failed, attempting to infer from structure...`);
+
+              // Check if it's a wrapped v3 card
+              if (json.spec === 'chara_card_v3' && json.data && json.data.name) {
+                console.log(`[PNG Extract] Inferred v3 from structure in chunk '${key}'`);
+                resolve({ data: json, spec: 'v3' });
+                return;
+              }
+
+              // Check if it's a wrapped v2 card
+              if (json.spec === 'chara_card_v2' && json.data && json.data.name) {
+                console.log(`[PNG Extract] Inferred v2 from structure in chunk '${key}'`);
+                resolve({ data: json, spec: 'v2' });
+                return;
+              }
+
+              // Check if it's a legacy v2 card (direct fields)
+              if (json.name && (json.description || json.personality || json.scenario)) {
+                console.log(`[PNG Extract] Inferred legacy v2 from structure in chunk '${key}'`);
+                resolve({ data: json, spec: 'v2' });
+                return;
+              }
             }
           } catch (e) {
             console.error(`[PNG Extract] Failed to parse data in chunk '${key}':`, e);
@@ -70,31 +166,9 @@ export async function extractFromPNG(buffer: Buffer): Promise<{ data: CCv2Data |
         }
       }
 
-      // Try v2 keys
-      for (const key of TEXT_CHUNK_KEYS.v2) {
-        if (textChunks[key]) {
-          try {
-            const json = tryParseChunk(textChunks[key]);
-            const spec = detectSpec(json);
-            console.log(`[PNG Extract] Found data in chunk '${key}', detected spec: ${spec}`);
-            if (spec === 'v2') {
-              resolve({ data: json, spec: 'v2' });
-              return;
-            }
-            // Fallback: if we found valid JSON with a name field, treat as v2
-            if (json && typeof json === 'object' && 'name' in json) {
-              console.log(`[PNG Extract] Found v2 card with relaxed validation in chunk '${key}'`);
-              resolve({ data: json, spec: 'v2' });
-              return;
-            }
-          } catch (e) {
-            console.error(`[PNG Extract] Failed to parse data in chunk '${key}':`, e);
-            // Continue to next key
-          }
-        }
-      }
-
-      console.error('[PNG Extract] No valid character card data found. Available chunks:', availableKeys);
+      console.error('[PNG Extract] No valid character card data found in any known text chunk.');
+      console.error('[PNG Extract] Available chunks:', availableKeys);
+      console.error('[PNG Extract] Expected one of:', TEXT_CHUNK_KEYS.all);
       resolve(null);
     });
   });
