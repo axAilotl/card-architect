@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useCardStore } from '../store/card-store';
 import type { CCv3Data, CCFieldName } from '@card-architect/schemas';
+'@card-architect/schemas';
 import { FieldEditor } from './FieldEditor';
 import { LorebookEditor } from './LorebookEditor';
 import { LLMAssistSidebar } from './LLMAssistSidebar';
@@ -16,7 +17,7 @@ export function EditPanel() {
   if (!currentCard) return null;
 
   const isV3 = currentCard.meta.spec === 'v3';
-  const cardData = isV3 ? (currentCard.data as CCv3Data).data : currentCard.data;
+  const cardData = isV3 ? (currentCard.data as CCv3Data).data : (currentCard.data as CCv2Data);
 
   const handleFieldChange = (field: string, value: string) => {
     if (isV3) {
