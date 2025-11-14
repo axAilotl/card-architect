@@ -5,9 +5,10 @@ import type { CCv3Data, CCFieldName } from '@card-architect/schemas';
 import { FieldEditor } from './FieldEditor';
 import { LorebookEditor } from './LorebookEditor';
 import { LLMAssistSidebar } from './LLMAssistSidebar';
+import { TagInput } from './TagInput';
 
 export function EditPanel() {
-  const { currentCard, updateCardData, showAdvanced, setShowAdvanced } = useCardStore();
+  const { currentCard, updateCardData, updateCardMeta, showAdvanced, setShowAdvanced } = useCardStore();
   const tokenCounts = useCardStore((state) => state.tokenCounts);
 
   const [llmAssistOpen, setLLMAssistOpen] = useState(false);
@@ -29,6 +30,19 @@ export function EditPanel() {
       } as Partial<CCv3Data>);
     } else {
       updateCardData({ [field]: value });
+    }
+  };
+
+  const handleTagsChange = (tags: string[]) => {
+    // Update both meta.tags and data.tags for consistency
+    updateCardMeta({ tags });
+    if (isV3) {
+      updateCardData({
+        data: {
+          ...(currentCard.data as CCv3Data).data,
+          tags,
+        },
+      } as Partial<CCv3Data>);
     }
   };
 
@@ -186,19 +200,10 @@ export function EditPanel() {
                   onChange={(v) => handleFieldChange('character_version', v)}
                 />
 
-                <div>
-                  <label className="label">Tags</label>
-                  <input
-                    type="text"
-                    value={cardData.tags?.join(', ') || ''}
-                    onChange={(e) => {
-                      const tags = e.target.value.split(',').map((t) => t.trim()).filter(Boolean);
-                      handleFieldChange('tags', tags as any);
-                    }}
-                    placeholder="tag1, tag2, tag3"
-                    className="w-full"
-                  />
-                </div>
+                <TagInput
+                  tags={currentCard.meta.tags || []}
+                  onChange={handleTagsChange}
+                />
               </div>
             )}
           </div>
