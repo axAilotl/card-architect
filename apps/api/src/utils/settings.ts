@@ -24,6 +24,7 @@ const DEFAULT_SETTINGS: LLMSettings = {
     indexPath: join(CONFIG_DIR, 'rag-index'),
     embedModel: 'sentence-transformers/all-MiniLM-L6-v2',
     sources: [],
+    activeDatabaseId: undefined,
   },
 };
 

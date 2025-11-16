@@ -2,7 +2,64 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { useCardStore } from '../store/card-store';
 import type { CCv3Data, CCv2Data } from '@card-architect/schemas';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+
+// Custom marked extension to support image sizing syntax: ![alt](url =widthxheight)
+// This handles syntax like: ![image](url =100%x100%) or ![image](url =400x300)
+const imageSizeExtension = {
+  name: 'imageSize',
+  level: 'inline' as const,
+  start(src: string) {
+    return src.match(/!\[/)?.index;
+  },
+  tokenizer(src: string) {
+    // Match: ![alt](<url> =widthxheight) or ![alt](url =widthxheight)
+    const rule = /^!\[([^\]]*)\]\(<?([^>\s]+)>?\s*=([^)]+)\)/;
+    const match = rule.exec(src);
+    if (match) {
+      return {
+        type: 'imageSize',
+        raw: match[0],
+        alt: match[1],
+        href: match[2],
+        size: match[3],
+      };
+    }
+  },
+  renderer(token: { alt: string; href: string; size: string }) {
+    const { alt, href, size } = token;
+
+    // Parse size: can be "widthxheight", "width", or "100%x100%"
+    const sizeMatch = size.match(/^(\d+%?|\*)?x?(\d+%?|\*)?$/);
+    let width = '';
+    let height = '';
+
+    if (sizeMatch) {
+      if (sizeMatch[1] && sizeMatch[1] !== '*') {
+        width = sizeMatch[1];
+      }
+      if (sizeMatch[2] && sizeMatch[2] !== '*') {
+        height = sizeMatch[2];
+      }
+    } else {
+      // If size doesn't match expected format, try to use it as-is for width
+      width = size;
+    }
+
+    const attrs = [];
+    if (width) attrs.push(`width="${width}"`);
+    if (height) attrs.push(`height="${height}"`);
+
+    return `<img src="${href}" alt="${alt}" ${attrs.join(' ')} />`;
+  },
+};
+
+// Configure marked with the extension once (outside component to avoid re-registration)
+let markedConfigured = false;
+if (!markedConfigured) {
+  marked.use({ extensions: [imageSizeExtension as any] });
+  markedConfigured = true;
+}
 
 export function PreviewPanel() {
   const currentCard = useCardStore((state) => state.currentCard);
@@ -11,36 +68,71 @@ export function PreviewPanel() {
   const [pngLoading, setPngLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'preview' | 'raw'>('preview');
   const [copied, setCopied] = useState(false);
+  const objectUrlRef = useRef<string | null>(null);
 
   if (!currentCard) return null;
+  const cardId = currentCard.meta.id;
+
+  useEffect(() => {
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+    setPngUrl(null);
+  }, [cardId]);
 
   const isV3 = currentCard.meta.spec === 'v3';
   const cardData = isV3 ? (currentCard.data as CCv3Data).data : (currentCard.data as CCv2Data);
 
   // Load PNG preview when shown
   useEffect(() => {
-    if (showPngPreview && !pngUrl && currentCard.id) {
+    if (showPngPreview && cardId) {
       setPngLoading(true);
-      fetch(`http://localhost:3456/cards/${currentCard.id}/export?format=png`)
-        .then(res => res.blob())
-        .then(blob => {
-          const url = URL.createObjectURL(blob);
-          setPngUrl(url);
-          setPngLoading(false);
+      const controller = new AbortController();
+
+      fetch(`/api/cards/${cardId}/export?format=png`, {
+        signal: controller.signal,
+      })
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+          }
+          return res.blob();
         })
-        .catch(err => {
-          console.error('Failed to load PNG preview:', err);
+        .then((blob) => {
+          if (objectUrlRef.current) {
+            URL.revokeObjectURL(objectUrlRef.current);
+          }
+          const url = URL.createObjectURL(blob);
+          objectUrlRef.current = url;
+          setPngUrl(url);
+        })
+        .catch((err) => {
+          if (err.name !== 'AbortError') {
+            console.error('Failed to load PNG preview:', err);
+          }
+          setPngUrl(null);
+        })
+        .finally(() => {
           setPngLoading(false);
         });
-    }
 
-    // Cleanup URL on unmount
+      return () => {
+        controller.abort();
+      };
+    } else if (showPngPreview && !cardId) {
+      setPngUrl(null);
+    }
+  }, [showPngPreview, cardId]);
+
+  useEffect(() => {
     return () => {
-      if (pngUrl) {
-        URL.revokeObjectURL(pngUrl);
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
       }
     };
-  }, [showPngPreview, currentCard.id]);
+  }, []);
 
   const renderMarkdown = (text: string) => {
     const html = marked.parse(text) as string;
@@ -77,7 +169,11 @@ export function PreviewPanel() {
 
         {showPngPreview && (
           <div className="flex justify-center">
-            {pngLoading ? (
+            {!cardId ? (
+              <div className="flex items-center justify-center h-48">
+                <p className="text-dark-muted">Save the card first to generate a PNG preview.</p>
+              </div>
+            ) : pngLoading ? (
               <div className="flex items-center justify-center h-48">
                 <p className="text-dark-muted">Loading PNG preview...</p>
               </div>

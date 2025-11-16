@@ -3,13 +3,14 @@ import { useCardStore } from '../store/card-store';
 import { SettingsModal } from './SettingsModal';
 
 interface HeaderProps {
-  onToggleSidebar: () => void;
+  onBack: () => void;
 }
 
-export function Header({ onToggleSidebar }: HeaderProps) {
+export function Header({ onBack }: HeaderProps) {
   const { currentCard, isSaving, createNewCard } = useCardStore();
   const tokenCounts = useCardStore((state) => state.tokenCounts);
   const [showSettings, setShowSettings] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   const handleImport = async () => {
     const input = document.createElement('input');
@@ -25,14 +26,15 @@ export function Header({ onToggleSidebar }: HeaderProps) {
   };
 
   const handleExport = async (format: 'json' | 'png') => {
+    setShowExportMenu(false);
     await useCardStore.getState().exportCard(format);
   };
 
   return (
     <header className="bg-dark-surface border-b border-dark-border px-4 py-3 flex items-center justify-between">
       <div className="flex items-center gap-4">
-        <button onClick={onToggleSidebar} className="btn-secondary">
-          ☰
+        <button onClick={onBack} className="btn-secondary" title="Back to Cards">
+          ← Back
         </button>
 
         <h1 className="text-xl font-bold">Card Architect</h1>
@@ -64,22 +66,35 @@ export function Header({ onToggleSidebar }: HeaderProps) {
         </button>
 
         {currentCard && (
-          <div className="relative group">
-            <button className="btn-secondary">Export</button>
-            <div className="absolute right-0 mt-1 hidden group-hover:block bg-dark-surface border border-dark-border rounded shadow-lg z-50">
-              <button
-                onClick={() => handleExport('json')}
-                className="block w-full px-4 py-2 text-left hover:bg-slate-700"
-              >
-                JSON
-              </button>
-              <button
-                onClick={() => handleExport('png')}
-                className="block w-full px-4 py-2 text-left hover:bg-slate-700"
-              >
-                PNG
-              </button>
-            </div>
+          <div className="relative">
+            <button
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              className="btn-secondary"
+            >
+              Export ▾
+            </button>
+            {showExportMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowExportMenu(false)}
+                />
+                <div className="absolute right-0 mt-1 bg-dark-surface border border-dark-border rounded shadow-lg z-50 min-w-[120px]">
+                  <button
+                    onClick={() => handleExport('json')}
+                    className="block w-full px-4 py-2 text-left hover:bg-slate-700 rounded-t"
+                  >
+                    JSON
+                  </button>
+                  <button
+                    onClick={() => handleExport('png')}
+                    className="block w-full px-4 py-2 text-left hover:bg-slate-700 rounded-b"
+                  >
+                    PNG
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

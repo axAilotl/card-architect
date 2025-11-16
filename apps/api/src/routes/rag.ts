@@ -1,141 +1,296 @@
 /**
  * RAG (Retrieval-Augmented Generation) Routes
- * Provides document indexing and semantic search capabilities
+ * Persistent knowledge base management and semantic search
  */
 
 import type { FastifyInstance } from 'fastify';
-import type { RagSnippet, RagSource } from '@card-architect/schemas';
-import { getSettings } from '../utils/settings.js';
+import { getSettings, saveSettings } from '../utils/settings.js';
+import {
+  listDatabases,
+  createDatabase,
+  getDatabase,
+  updateDatabase,
+  deleteDatabase,
+  addDocument,
+  removeDocument,
+  searchDocuments,
+} from '../utils/rag-store.js';
+import type { Multipart } from '@fastify/multipart';
 
-/**
- * Simple in-memory RAG implementation
- * Production would use proper vector database (Chroma, Pinecone, etc.)
- */
-const ragIndex: Map<string, { content: string; source: string; embedding?: number[] }> = new Map();
+function parseTags(value?: string | string[]): string[] | undefined {
+  if (!value) return undefined;
+  if (Array.isArray(value)) {
+    return value.map((tag) => tag.trim()).filter(Boolean);
+  }
+
+  const text = value.trim();
+  if (!text) return undefined;
+
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) {
+      return parsed.map(String).filter(Boolean);
+    }
+  } catch {
+    // treat as comma-separated string
+  }
+
+  return text
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+function extractFieldText(field?: Multipart | Multipart[]): string | undefined {
+  if (!field) return undefined;
+  const target = Array.isArray(field) ? field[0] : field;
+  if (!target || target.type !== 'field') return undefined;
+  const value = target.value;
+  if (typeof value === 'string') return value;
+  if (Buffer.isBuffer(value)) {
+    return value.toString('utf-8');
+  }
+  return undefined;
+}
 
 export async function ragRoutes(fastify: FastifyInstance) {
   /**
-   * Search RAG index
+   * List databases
+   */
+  fastify.get('/rag/databases', async (_request, reply) => {
+    try {
+      const settings = await getSettings();
+      const databases = await listDatabases(settings.rag.indexPath);
+      reply.send({ databases, activeDatabaseId: settings.rag.activeDatabaseId ?? null });
+    } catch (error: any) {
+      fastify.log.error(error);
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
+  /**
+   * Create database
+   */
+  fastify.post<{
+    Body: { label: string; description?: string; tags?: string[] };
+  }>('/rag/databases', async (request, reply) => {
+    try {
+      const { label, description, tags } = request.body;
+      if (!label?.trim()) {
+        return reply.status(400).send({ error: 'Label is required' });
+      }
+
+      const settings = await getSettings();
+      const database = await createDatabase(settings.rag.indexPath, {
+        label: label.trim(),
+        description,
+        tags,
+      });
+
+      // If no active DB set, default to the first created one
+      if (!settings.rag.activeDatabaseId) {
+        settings.rag.activeDatabaseId = database.id;
+        await saveSettings(settings);
+      }
+
+      reply.send({ database });
+    } catch (error: any) {
+      fastify.log.error(error);
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
+  /**
+   * Get database detail
    */
   fastify.get<{
-    Querystring: { q: string; k?: string; tokenCap?: string };
-  }>('/api/rag/search', async (request, reply) => {
+    Params: { dbId: string };
+  }>('/rag/databases/:dbId', async (request, reply) => {
     try {
-      const { q, k, tokenCap } = request.query;
+      const settings = await getSettings();
+      const database = await getDatabase(settings.rag.indexPath, request.params.dbId);
+      if (!database) {
+        return reply.status(404).send({ error: 'Database not found' });
+      }
+      reply.send({ database });
+    } catch (error: any) {
+      fastify.log.error(error);
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
+  /**
+   * Update database metadata
+   */
+  fastify.patch<{
+    Params: { dbId: string };
+    Body: { label?: string; description?: string; tags?: string[] };
+  }>('/rag/databases/:dbId', async (request, reply) => {
+    try {
+      const settings = await getSettings();
+      const database = await updateDatabase(settings.rag.indexPath, request.params.dbId, request.body);
+      reply.send({ database });
+    } catch (error: any) {
+      fastify.log.error(error);
+      if (error.message === 'Database not found') {
+        reply.status(404).send({ error: error.message });
+      } else {
+        reply.status(500).send({ error: error.message });
+      }
+    }
+  });
+
+  /**
+   * Delete database
+   */
+  fastify.delete<{
+    Params: { dbId: string };
+  }>('/rag/databases/:dbId', async (request, reply) => {
+    try {
+      const settings = await getSettings();
+      await deleteDatabase(settings.rag.indexPath, request.params.dbId);
+
+      if (settings.rag.activeDatabaseId === request.params.dbId) {
+        settings.rag.activeDatabaseId = undefined;
+        await saveSettings(settings);
+      }
+
+      reply.send({ success: true });
+    } catch (error: any) {
+      fastify.log.error(error);
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
+  /**
+   * Upload and index document
+   */
+  fastify.post<{
+    Params: { dbId: string };
+  }>('/rag/databases/:dbId/documents', async (request, reply) => {
+    try {
+      const file = await request.file();
+      if (!file) {
+        return reply.status(400).send({ error: 'No file uploaded' });
+      }
+
+      const settings = await getSettings();
+      const buffer = await file.toBuffer();
+      const title = extractFieldText(file.fields?.title);
+      const tags = parseTags(extractFieldText(file.fields?.tags));
+
+      const result = await addDocument(settings.rag.indexPath, {
+        dbId: request.params.dbId,
+        title,
+        filename: file.filename,
+        buffer,
+        tags,
+      });
+
+      reply.send({ source: result.source, indexedChunks: result.indexedChunks });
+    } catch (error: any) {
+      fastify.log.error(error);
+      if (error.message === 'Database not found') {
+        reply.status(404).send({ error: error.message });
+      } else {
+        reply.status(500).send({ error: error.message });
+      }
+    }
+  });
+
+  /**
+   * Remove document from database
+   */
+  fastify.delete<{
+    Params: { dbId: string; sourceId: string };
+  }>('/rag/databases/:dbId/documents/:sourceId', async (request, reply) => {
+    try {
+      const settings = await getSettings();
+      await removeDocument(
+        settings.rag.indexPath,
+        request.params.dbId,
+        request.params.sourceId
+      );
+      reply.send({ success: true });
+    } catch (error: any) {
+      fastify.log.error(error);
+      if (error.message === 'Database not found' || error.message === 'Document not found') {
+        reply.status(404).send({ error: error.message });
+      } else {
+        reply.status(500).send({ error: error.message });
+      }
+    }
+  });
+
+  /**
+   * Search database
+   */
+  fastify.get<{
+    Querystring: { q: string; databaseId: string; k?: string; tokenCap?: string };
+  }>('/rag/search', async (request, reply) => {
+    try {
+      const { q, databaseId, k, tokenCap } = request.query;
       const settings = await getSettings();
 
       if (!settings.rag.enabled) {
         return reply.send({ snippets: [] });
       }
 
-      const topK = k ? parseInt(k) : settings.rag.topK;
-      const maxTokens = tokenCap ? parseInt(tokenCap) : settings.rag.tokenCap;
-
-      // Simple keyword-based search (production would use embeddings + vector similarity)
-      const results: RagSnippet[] = [];
-      const queryLower = q.toLowerCase();
-
-      for (const [id, doc] of ragIndex.entries()) {
-        const contentLower = doc.content.toLowerCase();
-
-        // Simple scoring: count keyword matches
-        const keywords = queryLower.split(/\s+/);
-        let score = 0;
-
-        for (const keyword of keywords) {
-          const matches = (contentLower.match(new RegExp(keyword, 'g')) || []).length;
-          score += matches;
-        }
-
-        if (score > 0) {
-          results.push({
-            content: doc.content,
-            source: doc.source,
-            score,
-          });
-        }
+      if (!q?.trim()) {
+        return reply.status(400).send({ error: 'Query is required' });
       }
 
-      // Sort by score and limit
-      results.sort((a, b) => b.score - a.score);
-      const topResults = results.slice(0, topK);
+      if (!databaseId) {
+        return reply.status(400).send({ error: 'databaseId is required' });
+      }
 
-      // TODO: Enforce token cap by truncating snippets
-      reply.send({ snippets: topResults });
+      const topK = k ? parseInt(k, 10) : settings.rag.topK;
+      const maxTokens = tokenCap ? parseInt(tokenCap, 10) : settings.rag.tokenCap;
+
+      const snippets = await searchDocuments(settings.rag.indexPath, {
+        dbId: databaseId,
+        query: q,
+        topK: Number.isFinite(topK) ? topK : settings.rag.topK,
+        tokenCap: Number.isFinite(maxTokens) ? maxTokens : settings.rag.tokenCap,
+      });
+
+      reply.send({ snippets });
     } catch (error: any) {
       fastify.log.error(error);
-      reply.status(500).send({ error: error.message });
+      if (error.message === 'Database not found') {
+        reply.status(404).send({ error: error.message });
+      } else {
+        reply.status(500).send({ error: error.message });
+      }
     }
   });
 
   /**
-   * Index a document
+   * Aggregate stats
    */
-  fastify.post<{
-    Body: { source: RagSource; content: string };
-  }>('/api/rag/index', async (request, reply) => {
+  fastify.get('/rag/stats', async (_request, reply) => {
     try {
-      const { source, content } = request.body;
+      const settings = await getSettings();
+      const databases = await listDatabases(settings.rag.indexPath);
+      const totals = databases.reduce(
+        (acc, db) => {
+          acc.sources += db.sourceCount;
+          acc.chunks += db.chunkCount;
+          acc.tokens += db.tokenCount;
+          return acc;
+        },
+        { sources: 0, chunks: 0, tokens: 0 }
+      );
 
-      // Chunk the content (simple line-based chunking)
-      const chunks = chunkText(content, 500); // ~500 chars per chunk
-
-      let indexed = 0;
-      for (let i = 0; i < chunks.length; i++) {
-        const chunkId = `${source.id}-chunk-${i}`;
-        ragIndex.set(chunkId, {
-          content: chunks[i],
-          source: source.title || source.path,
-        });
-        indexed++;
-      }
-
-      reply.send({ success: true, indexed });
+      reply.send({
+        databases: databases.length,
+        sources: totals.sources,
+        chunks: totals.chunks,
+        tokens: totals.tokens,
+      });
     } catch (error: any) {
       fastify.log.error(error);
       reply.status(500).send({ error: error.message });
     }
   });
-
-  /**
-   * Clear RAG index
-   */
-  fastify.delete('/api/rag/index', async (request, reply) => {
-    ragIndex.clear();
-    reply.send({ success: true });
-  });
-
-  /**
-   * Get index stats
-   */
-  fastify.get('/api/rag/stats', async (request, reply) => {
-    reply.send({
-      chunks: ragIndex.size,
-      sources: new Set([...ragIndex.values()].map((d) => d.source)).size,
-    });
-  });
-}
-
-/**
- * Simple text chunking by paragraphs and max size
- */
-function chunkText(text: string, maxChars: number): string[] {
-  const paragraphs = text.split(/\n\n+/);
-  const chunks: string[] = [];
-  let currentChunk = '';
-
-  for (const para of paragraphs) {
-    if (currentChunk.length + para.length > maxChars && currentChunk) {
-      chunks.push(currentChunk.trim());
-      currentChunk = para;
-    } else {
-      currentChunk += (currentChunk ? '\n\n' : '') + para;
-    }
-  }
-
-  if (currentChunk) {
-    chunks.push(currentChunk.trim());
-  }
-
-  return chunks;
 }

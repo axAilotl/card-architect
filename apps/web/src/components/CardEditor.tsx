@@ -3,8 +3,9 @@ import { EditorTabs } from './EditorTabs';
 import { EditPanel } from './EditPanel';
 import { PreviewPanel } from './PreviewPanel';
 import { DiffPanel } from './DiffPanel';
-import { RedundancyPanel } from './RedundancyPanel';
-import { LoreTriggerPanel } from './LoreTriggerPanel';
+// import { RedundancyPanel } from './RedundancyPanel'; // Disabled
+// import { LoreTriggerPanel } from './LoreTriggerPanel'; // Disabled
+import { FocusedEditor } from './FocusedEditor';
 
 export function CardEditor() {
   const activeTab = useCardStore((state) => state.activeTab);
@@ -13,12 +14,14 @@ export function CardEditor() {
     <div className="h-full flex flex-col">
       <EditorTabs />
 
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto relative">
         {activeTab === 'edit' && <EditPanel />}
+        {activeTab === 'focused' && <FocusedEditor />}
         {activeTab === 'preview' && <PreviewPanel />}
         {activeTab === 'diff' && <DiffPanel />}
-        {activeTab === 'redundancy' && <RedundancyPanel />}
-        {activeTab === 'lore-trigger' && <LoreTriggerPanel />}
+        {/* Disabled features */}
+        {/* {activeTab === 'redundancy' && <RedundancyPanel />} */}
+        {/* {activeTab === 'lore-trigger' && <LoreTriggerPanel />} */}
       </div>
     </div>
   );

@@ -306,6 +306,8 @@ export interface ProviderConfig {
   maxTokens?: number;
 }
 
+export type RagDocumentType = 'markdown' | 'html' | 'pdf' | 'text' | 'json';
+
 // RAG (Retrieval-Augmented Generation) configuration
 export interface RagConfig {
   enabled: boolean;
@@ -314,15 +316,38 @@ export interface RagConfig {
   indexPath: string;
   embedModel: string;
   sources: RagSource[];
+  activeDatabaseId?: string;
 }
 
 export interface RagSource {
   id: string;
+  databaseId: string;
   path: string;
   title: string;
-  type: 'markdown' | 'html' | 'pdf' | 'text';
+  filename: string;
+  type: RagDocumentType;
+  size: number;
   indexed: boolean;
   indexedAt?: ISO8601;
+  chunkCount: number;
+  tokenCount: number;
+  tags?: string[];
+}
+
+export interface RagDatabase {
+  id: string;
+  label: string;
+  description?: string;
+  tags?: string[];
+  sourceCount: number;
+  chunkCount: number;
+  tokenCount: number;
+  createdAt: ISO8601;
+  updatedAt: ISO8601;
+}
+
+export interface RagDatabaseDetail extends RagDatabase {
+  sources: RagSource[];
 }
 
 // LLM settings
@@ -400,8 +425,12 @@ export interface FieldContext {
 
 // RAG snippet
 export interface RagSnippet {
+  id: string;
+  databaseId: string;
+  sourceId: string;
+  sourceTitle: string;
   content: string;
-  source: string;
+  tokenCount: number;
   score: number;
 }
 
@@ -475,4 +504,59 @@ export interface ApplyRequest {
   content: string;
   snapshot?: boolean; // Create version snapshot
   snapshotMessage?: string;
+}
+
+/**
+ * Templates & Snippets System
+ */
+
+// Focusable fields for templates
+export type FocusField = 'description' | 'personality' | 'scenario' | 'first_mes' | 'mes_example' | 'system_prompt' | 'post_history_instructions' | 'creator_notes';
+
+// Template categories
+export type TemplateCategory = 'character' | 'scenario' | 'dialogue' | 'custom';
+
+// Snippet categories
+export type SnippetCategory = 'instruction' | 'format' | 'custom';
+
+// Template structure
+export interface Template {
+  id: UUID;
+  name: string;
+  description: string;
+  category: TemplateCategory;
+  targetFields: FocusField[] | 'all'; // Which fields this applies to
+  content: Partial<Record<FocusField, string>>; // Multi-field content map
+  createdAt: ISO8601;
+  updatedAt: ISO8601;
+  isDefault?: boolean; // Built-in templates
+}
+
+// Snippet structure
+export interface Snippet {
+  id: UUID;
+  name: string;
+  description: string;
+  category: SnippetCategory;
+  content: string;
+  createdAt: ISO8601;
+  updatedAt: ISO8601;
+  isDefault?: boolean; // Built-in snippets
+}
+
+// Template application mode
+export type TemplateApplyMode = 'replace' | 'append' | 'prepend';
+
+// Template application request
+export interface TemplateApplyRequest {
+  templateId: UUID;
+  targetField?: FocusField; // If not specified, applies to all fields
+  mode: TemplateApplyMode;
+}
+
+// Snippet insertion request
+export interface SnippetInsertRequest {
+  snippetId: UUID;
+  targetField: FocusField;
+  cursorPosition?: number; // If available from editor
 }

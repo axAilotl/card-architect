@@ -6,6 +6,10 @@ import type {
   LLMAssistRequest,
   LLMResponse,
   LLMAssistResponse,
+  RagDatabase,
+  RagDatabaseDetail,
+  RagSnippet,
+  RagSource,
 } from '@card-architect/schemas';
 
 const API_BASE = '/api';
@@ -17,12 +21,15 @@ class ApiClient {
     options?: RequestInit
   ): Promise<{ data?: T; error?: string }> {
     try {
+      // Only set Content-Type if there's a body
+      const headers: Record<string, string> = { ...options?.headers };
+      if (options?.body) {
+        headers['Content-Type'] = 'application/json';
+      }
+
       const response = await fetch(`${API_BASE}${endpoint}`, {
         ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          ...options?.headers,
-        },
+        headers,
       });
 
       if (!response.ok) {
@@ -30,7 +37,13 @@ class ApiClient {
         return { error: error.error || `HTTP ${response.status}` };
       }
 
-      const data = await response.json();
+      // Handle empty responses (e.g., 204 No Content or empty DELETE responses)
+      const text = await response.text();
+      if (!text) {
+        return { data: undefined as T };
+      }
+
+      const data = JSON.parse(text);
       return { data };
     } catch (err) {
       return { error: err instanceof Error ? err.message : 'Network error' };
@@ -157,6 +170,80 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(req),
     });
+  }
+
+  // RAG
+  async listRagDatabases() {
+    return this.request<{ databases: RagDatabase[]; activeDatabaseId: string | null }>(
+      '/rag/databases'
+    );
+  }
+
+  async createRagDatabase(payload: { label: string; description?: string; tags?: string[] }) {
+    return this.request<{ database: RagDatabaseDetail }>('/rag/databases', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async getRagDatabase(id: string) {
+    return this.request<{ database: RagDatabaseDetail }>(`/rag/databases/${id}`);
+  }
+
+  async updateRagDatabase(
+    id: string,
+    payload: { label?: string; description?: string; tags?: string[] }
+  ) {
+    return this.request<{ database: RagDatabaseDetail }>(`/rag/databases/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async deleteRagDatabase(id: string) {
+    return this.request<{ success: boolean }>(`/rag/databases/${id}`, { method: 'DELETE' });
+  }
+
+  async uploadRagDocument(
+    dbId: string,
+    file: File,
+    options?: { title?: string; tags?: string[] }
+  ) {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (options?.title) formData.append('title', options.title);
+    if (options?.tags?.length) formData.append('tags', JSON.stringify(options.tags));
+
+    const response = await fetch(`${API_BASE}/rag/databases/${dbId}/documents`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Upload failed' }));
+      return { error: error.error };
+    }
+
+    const data = (await response.json()) as { source: RagSource; indexedChunks: number };
+    return { data };
+  }
+
+  async deleteRagDocument(dbId: string, sourceId: string) {
+    return this.request<{ success: boolean }>(
+      `/rag/databases/${dbId}/documents/${sourceId}`,
+      { method: 'DELETE' }
+    );
+  }
+
+  async searchRag(
+    databaseId: string,
+    query: string,
+    params?: { topK?: number; tokenCap?: number }
+  ) {
+    const searchParams = new URLSearchParams({ q: query, databaseId });
+    if (params?.topK) searchParams.set('k', params.topK.toString());
+    if (params?.tokenCap) searchParams.set('tokenCap', params.tokenCap.toString());
+    return this.request<{ snippets: RagSnippet[] }>(`/rag/search?${searchParams.toString()}`);
   }
 
   // LLM streaming version

@@ -5,6 +5,7 @@
 import { useState, useEffect } from 'react';
 import { useLLMStore } from '../store/llm-store';
 import type { ProviderConfig, ProviderKind, OpenAIMode } from '@card-architect/schemas';
+import { TemplateSnippetPanel } from './TemplateSnippetPanel';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -12,18 +13,74 @@ interface SettingsModalProps {
 }
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
-  const { settings, loadSettings, addProvider, updateProvider, removeProvider, testConnection } =
-    useLLMStore();
+  const {
+    settings,
+    loadSettings,
+    addProvider,
+    updateProvider,
+    removeProvider,
+    testConnection,
+    loadRagDatabases,
+    ragDatabases,
+    ragActiveDatabaseId,
+    ragDatabaseDetails,
+    ragIsLoading,
+    ragError,
+    createRagDatabase,
+    deleteRagDatabase,
+    loadRagDatabaseDetail,
+    setActiveRagDatabaseId,
+    uploadRagDocument,
+    removeRagDocument,
+  } = useLLMStore();
 
-  const [activeTab, setActiveTab] = useState<'providers' | 'rag'>('providers');
+  const [activeTab, setActiveTab] = useState<'providers' | 'rag' | 'templates'>('providers');
   const [editingProvider, setEditingProvider] = useState<Partial<ProviderConfig> | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { success: boolean; error?: string }>>({});
+  const [modelOptions, setModelOptions] = useState<string[]>([]);
+  const [modelFetchError, setModelFetchError] = useState<string | null>(null);
+  const [modelFetchLoading, setModelFetchLoading] = useState(false);
+  const [selectedDbId, setSelectedDbId] = useState<string | null>(null);
+  const [newDbName, setNewDbName] = useState('');
+  const [newDbDescription, setNewDbDescription] = useState('');
+  const [ragStatus, setRagStatus] = useState<string | null>(null);
+  const [uploadTitle, setUploadTitle] = useState('');
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [fileInputKey, setFileInputKey] = useState(0);
 
   useEffect(() => {
     if (isOpen) {
       loadSettings();
     }
   }, [isOpen, loadSettings]);
+
+  useEffect(() => {
+    setModelOptions([]);
+    setModelFetchError(null);
+    setModelFetchLoading(false);
+  }, [editingProvider?.id]);
+
+  useEffect(() => {
+    if (isOpen && activeTab === 'rag') {
+      loadRagDatabases();
+    }
+  }, [isOpen, activeTab, loadRagDatabases]);
+
+  useEffect(() => {
+    if (!selectedDbId && ragDatabases.length > 0) {
+      const defaultId = ragActiveDatabaseId || ragDatabases[0].id;
+      setSelectedDbId(defaultId);
+    }
+  }, [ragDatabases, ragActiveDatabaseId, selectedDbId]);
+
+  useEffect(() => {
+    if (selectedDbId && !ragDatabaseDetails[selectedDbId]) {
+      loadRagDatabaseDetail(selectedDbId);
+    }
+  }, [selectedDbId, ragDatabaseDetails, loadRagDatabaseDetail]);
+
+  const selectedDatabase = selectedDbId ? ragDatabaseDetails[selectedDbId] : null;
 
   const handleSaveProvider = async () => {
     if (!editingProvider || !editingProvider.id) return;
@@ -57,11 +114,98 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     });
   };
 
+  const handleCreateDatabase = async () => {
+    if (!newDbName.trim()) {
+      setRagStatus('Please provide a name for the knowledge base.');
+      return;
+    }
+
+    const result = await createRagDatabase({
+      label: newDbName,
+      description: newDbDescription,
+    });
+
+    if (!result.success) {
+      setRagStatus(result.error || 'Failed to create knowledge base.');
+      return;
+    }
+
+    setNewDbName('');
+    setNewDbDescription('');
+    setRagStatus('Knowledge base created.');
+    loadRagDatabases();
+  };
+
+  const handleSelectDatabase = async (dbId: string) => {
+    setSelectedDbId(dbId);
+    if (!ragDatabaseDetails[dbId]) {
+      await loadRagDatabaseDetail(dbId);
+    }
+  };
+
+  const handleDeleteDatabase = async (dbId: string) => {
+    const confirmed = window.confirm('Delete this knowledge base? This cannot be undone.');
+    if (!confirmed) return;
+
+    const result = await deleteRagDatabase(dbId);
+    if (!result.success) {
+      setRagStatus(result.error || 'Failed to delete knowledge base.');
+      return;
+    }
+
+    if (selectedDbId === dbId) {
+      setSelectedDbId(null);
+    }
+    setRagStatus('Knowledge base deleted.');
+  };
+
+  const handleUploadDocument = async () => {
+    if (!selectedDbId || !uploadFile) {
+      setRagStatus('Choose a file to upload.');
+      return;
+    }
+
+    setUploading(true);
+    const result = await uploadRagDocument(selectedDbId, uploadFile, {
+      title: uploadTitle.trim() || undefined,
+    });
+    setUploading(false);
+
+    if (!result.success) {
+      setRagStatus(result.error || 'Failed to upload document.');
+      return;
+    }
+
+    setUploadTitle('');
+    setUploadFile(null);
+    setFileInputKey((key) => key + 1);
+    setRagStatus('Document indexed.');
+  };
+
+  const handleRemoveDocument = async (sourceId: string) => {
+    if (!selectedDbId) return;
+    const confirmed = window.confirm('Remove this document from the knowledge base?');
+    if (!confirmed) return;
+
+    const result = await removeRagDocument(selectedDbId, sourceId);
+    if (!result.success) {
+      setRagStatus(result.error || 'Failed to remove document.');
+      return;
+    }
+
+    setRagStatus('Document removed.');
+  };
+
+  const handleSetActiveDatabase = async (dbId: string) => {
+    await setActiveRagDatabaseId(dbId);
+    setRagStatus('Active knowledge base updated.');
+  };
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-      <div className="bg-slate-800 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="bg-slate-800 rounded-lg shadow-xl w-full max-w-4xl h-[67vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="p-4 border-b border-dark-border flex justify-between items-center">
           <h2 className="text-xl font-bold">LLM Settings</h2>
@@ -94,6 +238,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             onClick={() => setActiveTab('rag')}
           >
             Knowledge (RAG)
+          </button>
+          <button
+            className={`px-6 py-3 font-medium transition-colors ${
+              activeTab === 'templates'
+                ? 'border-b-2 border-blue-500 text-blue-500'
+                : 'text-dark-muted hover:text-dark-text'
+            }`}
+            onClick={() => setActiveTab('templates')}
+          >
+            Templates & Snippets
           </button>
         </div>
 
@@ -296,48 +450,117 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       </div>
                     )}
 
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Default Model</label>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={editingProvider.defaultModel || ''}
-                          onChange={(e) =>
-                            setEditingProvider({
-                              ...editingProvider,
-                              defaultModel: e.target.value,
-                            })
-                          }
-                          placeholder="gpt-4, claude-3-5-sonnet-20241022, etc."
-                          className="flex-1 bg-dark-card border border-dark-border rounded px-3 py-2"
-                        />
-                        <button
-                          onClick={async () => {
-                            if (!editingProvider.baseURL || !editingProvider.apiKey) {
-                              alert('Please enter Base URL and API Key first');
-                              return;
-                            }
-                            try {
-                              const response = await fetch(`${editingProvider.baseURL}/v1/models`, {
-                                headers: {
-                                  'Authorization': `Bearer ${editingProvider.apiKey}`,
-                                },
-                              });
-                              if (!response.ok) throw new Error('Failed to fetch models');
-                              const data = await response.json();
-                              const models = data.data?.map((m: any) => m.id).join(', ') || 'No models found';
-                              alert(`Available models:\n\n${models}\n\nSelect one and paste it in the model field.`);
-                            } catch (err) {
-                              alert(`Error fetching models: ${err instanceof Error ? err.message : 'Unknown error'}`);
-                            }
-                          }}
-                          className="px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors whitespace-nowrap"
-                          title="Fetch available models from provider"
-                        >
-                          Fetch Models
-                        </button>
-                      </div>
-                    </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Default Model</label>
+                          <div className="flex flex-col gap-2">
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={editingProvider.defaultModel || ''}
+                                onChange={(e) =>
+                                  setEditingProvider({
+                                    ...editingProvider,
+                                    defaultModel: e.target.value,
+                                  })
+                                }
+                                placeholder="gpt-4, claude-3-5-sonnet-20241022, etc."
+                                className="flex-1 bg-dark-card border border-dark-border rounded px-3 py-2"
+                              />
+                              <button
+                                onClick={async () => {
+                                  if (!editingProvider.baseURL || !editingProvider.apiKey) {
+                                    alert('Please enter Base URL and API Key first');
+                                    return;
+                                  }
+
+                                  setModelFetchLoading(true);
+                                  setModelFetchError(null);
+                                  setModelOptions([]);
+
+                                  try {
+                                    let headers: Record<string, string> = {};
+                                    let url = `${editingProvider.baseURL.replace(/\/$/, '')}/v1/models`;
+
+                                    if (editingProvider.kind === 'anthropic') {
+                                      headers = {
+                                        'x-api-key': editingProvider.apiKey,
+                                        'anthropic-version': editingProvider.anthropicVersion || '2023-06-01',
+                                      };
+                                    } else {
+                                      headers = {
+                                        Authorization: `Bearer ${editingProvider.apiKey}`,
+                                      };
+                                    }
+
+                                    const response = await fetch(url, { headers });
+                                    if (!response.ok) {
+                                      throw new Error(`Failed to fetch models (${response.status})`);
+                                    }
+
+                                    const data = await response.json();
+                                    const models =
+                                      Array.isArray(data.data) && data.data.length > 0
+                                        ? data.data
+                                            .map((m: any) => m.id || m.model || m.name)
+                                            .filter(Boolean)
+                                        : [];
+
+                                    if (models.length === 0) {
+                                      setModelFetchError('No models returned by provider.');
+                                    } else {
+                                      setModelOptions(models);
+                                      if (!editingProvider.defaultModel) {
+                                        setEditingProvider({
+                                          ...editingProvider,
+                                          defaultModel: models[0],
+                                        });
+                                      }
+                                    }
+                                  } catch (err) {
+                                    setModelFetchError(
+                                      err instanceof Error ? err.message : 'Failed to fetch models.'
+                                    );
+                                  } finally {
+                                    setModelFetchLoading(false);
+                                  }
+                                }}
+                                className="px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors whitespace-nowrap disabled:opacity-60"
+                                title="Fetch available models from provider"
+                                disabled={modelFetchLoading}
+                              >
+                                {modelFetchLoading ? 'Fetching…' : 'Fetch Models'}
+                              </button>
+                            </div>
+
+                            {modelOptions.length > 0 && (
+                              <div className="space-y-1">
+                                <label className="block text-xs text-dark-muted">
+                                  Select from fetched models
+                                </label>
+                                <select
+                                  value={editingProvider.defaultModel || modelOptions[0]}
+                                  onChange={(e) =>
+                                    setEditingProvider({
+                                      ...editingProvider,
+                                      defaultModel: e.target.value,
+                                    })
+                                  }
+                                  className="w-full bg-dark-card border border-dark-border rounded px-3 py-2 text-sm"
+                                >
+                                  {modelOptions.map((modelId) => (
+                                    <option key={modelId} value={modelId}>
+                                      {modelId}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+
+                            {modelFetchError && (
+                              <p className="text-xs text-red-300">{modelFetchError}</p>
+                            )}
+                          </div>
+                        </div>
 
                     <div className="grid grid-cols-2 gap-4">
                       <div>
@@ -413,13 +636,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           )}
 
           {activeTab === 'rag' && (
-            <div>
-              <h3 className="text-lg font-semibold mb-4">RAG Configuration</h3>
-              <p className="text-dark-muted mb-4">
-                Enable RAG to augment LLM responses with your local documentation and style guides.
-              </p>
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold mb-2">RAG Configuration</h3>
+                <p className="text-dark-muted">
+                  Connect curated lore, style guides, and JSON instruction files so LLM Assist can cite
+                  them automatically.
+                </p>
+              </div>
 
-              <div className="space-y-4">
+              <div className="space-y-4 border border-dark-border rounded-lg p-4">
                 <div className="flex items-center gap-2">
                   <input
                     type="checkbox"
@@ -433,48 +659,243 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     className="rounded"
                   />
                   <label htmlFor="ragEnabled" className="text-sm font-medium">
-                    Enable RAG
+                    Enable RAG for LLM Assist
                   </label>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium mb-1">Top-K Results</label>
-                  <input
-                    type="number"
-                    value={settings.rag.topK}
-                    onChange={(e) =>
-                      useLLMStore
-                        .getState()
-                        .saveSettings({ rag: { ...settings.rag, topK: parseInt(e.target.value) } })
-                    }
-                    className="w-full bg-dark-card border border-dark-border rounded px-3 py-2"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">Token Cap</label>
-                  <input
-                    type="number"
-                    value={settings.rag.tokenCap}
-                    onChange={(e) =>
-                      useLLMStore
-                        .getState()
-                        .saveSettings({
-                          rag: { ...settings.rag, tokenCap: parseInt(e.target.value) },
-                        })
-                    }
-                    className="w-full bg-dark-card border border-dark-border rounded px-3 py-2"
-                  />
-                </div>
-
-                <div className="p-4 bg-dark-bg border border-dark-border rounded">
-                  <p className="text-sm text-dark-muted">
-                    RAG indexing and search is currently a placeholder. Implementation requires
-                    embedding model and vector database setup.
-                  </p>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Top-K Snippets</label>
+                    <input
+                      type="number"
+                      value={settings.rag.topK}
+                      min={1}
+                      onChange={(e) =>
+                        useLLMStore
+                          .getState()
+                          .saveSettings({ rag: { ...settings.rag, topK: parseInt(e.target.value) } })
+                      }
+                      className="w-full bg-dark-card border border-dark-border rounded px-3 py-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Token Cap</label>
+                    <input
+                      type="number"
+                      value={settings.rag.tokenCap}
+                      min={200}
+                      onChange={(e) =>
+                        useLLMStore
+                          .getState()
+                          .saveSettings({
+                            rag: { ...settings.rag, tokenCap: parseInt(e.target.value) || 0 },
+                          })
+                      }
+                      className="w-full bg-dark-card border border-dark-border rounded px-3 py-2"
+                    />
+                  </div>
                 </div>
               </div>
+
+              <div className="flex items-center justify-between">
+                <h4 className="text-lg font-semibold">Knowledge Bases</h4>
+                <button
+                  onClick={loadRagDatabases}
+                  className="px-3 py-1 text-sm border border-dark-border rounded hover:border-blue-500 transition-colors"
+                >
+                  ↻ Refresh
+                </button>
+              </div>
+
+              {(ragError || ragStatus) && (
+                <div className="space-y-2">
+                  {ragError && (
+                    <div className="p-2 rounded bg-red-900/30 border border-red-700 text-red-100 text-sm">
+                      {ragError}
+                    </div>
+                  )}
+                  {ragStatus && (
+                    <div className="p-2 rounded bg-green-900/20 border border-green-700 text-green-100 text-sm">
+                      {ragStatus}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="border border-dark-border rounded-lg p-4 space-y-3">
+                  <h5 className="font-semibold">Create Knowledge Base</h5>
+                  <input
+                    type="text"
+                    placeholder="Name (e.g., Warhammer 40K Lore)"
+                    value={newDbName}
+                    onChange={(e) => setNewDbName(e.target.value)}
+                    className="w-full bg-dark-card border border-dark-border rounded px-3 py-2 text-sm"
+                  />
+                  <textarea
+                    placeholder="Optional description"
+                    value={newDbDescription}
+                    onChange={(e) => setNewDbDescription(e.target.value)}
+                    className="w-full bg-dark-card border border-dark-border rounded px-3 py-2 text-sm h-24 resize-none"
+                  />
+                  <button
+                    onClick={handleCreateDatabase}
+                    className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm"
+                  >
+                    Create Knowledge Base
+                  </button>
+                </div>
+
+                <div className="border border-dark-border rounded-lg p-4 space-y-3">
+                  <h5 className="font-semibold">Available Bases</h5>
+                  {ragIsLoading ? (
+                    <p className="text-sm text-dark-muted">Loading knowledge bases…</p>
+                  ) : ragDatabases.length === 0 ? (
+                    <p className="text-sm text-dark-muted">
+                      No knowledge bases yet. Create one on the left to start indexing lore.
+                    </p>
+                  ) : (
+                    <div className="space-y-3 max-h-64 overflow-auto pr-1">
+                      {ragDatabases.map((db) => (
+                        <div
+                          key={db.id}
+                          className={`rounded-md border p-3 ${
+                            selectedDbId === db.id
+                              ? 'border-blue-500 bg-blue-900/10'
+                              : 'border-dark-border'
+                          }`}
+                        >
+                          <div className="flex justify-between items-start gap-3">
+                            <div>
+                              <div className="font-medium">{db.label}</div>
+                              {db.description && (
+                                <div className="text-xs text-dark-muted mt-0.5">{db.description}</div>
+                              )}
+                              <div className="text-xs text-dark-muted mt-1">
+                                Docs: {db.sourceCount} • Chunks: {db.chunkCount} • Tokens: {db.tokenCount}
+                              </div>
+                            </div>
+                            <div className="flex flex-col gap-1 text-xs">
+                              <button
+                                onClick={() => handleSelectDatabase(db.id)}
+                                className="px-2 py-1 rounded border border-dark-border hover:border-blue-500 transition-colors"
+                              >
+                                Manage
+                              </button>
+                              <button
+                                onClick={() => handleSetActiveDatabase(db.id)}
+                                disabled={ragActiveDatabaseId === db.id}
+                                className={`px-2 py-1 rounded border ${
+                                  ragActiveDatabaseId === db.id
+                                    ? 'border-green-600 text-green-200 cursor-default'
+                                    : 'border-dark-border hover:border-green-500'
+                                }`}
+                              >
+                                {ragActiveDatabaseId === db.id ? 'Active' : 'Set Active'}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteDatabase(db.id)}
+                                className="px-2 py-1 rounded border border-red-600 text-red-200 hover:bg-red-600/10 transition-colors"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {selectedDatabase && (
+                <div className="border border-dark-border rounded-lg p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h5 className="font-semibold">{selectedDatabase.label}</h5>
+                      <p className="text-xs text-dark-muted">
+                        {selectedDatabase.description || 'No description'} • {selectedDatabase.sourceCount}{' '}
+                        docs • {selectedDatabase.tokenCount} tokens
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleSetActiveDatabase(selectedDatabase.id)}
+                      className="px-3 py-1 text-sm border border-dark-border rounded hover:border-blue-500 transition-colors"
+                    >
+                      {ragActiveDatabaseId === selectedDatabase.id ? 'Active' : 'Set Active'}
+                    </button>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <h6 className="font-semibold text-sm">Upload Document</h6>
+                      <input
+                        type="text"
+                        placeholder="Optional display title"
+                        value={uploadTitle}
+                        onChange={(e) => setUploadTitle(e.target.value)}
+                        className="w-full bg-dark-card border border-dark-border rounded px-3 py-2 text-sm"
+                      />
+                      <input
+                        key={fileInputKey}
+                        type="file"
+                        accept=".md,.markdown,.txt,.json,.pdf"
+                        onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                        className="w-full text-sm text-dark-text file:mr-3 file:rounded file:border-0 file:px-3 file:py-2 file:bg-blue-600 file:text-white"
+                      />
+                      <button
+                        onClick={handleUploadDocument}
+                        disabled={uploading || !uploadFile}
+                        className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 text-sm transition-colors"
+                      >
+                        {uploading ? 'Uploading…' : 'Upload & Index'}
+                      </button>
+                      <p className="text-xs text-dark-muted">
+                        Supports Markdown, text, JSON, and PDF lore/guide files.
+                      </p>
+                    </div>
+
+                    <div>
+                      <h6 className="font-semibold text-sm mb-2">Documents</h6>
+                      {selectedDatabase.sources.length === 0 ? (
+                        <p className="text-sm text-dark-muted">No documents indexed yet.</p>
+                      ) : (
+                        <div className="space-y-2 max-h-60 overflow-auto pr-1">
+                          {selectedDatabase.sources.map((source) => (
+                            <div
+                              key={source.id}
+                              className="border border-dark-border rounded-md p-2 flex justify-between items-start gap-3"
+                            >
+                              <div>
+                                <div className="text-sm font-medium">{source.title}</div>
+                                <div className="text-xs text-dark-muted">
+                                  {source.type.toUpperCase()} • {source.chunkCount} chunks • {source.tokenCount} tokens
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => handleRemoveDocument(source.id)}
+                                className="text-xs text-red-300 hover:text-red-200"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
+          )}
+
+          {activeTab === 'templates' && (
+            <TemplateSnippetPanel
+              isOpen={true}
+              onClose={() => {}} // No close needed in settings modal
+              manageMode={true}
+              embedded={true}
+            />
           )}
         </div>
 

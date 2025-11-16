@@ -29,7 +29,8 @@ interface ProfileConfig {
 
 export function PromptSimulatorPanel() {
   const card = useCardStore((state) => state.currentCard);
-  const [profiles, setProfiles] = useState<Record<PromptProfile, ProfileConfig>>({});
+  const [profiles, setProfiles] =
+    useState<Partial<Record<PromptProfile, ProfileConfig>>>({});
   const [selectedProfile, setSelectedProfile] = useState<PromptProfile>('generic-ccv3');
   const [composition, setComposition] = useState<PromptComposition | null>(null);
   const [loading, setLoading] = useState(false);
@@ -39,7 +40,7 @@ export function PromptSimulatorPanel() {
   const [useBudget, setUseBudget] = useState(false);
   const [maxTokens, setMaxTokens] = useState(2048);
   const [dropPolicy, setDropPolicy] = useState<DropPolicy>('lowest-priority');
-  const [preserveFields, setPreserveFields] = useState<string[]>(['description', 'first_mes']);
+  const [preserveFields] = useState<string[]>(['description', 'first_mes']);
 
   // Load available profiles
   useEffect(() => {

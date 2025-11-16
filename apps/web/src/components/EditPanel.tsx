@@ -1,67 +1,27 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useCardStore } from '../store/card-store';
-import type { CCv3Data, CCv2Data, CCFieldName } from '@card-architect/schemas';
+import type { CCv3Data, CCv2Data, CCFieldName, FocusField, Template, Snippet } from '@card-architect/schemas';
 import { FieldEditor } from './FieldEditor';
 import { LorebookEditor } from './LorebookEditor';
 import { LLMAssistSidebar } from './LLMAssistSidebar';
 import { TagInput } from './TagInput';
+import { TemplateSnippetPanel } from './TemplateSnippetPanel';
 
-interface CollapsibleSectionProps {
-  title: string;
-  sectionId: string;
-  children: React.ReactNode;
-  defaultExpanded?: boolean;
-}
-
-function CollapsibleSection({ title, sectionId, children, defaultExpanded = true }: CollapsibleSectionProps) {
-  const [isExpanded, setIsExpanded] = useState(() => {
-    const saved = localStorage.getItem(`section-${sectionId}-expanded`);
-    return saved !== null ? saved === 'true' : defaultExpanded;
-  });
-
-  useEffect(() => {
-    localStorage.setItem(`section-${sectionId}-expanded`, String(isExpanded));
-  }, [isExpanded, sectionId]);
-
-  const toggleExpanded = () => {
-    setIsExpanded(!isExpanded);
-  };
-
-  return (
-    <section className="card">
-      <div className="flex items-center justify-between mb-4">
-        <button
-          onClick={toggleExpanded}
-          className="flex items-center gap-2 text-left flex-1"
-        >
-          <svg
-            className={`w-5 h-5 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-          <h2 className="text-xl font-bold">{title}</h2>
-        </button>
-      </div>
-
-      {isExpanded && (
-        <div className="space-y-4">
-          {children}
-        </div>
-      )}
-    </section>
-  );
-}
+type EditTab = 'basic' | 'greetings' | 'advanced' | 'lorebook';
 
 export function EditPanel() {
-  const { currentCard, updateCardData, updateCardMeta, showAdvanced, setShowAdvanced } = useCardStore();
+  const { currentCard, updateCardData, updateCardMeta, specMode, showV3Fields, setSpecMode, toggleV3Fields } = useCardStore();
   const tokenCounts = useCardStore((state) => state.tokenCounts);
+
+  const [activeTab, setActiveTab] = useState<EditTab>('basic');
 
   const [llmAssistOpen, setLLMAssistOpen] = useState(false);
   const [llmAssistField, setLLMAssistField] = useState<CCFieldName>('description');
   const [llmAssistValue, setLLMAssistValue] = useState('');
+
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [templatesField, setTemplatesField] = useState<FocusField>('description');
+  const [templatesValue, setTemplatesValue] = useState('');
 
   if (!currentCard) return null;
 
@@ -109,160 +69,412 @@ export function EditPanel() {
     // 'insert' would be for alt greetings array manipulation
   };
 
+  const handleOpenTemplates = (fieldName: FocusField, value: string) => {
+    setTemplatesField(fieldName);
+    setTemplatesValue(value);
+    setTemplatesOpen(true);
+  };
+
+  const handleApplyTemplate = (template: Template, mode: 'replace' | 'append' | 'prepend') => {
+    const content = template.content[templatesField];
+    if (!content) {
+      alert(`This template does not have content for the ${templatesField} field.`);
+      return;
+    }
+
+    let newValue = '';
+    if (mode === 'replace') {
+      newValue = content;
+    } else if (mode === 'append') {
+      newValue = templatesValue + '\n\n' + content;
+    } else if (mode === 'prepend') {
+      newValue = content + '\n\n' + templatesValue;
+    }
+
+    handleFieldChange(templatesField, newValue);
+  };
+
+  const handleInsertSnippet = (snippet: Snippet) => {
+    const newValue = templatesValue + snippet.content;
+    handleFieldChange(templatesField, newValue);
+  };
+
+  const ASSIST_WIDTH_PX = 420;
+  const ASSIST_GAP_PX = 24;
+  const contentStyle = llmAssistOpen
+    ? {
+        width: `calc(100% - ${ASSIST_WIDTH_PX + ASSIST_GAP_PX}px)`,
+        marginLeft: '0px',
+        marginRight: `${ASSIST_GAP_PX}px`,
+      }
+    : undefined;
+
+  const tabs = [
+    { id: 'basic' as EditTab, label: 'Basic Info' },
+    { id: 'greetings' as EditTab, label: 'Greetings' },
+    { id: 'advanced' as EditTab, label: 'Advanced' },
+    { id: 'lorebook' as EditTab, label: 'Lorebook' },
+  ];
+
   return (
-    <div className={`mx-auto p-6 space-y-6 transition-all duration-300 ${llmAssistOpen ? 'max-w-4xl mr-[600px]' : 'max-w-7xl'}`}>
-      {/* Basic Information - Collapsible */}
-      <CollapsibleSection title="Basic Information" sectionId="basic-info" defaultExpanded={true}>
-        <FieldEditor
-          label="Name"
-          value={cardData.name}
-          onChange={(v) => handleFieldChange('name', v)}
-          tokenCount={tokenCounts.name}
-          fieldName="description"
-          onOpenLLMAssist={handleOpenLLMAssist}
-        />
-
-        {isV3 && (
-          <>
-            <FieldEditor
-              label="Creator"
-              value={cardData.creator || ''}
-              onChange={(v) => handleFieldChange('creator', v)}
-            />
-
-            <FieldEditor
-              label="Character Version"
-              value={cardData.character_version || ''}
-              onChange={(v) => handleFieldChange('character_version', v)}
-            />
-
-            <div>
-              <label className="label">Tags</label>
+    <div className="relative w-full h-full flex flex-col">
+      {/* Tab Navigation */}
+      <div className="bg-dark-surface border-b border-dark-border">
+        <div className="flex items-center justify-between">
+          <div className="flex">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-6 py-3 font-medium transition-colors ${
+                  activeTab === tab.id
+                    ? 'bg-dark-bg text-dark-text border-b-2 border-blue-500'
+                    : 'text-dark-muted hover:text-dark-text'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-4 px-6">
+            {/* V3 Fields Toggle */}
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input
-                type="text"
-                value={cardData.tags?.join(', ') || ''}
-                onChange={(e) => {
-                  const tags = e.target.value.split(',').map((t) => t.trim()).filter(Boolean);
-                  handleFieldChange('tags', tags as any);
-                }}
-                placeholder="tag1, tag2, tag3"
-                className="w-full"
+                type="checkbox"
+                checked={showV3Fields}
+                onChange={toggleV3Fields}
+                className="w-4 h-4 rounded border-dark-border bg-dark-bg checked:bg-blue-600"
+              />
+              <span className="text-dark-muted">Show V3 Fields</span>
+            </label>
+            {/* Spec Mode Switcher */}
+            <div className="flex items-center gap-2 bg-dark-bg rounded-lg p-1">
+              <button
+                onClick={() => setSpecMode('v2')}
+                className={`px-3 py-1 text-sm font-medium rounded transition-colors ${
+                  specMode === 'v2'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-dark-muted hover:text-dark-text'
+                }`}
+              >
+                V2
+              </button>
+              <button
+                onClick={() => setSpecMode('v3')}
+                className={`px-3 py-1 text-sm font-medium rounded transition-colors ${
+                  specMode === 'v3'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-dark-muted hover:text-dark-text'
+                }`}
+              >
+                V3
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tab Content */}
+      <div
+        className={`flex-1 overflow-y-auto w-full p-6 space-y-6 transition-all duration-300 ${
+          llmAssistOpen ? '' : 'max-w-5xl mx-auto'
+        }`}
+        style={contentStyle}
+      >
+        {/* Basic Info Tab */}
+        {activeTab === 'basic' && (
+          <div className="space-y-6">
+            <FieldEditor
+              label="Name"
+              value={cardData.name}
+              onChange={(v) => handleFieldChange('name', v)}
+              tokenCount={tokenCounts.name}
+              fieldName="description"
+              onOpenLLMAssist={handleOpenLLMAssist}
+              specMarker="both"
+            />
+
+            <FieldEditor
+              label="Description"
+              value={cardData.description}
+              onChange={(v) => handleFieldChange('description', v)}
+              tokenCount={tokenCounts.description}
+              multiline
+              rows={6}
+              fieldName="description"
+              onOpenLLMAssist={handleOpenLLMAssist}
+              onOpenTemplates={handleOpenTemplates}
+              specMarker="both"
+            />
+
+            <FieldEditor
+              label="Personality"
+              value={cardData.personality}
+              onChange={(v) => handleFieldChange('personality', v)}
+              tokenCount={tokenCounts.personality}
+              multiline
+              rows={6}
+              fieldName="personality"
+              onOpenLLMAssist={handleOpenLLMAssist}
+              onOpenTemplates={handleOpenTemplates}
+              specMarker="both"
+            />
+
+            <FieldEditor
+              label="Scenario"
+              value={cardData.scenario}
+              onChange={(v) => handleFieldChange('scenario', v)}
+              tokenCount={tokenCounts.scenario}
+              multiline
+              rows={6}
+              fieldName="scenario"
+              onOpenLLMAssist={handleOpenLLMAssist}
+              onOpenTemplates={handleOpenTemplates}
+              specMarker="both"
+            />
+
+            {/* Character Avatar */}
+            <div className="input-group">
+              <label className="label">Character Avatar</label>
+              <div className="flex gap-4 items-start">
+                {/* Image Preview */}
+                <div className="w-48 h-48 bg-dark-bg border border-dark-border rounded overflow-hidden flex-shrink-0">
+                  <img
+                    src={`/api/cards/${currentCard.meta.id}/image?t=${Date.now()}`}
+                    alt="Character Avatar"
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                      const parent = e.currentTarget.parentElement;
+                      if (parent) {
+                        parent.classList.add('flex', 'items-center', 'justify-center');
+                        parent.innerHTML = '<div class="text-dark-muted text-sm">No Image</div>';
+                      }
+                    }}
+                  />
+                </div>
+
+                {/* Upload Controls */}
+                <div className="flex-1">
+                  <p className="text-sm text-dark-muted mb-3">
+                    Upload a new image to replace the current character avatar. Supports PNG, JPG, and WebP.
+                  </p>
+                  <label htmlFor="avatar-upload" className="btn-primary cursor-pointer inline-block">
+                    Upload New Image
+                    <input
+                      id="avatar-upload"
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+
+                        try {
+                          const formData = new FormData();
+                          formData.append('file', file);
+
+                          const response = await fetch(`/api/cards/${currentCard.meta.id}/image`, {
+                            method: 'POST',
+                            body: formData,
+                          });
+
+                          if (!response.ok) {
+                            throw new Error('Failed to upload image');
+                          }
+
+                          // Force image reload by updating the timestamp in the src
+                          const img = document.querySelector(`img[src*="/api/cards/${currentCard.meta.id}/image"]`) as HTMLImageElement;
+                          if (img) {
+                            img.src = `/api/cards/${currentCard.meta.id}/image?t=${Date.now()}`;
+                          }
+
+                          alert('Image updated successfully!');
+                        } catch (error) {
+                          console.error('Failed to upload image:', error);
+                          alert('Failed to upload image. Please try again.');
+                        } finally {
+                          e.target.value = '';
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Tags - Show for both V2 and V3 */}
+            <div className="input-group">
+              <div className="flex items-center gap-2 mb-2">
+                <label className="label">Tags</label>
+                {isV3 ? (
+                  <span className="text-xs px-2 py-0.5 rounded bg-blue-600 text-white">V3 Required</span>
+                ) : (
+                  <span className="text-xs px-2 py-0.5 rounded bg-gray-600 text-white">V2</span>
+                )}
+              </div>
+              <TagInput
+                tags={currentCard.meta.tags || []}
+                onChange={handleTagsChange}
               />
             </div>
-          </>
+
+            {/* V3-specific fields */}
+            {showV3Fields && (
+              <>
+                <FieldEditor
+                  label="Creator"
+                  value={cardData.creator || ''}
+                  onChange={(v) => handleFieldChange('creator', v)}
+                  placeholder="Creator name"
+                  specMarker="v3"
+                />
+
+                <FieldEditor
+                  label="Character Version"
+                  value={cardData.character_version || ''}
+                  onChange={(v) => handleFieldChange('character_version', v)}
+                  placeholder="1.0"
+                  specMarker="v3"
+                />
+              </>
+            )}
+          </div>
         )}
-      </CollapsibleSection>
 
-      {/* Description */}
-      <CollapsibleSection title="Description" sectionId="description" defaultExpanded={true}>
-        <FieldEditor
-          label="Description"
-          value={cardData.description}
-          onChange={(v) => handleFieldChange('description', v)}
-          tokenCount={tokenCounts.description}
-          multiline
-          rows={4}
-          fieldName="description"
-          onOpenLLMAssist={handleOpenLLMAssist}
-        />
-      </CollapsibleSection>
+        {/* Greetings Tab */}
+        {activeTab === 'greetings' && (
+          <div className="space-y-6">
+            <FieldEditor
+              label="First Message"
+              value={cardData.first_mes}
+              onChange={(v) => handleFieldChange('first_mes', v)}
+              tokenCount={tokenCounts.first_mes}
+              multiline
+              rows={6}
+              fieldName="first_mes"
+              onOpenLLMAssist={handleOpenLLMAssist}
+              onOpenTemplates={handleOpenTemplates}
+              specMarker="both"
+            />
 
-      {/* Personality */}
-      <CollapsibleSection title="Personality" sectionId="personality" defaultExpanded={true}>
-        <FieldEditor
-          label="Personality"
-          value={cardData.personality}
-          onChange={(v) => handleFieldChange('personality', v)}
-          tokenCount={tokenCounts.personality}
-          multiline
-          rows={4}
-          fieldName="personality"
-          onOpenLLMAssist={handleOpenLLMAssist}
-        />
-      </CollapsibleSection>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <label className="label">Alternate Greetings</label>
+                  <span className="text-xs px-2 py-0.5 rounded bg-gray-600 text-white">Both</span>
+                </div>
+                <button
+                  onClick={() => {
+                    const updated = [...(cardData.alternate_greetings || []), ''];
+                    handleFieldChange('alternate_greetings', updated as any);
+                  }}
+                  className="btn-secondary text-sm"
+                >
+                  + Add Alternate Greeting
+                </button>
+              </div>
+              <p className="text-sm text-dark-muted">
+                Each greeting opens like the First Message. Modify existing ones or add new ones individually.
+              </p>
 
-      {/* Scenario */}
-      <CollapsibleSection title="Scenario" sectionId="scenario" defaultExpanded={true}>
-        <FieldEditor
-          label="Scenario"
-          value={cardData.scenario}
-          onChange={(v) => handleFieldChange('scenario', v)}
-          tokenCount={tokenCounts.scenario}
-          multiline
-          rows={4}
-          fieldName="scenario"
-          onOpenLLMAssist={handleOpenLLMAssist}
-        />
-      </CollapsibleSection>
+              {(cardData.alternate_greetings || []).map((greeting, index) => (
+                <div key={index} className="card bg-dark-bg border border-dark-border p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-semibold text-sm text-dark-muted">Greeting {index + 1}</h4>
+                    <button
+                      onClick={() => {
+                        const updated = [...(cardData.alternate_greetings || [])];
+                        updated.splice(index, 1);
+                        handleFieldChange('alternate_greetings', updated as any);
+                      }}
+                      className="text-xs text-red-300 hover:text-red-200"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <textarea
+                    value={greeting}
+                    onChange={(e) => {
+                      const updated = [...(cardData.alternate_greetings || [])];
+                      updated[index] = e.target.value;
+                      handleFieldChange('alternate_greetings', updated as any);
+                    }}
+                    rows={3}
+                    className="w-full"
+                  />
+                </div>
+              ))}
+            </div>
 
-      {/* First Message */}
-      <CollapsibleSection title="First Message" sectionId="first-message" defaultExpanded={true}>
-        <FieldEditor
-          label="First Message"
-          value={cardData.first_mes}
-          onChange={(v) => handleFieldChange('first_mes', v)}
-          tokenCount={tokenCounts.first_mes}
-          multiline
-          rows={4}
-          fieldName="first_mes"
-          onOpenLLMAssist={handleOpenLLMAssist}
-        />
-      </CollapsibleSection>
+            {/* Group Only Greetings - V3 Only */}
+            {showV3Fields && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <label className="label">Group Only Greetings</label>
+                    <span className="text-xs px-2 py-0.5 rounded bg-purple-600 text-white">V3 Only</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const updated = [...((cardData as any).group_only_greetings || []), ''];
+                      handleFieldChange('group_only_greetings', updated as any);
+                    }}
+                    className="btn-secondary text-sm"
+                  >
+                    + Add Group Greeting
+                  </button>
+                </div>
+                <p className="text-sm text-dark-muted">
+                  Greetings that are only used in group chats. These will not be shown in solo conversations.
+                </p>
 
-      {/* Example Dialogue */}
-      <CollapsibleSection title="Example Dialogue" sectionId="example-dialogue" defaultExpanded={true}>
-        <FieldEditor
-          label="Example Dialogue"
-          value={cardData.mes_example}
-          onChange={(v) => handleFieldChange('mes_example', v)}
-          tokenCount={tokenCounts.mes_example}
-          multiline
-          rows={6}
-          fieldName="mes_example"
-          onOpenLLMAssist={handleOpenLLMAssist}
-        />
-      </CollapsibleSection>
+                {((cardData as any).group_only_greetings || []).map((greeting: string, index: number) => (
+                  <div key={index} className="card bg-dark-bg border border-dark-border p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-semibold text-sm text-dark-muted">Group Greeting {index + 1}</h4>
+                      <button
+                        onClick={() => {
+                          const updated = [...((cardData as any).group_only_greetings || [])];
+                          updated.splice(index, 1);
+                          handleFieldChange('group_only_greetings', updated as any);
+                        }}
+                        className="text-xs text-red-300 hover:text-red-200"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <textarea
+                      value={greeting}
+                      onChange={(e) => {
+                        const updated = [...((cardData as any).group_only_greetings || [])];
+                        updated[index] = e.target.value;
+                        handleFieldChange('group_only_greetings', updated as any);
+                      }}
+                      rows={3}
+                      className="w-full"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
-      {/* Alternate Greetings */}
-      <CollapsibleSection title="Alternate Greetings" sectionId="alternate-greetings" defaultExpanded={false}>
-        <div>
-          <label className="label">Alternate Greetings</label>
-          <p className="text-sm text-dark-muted mb-2">
-            Additional first messages (one per line)
-          </p>
-          <textarea
-            value={cardData.alternate_greetings?.join('\n') || ''}
-            onChange={(e) => {
-              const greetings = e.target.value.split('\n').filter((g) => g.trim());
-              handleFieldChange('alternate_greetings', greetings as any);
-            }}
-            rows={4}
-            className="w-full"
-          />
-        </div>
-      </CollapsibleSection>
-
-      {/* Advanced Section */}
-      <section className="card">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold">Advanced</h2>
-          <button
-            onClick={() => setShowAdvanced(!showAdvanced)}
-            className="text-sm text-blue-400 hover:text-blue-300"
-          >
-            {showAdvanced ? 'Hide' : 'Show'}
-          </button>
-        </div>
-
-        {showAdvanced && (
-          <div className="space-y-4">
+        {/* Advanced Tab */}
+        {activeTab === 'advanced' && (
+          <div className="space-y-6">
             <FieldEditor
               label="System Prompt"
               value={cardData.system_prompt || ''}
               onChange={(v) => handleFieldChange('system_prompt', v)}
               tokenCount={tokenCounts.system_prompt}
               multiline
-              rows={4}
+              rows={6}
+              fieldName="system_prompt"
+              onOpenLLMAssist={handleOpenLLMAssist}
+              onOpenTemplates={handleOpenTemplates}
+              specMarker="both"
             />
 
             <FieldEditor
@@ -271,7 +483,24 @@ export function EditPanel() {
               onChange={(v) => handleFieldChange('post_history_instructions', v)}
               tokenCount={tokenCounts.post_history_instructions}
               multiline
-              rows={4}
+              rows={6}
+              fieldName="post_history_instructions"
+              onOpenLLMAssist={handleOpenLLMAssist}
+              onOpenTemplates={handleOpenTemplates}
+              specMarker="both"
+            />
+
+            <FieldEditor
+              label="Example Messages"
+              value={cardData.mes_example}
+              onChange={(v) => handleFieldChange('mes_example', v)}
+              tokenCount={tokenCounts.mes_example}
+              multiline
+              rows={8}
+              fieldName="mes_example"
+              onOpenLLMAssist={handleOpenLLMAssist}
+              onOpenTemplates={handleOpenTemplates}
+              specMarker="both"
             />
 
             <FieldEditor
@@ -279,58 +508,40 @@ export function EditPanel() {
               value={cardData.creator_notes || ''}
               onChange={(v) => handleFieldChange('creator_notes', v)}
               multiline
-              rows={3}
+              rows={4}
+              fieldName="creator_notes"
+              onOpenLLMAssist={handleOpenLLMAssist}
+              onOpenTemplates={handleOpenTemplates}
+              specMarker="both"
             />
-
-            <div>
-              <label className="label">Alternate Greetings</label>
-              <p className="text-sm text-dark-muted mb-2">
-                Additional first messages (one per line)
-              </p>
-              <textarea
-                value={cardData.alternate_greetings?.join('\n') || ''}
-                onChange={(e) => {
-                  const greetings = e.target.value.split('\n').filter((g) => g.trim());
-                  handleFieldChange('alternate_greetings', greetings as any);
-                }}
-                rows={4}
-                className="w-full"
-              />
-            </div>
-
-            {isV3 && (
-              <div className="input-group">
-                <FieldEditor
-                  label="Creator"
-                  value={cardData.creator || ''}
-                  onChange={(v) => handleFieldChange('creator', v)}
-                />
-
-                <FieldEditor
-                  label="Character Version"
-                  value={cardData.character_version || ''}
-                  onChange={(v) => handleFieldChange('character_version', v)}
-                />
-
-                <TagInput
-                  tags={currentCard.meta.tags || []}
-                  onChange={handleTagsChange}
-                />
-              </div>
-            )}
           </div>
         )}
-      </section>
 
-      <LorebookEditor />
+        {/* Lorebook Tab */}
+        {activeTab === 'lorebook' && (
+          <LorebookEditor />
+        )}
+      </div>
 
-      <LLMAssistSidebar
-        isOpen={llmAssistOpen}
-        onClose={() => setLLMAssistOpen(false)}
-        fieldName={llmAssistField}
-        currentValue={llmAssistValue}
-        onApply={handleLLMApply}
-        cardSpec={currentCard.meta.spec}
+      {llmAssistOpen && (
+        <LLMAssistSidebar
+          isOpen={llmAssistOpen}
+          onClose={() => setLLMAssistOpen(false)}
+          fieldName={llmAssistField}
+          currentValue={llmAssistValue}
+          onApply={handleLLMApply}
+          cardSpec={currentCard.meta.spec}
+          panelWidth={`${ASSIST_WIDTH_PX}px`}
+          panelRight={`${ASSIST_GAP_PX}px`}
+        />
+      )}
+
+      <TemplateSnippetPanel
+        isOpen={templatesOpen}
+        onClose={() => setTemplatesOpen(false)}
+        onApplyTemplate={handleApplyTemplate}
+        onInsertSnippet={handleInsertSnippet}
+        currentField={templatesField}
       />
     </div>
   );

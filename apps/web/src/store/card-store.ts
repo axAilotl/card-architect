@@ -20,8 +20,10 @@ interface CardStore {
   tokenizerModel: string;
 
   // UI state
-  activeTab: 'edit' | 'preview' | 'diff' | 'simulator' | 'redundancy' | 'lore-trigger';
+  activeTab: 'edit' | 'preview' | 'diff' | 'simulator' | 'redundancy' | 'lore-trigger' | 'focused';
   showAdvanced: boolean;
+  specMode: 'v2' | 'v3'; // Current spec mode for editing and export
+  showV3Fields: boolean; // Whether to show v3-only fields in the UI
 
   // Actions
   setCurrentCard: (card: Card | null) => void;
@@ -31,7 +33,7 @@ interface CardStore {
   debouncedAutoSave: () => void;
   createSnapshot: (message?: string) => Promise<void>;
   loadCard: (id: string) => Promise<void>;
-  createNewCard: () => void;
+  createNewCard: () => Promise<void>;
   importCard: (file: File) => Promise<void>;
   exportCard: (format: 'json' | 'png') => Promise<void>;
 
@@ -40,8 +42,12 @@ interface CardStore {
   setTokenizerModel: (model: string) => void;
 
   // UI
-  setActiveTab: (tab: 'edit' | 'preview' | 'diff' | 'simulator' | 'redundancy' | 'lore-trigger') => void;
+  setActiveTab: (
+    tab: 'edit' | 'preview' | 'diff' | 'simulator' | 'redundancy' | 'lore-trigger' | 'focused'
+  ) => void;
   setShowAdvanced: (show: boolean) => void;
+  setSpecMode: (mode: 'v2' | 'v3') => void;
+  toggleV3Fields: () => void;
 }
 
 export const useCardStore = create<CardStore>((set, get) => ({
@@ -54,10 +60,14 @@ export const useCardStore = create<CardStore>((set, get) => ({
   tokenizerModel: 'gpt2-bpe-approx',
   activeTab: 'edit',
   showAdvanced: false,
+  specMode: 'v3',
+  showV3Fields: true,
 
   // Set current card
   setCurrentCard: (card) => {
-    set({ currentCard: card, isDirty: false });
+    const specMode = card?.meta.spec || 'v3';
+    const showV3Fields = specMode === 'v3';
+    set({ currentCard: card, isDirty: false, specMode, showV3Fields });
     if (card) {
       get().updateTokenCounts();
     }
@@ -196,7 +206,7 @@ export const useCardStore = create<CardStore>((set, get) => ({
   },
 
   // Create new card
-  createNewCard: () => {
+  createNewCard: async () => {
     const newCard: Card = {
       meta: {
         id: '',
@@ -227,6 +237,9 @@ export const useCardStore = create<CardStore>((set, get) => ({
     };
 
     set({ currentCard: newCard, isDirty: true });
+
+    // Immediately save to API to get a real ID
+    await get().saveCard();
   },
 
   // Import card
@@ -319,4 +332,51 @@ export const useCardStore = create<CardStore>((set, get) => ({
 
   setActiveTab: (tab) => set({ activeTab: tab }),
   setShowAdvanced: (show) => set({ showAdvanced: show }),
+
+  setSpecMode: (mode) => {
+    const { currentCard } = get();
+    if (!currentCard) return;
+
+    // Update the card's spec mode
+    const updatedCard = {
+      ...currentCard,
+      meta: {
+        ...currentCard.meta,
+        spec: mode,
+      },
+    };
+
+    // Convert data format if needed
+    if (mode === 'v3' && currentCard.meta.spec === 'v2') {
+      // Convert v2 to v3 format
+      const v2Data = currentCard.data as CCv2Data;
+      updatedCard.data = {
+        spec: 'chara_card_v3',
+        spec_version: '3.0',
+        data: {
+          ...v2Data,
+          creator: v2Data.creator || '',
+          character_version: v2Data.character_version || '1.0',
+          tags: v2Data.tags || [],
+        },
+      } as CCv3Data;
+    } else if (mode === 'v2' && currentCard.meta.spec === 'v3') {
+      // Convert v3 to v2 format
+      const v3Data = currentCard.data as CCv3Data;
+      updatedCard.data = {
+        ...v3Data.data,
+      } as CCv2Data;
+    }
+
+    set({
+      currentCard: updatedCard,
+      specMode: mode,
+      showV3Fields: mode === 'v3',
+      isDirty: true
+    });
+  },
+
+  toggleV3Fields: () => {
+    set((state) => ({ showV3Fields: !state.showV3Fields }));
+  },
 }));

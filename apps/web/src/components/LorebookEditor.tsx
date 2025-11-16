@@ -1,12 +1,19 @@
 import { useState } from 'react';
 import { useCardStore } from '../store/card-store';
-import type { CCv3Data, CCv2Data, CCv3LorebookEntry } from '@card-architect/schemas';
+import type {
+  CCv3Data,
+  CCv2Data,
+  CCv3LorebookEntry,
+  CCv2LorebookEntry,
+} from '@card-architect/schemas';
+
+const hasV3Fields = (
+  entry: CCv3LorebookEntry | CCv2LorebookEntry
+): entry is CCv3LorebookEntry => 'probability' in entry;
 
 export function LorebookEditor() {
   const { currentCard, updateCardData } = useCardStore();
-  const [expandedEntries, setExpandedEntries] = useState<Set<number>>(new Set());
-  const [selectMode, setSelectMode] = useState(false);
-  const [selectedEntries, setSelectedEntries] = useState<Set<number>>(new Set());
+  const [selectedEntryIndex, setSelectedEntryIndex] = useState<number | null>(null);
 
   if (!currentCard) return null;
 
@@ -52,6 +59,18 @@ export function LorebookEditor() {
       enabled: true,
       insertion_order: entries.length,
       priority: 0,
+      depth: 4,
+      probability: 100,
+      extensions: {
+        depth: 4,
+        weight: 10,
+        probability: 100,
+        displayIndex: entries.length + 1,
+        useProbability: true,
+        excludeRecursion: true,
+        addMemo: true,
+        characterFilter: null,
+      },
     };
 
     if (isV3) {
@@ -73,8 +92,8 @@ export function LorebookEditor() {
       } as Partial<CCv2Data>);
     }
 
-    // Auto-expand the new entry
-    setExpandedEntries(prev => new Set(prev).add(entries.length));
+    // Auto-select the new entry
+    setSelectedEntryIndex(entries.length);
   };
 
   const handleUpdateEntry = (index: number, updates: Partial<CCv3LorebookEntry>) => {
@@ -102,6 +121,8 @@ export function LorebookEditor() {
   };
 
   const handleDeleteEntry = (index: number) => {
+    if (!confirm('Delete this lorebook entry?')) return;
+
     const newEntries = entries.filter((_, i) => i !== index);
 
     if (isV3) {
@@ -123,15 +144,20 @@ export function LorebookEditor() {
       } as Partial<CCv2Data>);
     }
 
-    setExpandedEntries(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(index);
-      return newSet;
-    });
+    // Clear selection if deleted entry was selected
+    if (selectedEntryIndex === index) {
+      setSelectedEntryIndex(null);
+    } else if (selectedEntryIndex !== null && selectedEntryIndex > index) {
+      setSelectedEntryIndex(selectedEntryIndex - 1);
+    }
   };
 
-  const handleBulkDelete = () => {
-    const newEntries = entries.filter((_, i) => !selectedEntries.has(i));
+  const handleCopyEntry = (index: number) => {
+    const entryToCopy = entries[index];
+    const copiedEntry: CCv3LorebookEntry = {
+      ...entryToCopy,
+      name: (entryToCopy.name || `Entry ${index + 1}`) + ' (Copy)',
+    };
 
     if (isV3) {
       updateCardData({
@@ -139,7 +165,7 @@ export function LorebookEditor() {
           ...cardData,
           character_book: {
             ...lorebook,
-            entries: newEntries,
+            entries: [...entries, copiedEntry],
           },
         },
       } as Partial<CCv3Data>);
@@ -147,350 +173,476 @@ export function LorebookEditor() {
       updateCardData({
         character_book: {
           ...lorebook,
-          entries: newEntries,
+          entries: [...entries, copiedEntry],
         },
       } as Partial<CCv2Data>);
     }
 
-    setSelectedEntries(new Set());
-    setSelectMode(false);
+    // Select the copied entry
+    setSelectedEntryIndex(entries.length);
   };
 
-  const toggleExpanded = (index: number) => {
-    setExpandedEntries(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(index)) {
-        newSet.delete(index);
-      } else {
-        newSet.add(index);
-      }
-      return newSet;
-    });
-  };
-
-  const toggleSelected = (index: number) => {
-    setSelectedEntries(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(index)) {
-        newSet.delete(index);
-      } else {
-        newSet.add(index);
-      }
-      return newSet;
-    });
-  };
-
-  const toggleSelectAll = () => {
-    if (selectedEntries.size === entries.length) {
-      setSelectedEntries(new Set());
+  const handleUpdateLorebookSettings = (updates: Partial<typeof lorebook>) => {
+    if (isV3) {
+      updateCardData({
+        data: {
+          ...cardData,
+          character_book: {
+            ...lorebook,
+            ...updates,
+          },
+        },
+      } as Partial<CCv3Data>);
     } else {
-      setSelectedEntries(new Set(entries.map((_, i) => i)));
+      updateCardData({
+        character_book: {
+          ...lorebook,
+          ...updates,
+        },
+      } as Partial<CCv2Data>);
     }
   };
 
+  const selectedEntry = selectedEntryIndex !== null ? entries[selectedEntryIndex] : null;
+
   return (
-    <section className="card">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-bold">
-          Character Book (Lorebook)
-          <span className="ml-2 text-sm text-dark-muted font-normal">
-            {isV3 ? 'V3' : 'V2'} Format
-          </span>
-        </h2>
-        {hasLorebook && entries.length > 0 && (
-          <div className="flex gap-2">
-            {selectMode ? (
-              <>
+    <div className="flex flex-col h-full">
+      {!hasLorebook ? (
+        <div className="flex items-center justify-center h-full">
+          <div className="text-center">
+            <p className="text-dark-muted mb-4">This card doesn't have a lorebook yet.</p>
+            <button onClick={handleInitializeLorebook} className="btn-primary">
+              Initialize Lorebook
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Lorebook Settings */}
+          <div className="mb-6 pb-6 border-b border-dark-border space-y-4">
+            <h3 className="text-lg font-bold mb-4">Lorebook Settings</h3>
+
+            <div className="input-group">
+              <label className="label">Description</label>
+              <textarea
+                value={lorebook?.description || ''}
+                onChange={(e) => handleUpdateLorebookSettings({ description: e.target.value })}
+                rows={3}
+                placeholder="Lorebook description"
+                className="w-full"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="input-group">
+                <label className="label">Scan Depth</label>
+                <input
+                  type="number"
+                  value={lorebook?.scan_depth ?? 100}
+                  onChange={(e) =>
+                    handleUpdateLorebookSettings({ scan_depth: parseInt(e.target.value, 10) || 100 })
+                  }
+                  className="w-full"
+                />
+              </div>
+
+              <div className="input-group">
+                <label className="label">Token Budget</label>
+                <input
+                  type="number"
+                  value={lorebook?.token_budget ?? 500}
+                  onChange={(e) =>
+                    handleUpdateLorebookSettings({ token_budget: parseInt(e.target.value, 10) || 500 })
+                  }
+                  className="w-full"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={lorebook?.recursive_scanning || false}
+                  onChange={(e) =>
+                    handleUpdateLorebookSettings({ recursive_scanning: e.target.checked })
+                  }
+                  className="rounded"
+                />
+                <span>Recursive Scanning</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Two-column layout */}
+          <div className="flex-1 flex min-h-0 gap-4">
+            {/* Left Sidebar - Entry List */}
+            <div className="w-[300px] flex-shrink-0 bg-dark-surface rounded-lg border border-dark-border flex flex-col">
+              <div className="p-3 border-b border-dark-border">
                 <button
-                  onClick={toggleSelectAll}
-                  className="btn-secondary text-sm"
+                  onClick={handleAddEntry}
+                  className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium transition-colors flex items-center justify-center gap-2"
                 >
-                  {selectedEntries.size === entries.length ? 'Deselect All' : 'Select All'}
-                </button>
-                <button
-                  onClick={handleBulkDelete}
-                  disabled={selectedEntries.size === 0}
-                  className="btn-danger text-sm"
-                >
-                  Delete Selected ({selectedEntries.size})
-                </button>
-                <button
-                  onClick={() => {
-                    setSelectMode(false);
-                    setSelectedEntries(new Set());
-                  }}
-                  className="btn-secondary text-sm"
-                >
-                  Cancel
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={() => setSelectMode(true)}
-                  className="btn-secondary text-sm"
-                >
-                  Select Mode
-                </button>
-                <button onClick={handleAddEntry} className="btn-primary">
+                  <span>+</span>
                   Add Entry
                 </button>
-              </>
-            )}
-          </div>
-        )}
-        {hasLorebook && entries.length === 0 && (
-          <button onClick={handleAddEntry} className="btn-primary">
-            Add Entry
-          </button>
-        )}
-        {!hasLorebook && (
-          <button onClick={handleInitializeLorebook} className="btn-primary">
-            Initialize Lorebook
-          </button>
-        )}
-      </div>
+              </div>
 
-      {!hasLorebook ? (
-        <div className="text-center text-dark-muted py-8">
-          <p className="mb-2">This card doesn't have a lorebook yet.</p>
-          <p className="text-sm">Click "Initialize Lorebook" to add one.</p>
-        </div>
-      ) : entries.length === 0 ? (
-        <p className="text-dark-muted">No lorebook entries yet. Click "Add Entry" to create one.</p>
-      ) : (
-        <div className="space-y-2">
-          {entries.map((entry, index) => {
-            const isExpanded = expandedEntries.has(index);
-            const isSelected = selectedEntries.has(index);
-
-            return (
-              <div
-                key={index}
-                className={`border rounded transition-colors ${
-                  isSelected
-                    ? 'border-blue-500 bg-blue-900/20'
-                    : 'border-dark-border'
-                }`}
-              >
-                <div className="flex items-center gap-3 p-3">
-                  {selectMode ? (
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => toggleSelected(index)}
-                      className="cursor-pointer"
-                    />
-                  ) : (
-                    <input
-                      type="checkbox"
-                      checked={entry.enabled}
-                      onChange={(e) => handleUpdateEntry(index, { enabled: e.target.checked })}
-                      title={entry.enabled ? 'Enabled' : 'Disabled'}
-                      className="cursor-pointer"
-                    />
-                  )}
-
-                  <button
-                    onClick={() => toggleExpanded(index)}
-                    className="flex-1 flex items-center gap-2 text-left"
+              <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                {entries.map((entry, index) => (
+                  <div
+                    key={index}
+                    onClick={() => setSelectedEntryIndex(index)}
+                    className={`p-3 rounded cursor-pointer transition-colors group relative ${
+                      selectedEntryIndex === index
+                        ? 'bg-blue-600/20 border border-blue-500'
+                        : 'bg-dark-bg hover:bg-dark-bg/70 border border-dark-border'
+                    }`}
                   >
-                    <svg
-                      className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                    <span className="font-medium">
+                    <div className="font-medium text-sm mb-1 pr-16">
                       {entry.name || `Entry ${index + 1}`}
-                    </span>
-                    <span className="text-xs text-dark-muted">
-                      [{entry.keys.filter(Boolean).join(', ') || 'No keywords'}]
-                    </span>
-                  </button>
-
-                  {!selectMode && (
-                    <button
-                      onClick={() => handleDeleteEntry(index)}
-                      className="text-sm text-red-400 hover:text-red-300 px-2 py-1"
-                    >
-                      Delete
-                    </button>
-                  )}
-                </div>
-
-                {isExpanded && (
-                  <div className="px-3 pb-3 space-y-3 border-t border-dark-border pt-3">
-                    <div className="input-group">
-                      <label className="label">Name</label>
-                      <input
-                        type="text"
-                        value={entry.name || ''}
-                        onChange={(e) => handleUpdateEntry(index, { name: e.target.value })}
-                        placeholder="Entry name"
-                        className="w-full"
-                      />
+                    </div>
+                    <div className="text-xs text-dark-muted">
+                      {entry.keys.filter(Boolean).join(', ') || 'No keywords'}
                     </div>
 
-                    <div className="input-group">
-                      <label className="label">Keywords (comma-separated)</label>
-                      <input
-                        type="text"
-                        value={entry.keys.join(', ')}
-                        onChange={(e) =>
-                          handleUpdateEntry(index, {
-                            keys: e.target.value.split(',').map((k) => k.trim()),
-                          })
-                        }
-                        placeholder="keyword1, keyword2"
-                        className="w-full"
-                      />
+                    {/* Action buttons on hover */}
+                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCopyEntry(index);
+                        }}
+                        className="p-1 text-xs bg-dark-bg hover:bg-blue-600 rounded"
+                        title="Copy"
+                      >
+                        📋
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteEntry(index);
+                        }}
+                        className="p-1 text-xs bg-dark-bg hover:bg-red-600 rounded"
+                        title="Delete"
+                      >
+                        🗑️
+                      </button>
                     </div>
-
-                    <div className="input-group">
-                      <label className="label">Content</label>
-                      <textarea
-                        value={entry.content}
-                        onChange={(e) => handleUpdateEntry(index, { content: e.target.value })}
-                        rows={4}
-                        className="w-full"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="input-group">
-                        <label className="label">Priority</label>
-                        <input
-                          type="number"
-                          value={entry.priority || 0}
-                          onChange={(e) =>
-                            handleUpdateEntry(index, { priority: parseInt(e.target.value, 10) })
-                          }
-                          className="w-full"
-                        />
-                      </div>
-
-                      <div className="input-group">
-                        <label className="label">Insertion Order</label>
-                        <input
-                          type="number"
-                          value={entry.insertion_order}
-                          onChange={(e) =>
-                            handleUpdateEntry(index, { insertion_order: parseInt(e.target.value, 10) })
-                          }
-                          className="w-full"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="input-group">
-                        <label className="label">Position</label>
-                        <select
-                          value={entry.position || 'before_char'}
-                          onChange={(e) =>
-                            handleUpdateEntry(index, {
-                              position: e.target.value as 'before_char' | 'after_char',
-                            })
-                          }
-                          className="w-full"
-                        >
-                          <option value="before_char">Before Character</option>
-                          <option value="after_char">After Character</option>
-                        </select>
-                      </div>
-
-                      <div className="input-group">
-                        <label className="label">Probability (%)</label>
-                        <input
-                          type="number"
-                          value={entry.probability || 100}
-                          onChange={(e) =>
-                            handleUpdateEntry(index, { probability: parseInt(e.target.value, 10) })
-                          }
-                          min="0"
-                          max="100"
-                          className="w-full"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex gap-4">
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={entry.case_sensitive || false}
-                          onChange={(e) =>
-                            handleUpdateEntry(index, { case_sensitive: e.target.checked })
-                          }
-                        />
-                        <span className="text-sm">Case Sensitive</span>
-                      </label>
-
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={entry.constant || false}
-                          onChange={(e) => handleUpdateEntry(index, { constant: e.target.checked })}
-                        />
-                        <span className="text-sm">Constant</span>
-                      </label>
-
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={entry.selective || false}
-                          onChange={(e) =>
-                            handleUpdateEntry(index, { selective: e.target.checked })
-                          }
-                        />
-                        <span className="text-sm">Selective</span>
-                      </label>
-                    </div>
-
-                    {entry.selective && (
-                      <>
-                        <div className="input-group">
-                          <label className="label">Secondary Keywords</label>
-                          <input
-                            type="text"
-                            value={entry.secondary_keys?.join(', ') || ''}
-                            onChange={(e) =>
-                              handleUpdateEntry(index, {
-                                secondary_keys: e.target.value.split(',').map((k) => k.trim()),
-                              })
-                            }
-                            placeholder="secondary1, secondary2"
-                            className="w-full"
-                          />
-                        </div>
-
-                        <div className="input-group">
-                          <label className="label">Selective Logic</label>
-                          <select
-                            value={entry.selective_logic || 'AND'}
-                            onChange={(e) =>
-                              handleUpdateEntry(index, {
-                                selective_logic: e.target.value as 'AND' | 'NOT',
-                              })
-                            }
-                            className="w-full"
-                          >
-                            <option value="AND">AND (all must match)</option>
-                            <option value="NOT">NOT (none must match)</option>
-                          </select>
-                        </div>
-                      </>
-                    )}
+                  </div>
+                ))}
+                {entries.length === 0 && (
+                  <div className="text-center text-dark-muted py-8 text-sm">
+                    No entries yet.<br />Click "Add Entry" to create one.
                   </div>
                 )}
               </div>
-            );
-          })}
-        </div>
+            </div>
+
+            {/* Right Panel - Entry Form */}
+            <div className="flex-1 overflow-y-auto">
+              {selectedEntry && selectedEntryIndex !== null ? (
+                <div className="space-y-4">
+                  <div className="input-group">
+                    <label className="label">Entry Name</label>
+                    <input
+                      type="text"
+                      value={selectedEntry.name || ''}
+                      onChange={(e) => handleUpdateEntry(selectedEntryIndex, { name: e.target.value })}
+                      placeholder="Entry name"
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div className="input-group">
+                    <label className="label">Activation Keys (comma-separated)</label>
+                    <input
+                      type="text"
+                      value={selectedEntry.keys.join(', ')}
+                      onChange={(e) =>
+                        handleUpdateEntry(selectedEntryIndex, {
+                          keys: e.target.value.split(',').map((k) => k.trim()),
+                        })
+                      }
+                      placeholder="keyword1, keyword2"
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div className="input-group">
+                    <label className="label">Secondary Keys (comma-separated)</label>
+                    <input
+                      type="text"
+                      value={selectedEntry.secondary_keys?.join(', ') || ''}
+                      onChange={(e) =>
+                        handleUpdateEntry(selectedEntryIndex, {
+                          secondary_keys: e.target.value.split(',').map((k) => k.trim()),
+                        })
+                      }
+                      placeholder="secondary1, secondary2"
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div className="input-group">
+                    <label className="label">Content</label>
+                    <textarea
+                      value={selectedEntry.content}
+                      onChange={(e) => handleUpdateEntry(selectedEntryIndex, { content: e.target.value })}
+                      rows={12}
+                      className="w-full font-mono text-sm"
+                      style={{ height: '400px' }}
+                    />
+                  </div>
+
+                  <div className="input-group">
+                    <label className="label">Comment</label>
+                    <input
+                      type="text"
+                      value={selectedEntry.comment || ''}
+                      onChange={(e) => handleUpdateEntry(selectedEntryIndex, { comment: e.target.value })}
+                      placeholder="Optional comment"
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="input-group">
+                      <label className="label">Priority</label>
+                      <input
+                        type="number"
+                        value={selectedEntry.priority || 0}
+                        onChange={(e) =>
+                          handleUpdateEntry(selectedEntryIndex, { priority: parseInt(e.target.value, 10) || 0 })
+                        }
+                        className="w-full"
+                      />
+                    </div>
+
+                    <div className="input-group">
+                      <label className="label">Insertion Order</label>
+                      <input
+                        type="number"
+                        value={selectedEntry.insertion_order}
+                        onChange={(e) =>
+                          handleUpdateEntry(selectedEntryIndex, { insertion_order: parseInt(e.target.value, 10) || 0 })
+                        }
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="input-group">
+                      <label className="label">Depth</label>
+                      <input
+                        type="number"
+                        value={selectedEntry.depth ?? 4}
+                        onChange={(e) =>
+                          handleUpdateEntry(selectedEntryIndex, { depth: parseInt(e.target.value, 10) || 4 })
+                        }
+                        className="w-full"
+                      />
+                    </div>
+
+                    <div className="input-group">
+                      <label className="label">Probability (%)</label>
+                      <input
+                        type="number"
+                        value={selectedEntry.probability ?? 100}
+                        onChange={(e) =>
+                          handleUpdateEntry(selectedEntryIndex, {
+                            probability: parseInt(e.target.value, 10) || 100,
+                          })
+                        }
+                        min="0"
+                        max="100"
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="input-group">
+                      <label className="label">Weight / Group Weight</label>
+                      <input
+                        type="number"
+                        value={(selectedEntry.extensions as any)?.weight ?? 10}
+                        onChange={(e) =>
+                          handleUpdateEntry(selectedEntryIndex, {
+                            extensions: {
+                              ...(selectedEntry.extensions || {}),
+                              weight: parseInt(e.target.value, 10) || 10,
+                            },
+                          })
+                        }
+                        className="w-full"
+                      />
+                    </div>
+
+                    <div className="input-group">
+                      <label className="label">Display Index</label>
+                      <input
+                        type="number"
+                        value={(selectedEntry.extensions as any)?.displayIndex ?? selectedEntryIndex + 1}
+                        onChange={(e) =>
+                          handleUpdateEntry(selectedEntryIndex, {
+                            extensions: {
+                              ...(selectedEntry.extensions || {}),
+                              displayIndex: parseInt(e.target.value, 10) || 1,
+                            },
+                          })
+                        }
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="input-group">
+                    <label className="label">Position</label>
+                    <select
+                      value={selectedEntry.position || 'before_char'}
+                      onChange={(e) =>
+                        handleUpdateEntry(selectedEntryIndex, {
+                          position: e.target.value as 'before_char' | 'after_char',
+                        })
+                      }
+                      className="w-full"
+                    >
+                      <option value="">Default</option>
+                      <option value="before_char">Before Character</option>
+                      <option value="after_char">After Character</option>
+                    </select>
+                  </div>
+
+                  <div className="input-group">
+                    <label className="label">Character Filter</label>
+                    <input
+                      type="text"
+                      value={(selectedEntry.extensions as any)?.characterFilter || ''}
+                      onChange={(e) =>
+                        handleUpdateEntry(selectedEntryIndex, {
+                          extensions: {
+                            ...(selectedEntry.extensions || {}),
+                            characterFilter: e.target.value || null,
+                          },
+                        })
+                      }
+                      placeholder="Leave empty for all characters"
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedEntry.enabled}
+                        onChange={(e) =>
+                          handleUpdateEntry(selectedEntryIndex, { enabled: e.target.checked })
+                        }
+                        className="rounded"
+                      />
+                      <span>Enabled</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedEntry.selective || false}
+                        onChange={(e) =>
+                          handleUpdateEntry(selectedEntryIndex, { selective: e.target.checked })
+                        }
+                        className="rounded"
+                      />
+                      <span>Selective (requires secondary keys)</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedEntry.constant || false}
+                        onChange={(e) =>
+                          handleUpdateEntry(selectedEntryIndex, { constant: e.target.checked })
+                        }
+                        className="rounded"
+                      />
+                      <span>Constant (always active)</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedEntry.case_sensitive || false}
+                        onChange={(e) =>
+                          handleUpdateEntry(selectedEntryIndex, { case_sensitive: e.target.checked })
+                        }
+                        className="rounded"
+                      />
+                      <span>Case Sensitive</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={(selectedEntry.extensions as any)?.useProbability ?? true}
+                        onChange={(e) =>
+                          handleUpdateEntry(selectedEntryIndex, {
+                            extensions: {
+                              ...(selectedEntry.extensions || {}),
+                              useProbability: e.target.checked,
+                            },
+                          })
+                        }
+                        className="rounded"
+                      />
+                      <span>Use Probability</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={(selectedEntry.extensions as any)?.excludeRecursion ?? true}
+                        onChange={(e) =>
+                          handleUpdateEntry(selectedEntryIndex, {
+                            extensions: {
+                              ...(selectedEntry.extensions || {}),
+                              excludeRecursion: e.target.checked,
+                            },
+                          })
+                        }
+                        className="rounded"
+                      />
+                      <span>Exclude Recursion</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer col-span-2">
+                      <input
+                        type="checkbox"
+                        checked={(selectedEntry.extensions as any)?.addMemo ?? true}
+                        onChange={(e) =>
+                          handleUpdateEntry(selectedEntryIndex, {
+                            extensions: {
+                              ...(selectedEntry.extensions || {}),
+                              addMemo: e.target.checked,
+                            },
+                          })
+                        }
+                        className="rounded"
+                      />
+                      <span>Add Memo (include entry name in content)</span>
+                    </label>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-full text-dark-muted">
+                  Select an entry from the list to edit
+                </div>
+              )}
+            </div>
+          </div>
+        </>
       )}
-    </section>
+    </div>
   );
 }

@@ -4,13 +4,23 @@
  */
 
 import { create } from 'zustand';
-import type { LLMSettings, ProviderConfig } from '@card-architect/schemas';
+import type {
+  LLMSettings,
+  ProviderConfig,
+  RagDatabase,
+  RagDatabaseDetail,
+} from '@card-architect/schemas';
 import { api } from '../lib/api';
 
 interface LLMStore {
   settings: LLMSettings;
   isLoading: boolean;
   error: string | null;
+  ragDatabases: RagDatabase[];
+  ragActiveDatabaseId?: string;
+  ragDatabaseDetails: Record<string, RagDatabaseDetail>;
+  ragIsLoading: boolean;
+  ragError: string | null;
 
   // Actions
   loadSettings: () => Promise<void>;
@@ -20,6 +30,23 @@ interface LLMStore {
   removeProvider: (id: string) => Promise<void>;
   setActiveProvider: (id: string) => Promise<void>;
   testConnection: (providerId: string) => Promise<{ success: boolean; error?: string }>;
+  loadRagDatabases: () => Promise<void>;
+  loadRagDatabaseDetail: (id: string) => Promise<void>;
+  createRagDatabase: (payload: { label: string; description?: string }) => Promise<{
+    success: boolean;
+    error?: string;
+  }>;
+  deleteRagDatabase: (id: string) => Promise<{ success: boolean; error?: string }>;
+  setActiveRagDatabaseId: (id: string | undefined) => Promise<void>;
+  uploadRagDocument: (
+    dbId: string,
+    file: File,
+    options?: { title?: string; tags?: string[] }
+  ) => Promise<{ success: boolean; error?: string }>;
+  removeRagDocument: (
+    dbId: string,
+    sourceId: string
+  ) => Promise<{ success: boolean; error?: string }>;
 }
 
 export const useLLMStore = create<LLMStore>((set, get) => ({
@@ -33,16 +60,22 @@ export const useLLMStore = create<LLMStore>((set, get) => ({
       indexPath: '',
       embedModel: 'sentence-transformers/all-MiniLM-L6-v2',
       sources: [],
+      activeDatabaseId: undefined,
     },
   },
   isLoading: false,
   error: null,
+  ragDatabases: [],
+  ragActiveDatabaseId: undefined,
+  ragDatabaseDetails: {},
+  ragIsLoading: false,
+  ragError: null,
 
   // Load settings from API
   loadSettings: async () => {
     set({ isLoading: true, error: null });
     try {
-      const response = await fetch(`${api.baseURL}/api/llm/settings`);
+      const response = await fetch(`${api.baseURL}/llm/settings`);
       if (!response.ok) throw new Error('Failed to load settings');
       const settings = await response.json();
       set({ settings, isLoading: false });
@@ -62,7 +95,7 @@ export const useLLMStore = create<LLMStore>((set, get) => ({
 
     set({ isLoading: true, error: null });
     try {
-      const response = await fetch(`${api.baseURL}/api/llm/settings`, {
+      const response = await fetch(`${api.baseURL}/llm/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newSettings),
@@ -108,7 +141,7 @@ export const useLLMStore = create<LLMStore>((set, get) => ({
   // Test provider connection
   testConnection: async (providerId) => {
     try {
-      const response = await fetch(`${api.baseURL}/api/llm/test-connection`, {
+      const response = await fetch(`${api.baseURL}/llm/test-connection`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ providerId }),
@@ -119,5 +152,158 @@ export const useLLMStore = create<LLMStore>((set, get) => ({
     } catch (error: any) {
       return { success: false, error: error.message };
     }
+  },
+
+  // RAG operations
+  loadRagDatabases: async () => {
+    set({ ragIsLoading: true, ragError: null });
+    const { data, error } = await api.listRagDatabases();
+    if (error || !data) {
+      set({ ragIsLoading: false, ragError: error || 'Failed to load knowledge bases' });
+      return;
+    }
+
+    set((state) => {
+      const nextActive = data.activeDatabaseId ?? state.settings.rag.activeDatabaseId;
+      const filteredDetails: Record<string, RagDatabaseDetail> = {};
+      Object.entries(state.ragDatabaseDetails).forEach(([id, detail]) => {
+        if (data.databases.some((db) => db.id === id)) {
+          filteredDetails[id] = detail;
+        }
+      });
+
+      return {
+        ragIsLoading: false,
+        ragError: null,
+        ragDatabases: data.databases,
+        ragActiveDatabaseId: nextActive ?? undefined,
+        ragDatabaseDetails: filteredDetails,
+        settings: {
+          ...state.settings,
+          rag: { ...state.settings.rag, activeDatabaseId: nextActive },
+        },
+      };
+    });
+  },
+
+  loadRagDatabaseDetail: async (id) => {
+    const { data, error } = await api.getRagDatabase(id);
+    if (error || !data) {
+      set({ ragError: error || 'Failed to load database' });
+      return;
+    }
+
+    set((state) => ({
+      ragDatabaseDetails: { ...state.ragDatabaseDetails, [id]: data.database },
+      ragError: null,
+    }));
+  },
+
+  createRagDatabase: async ({ label, description }) => {
+    const trimmed = label.trim();
+    if (!trimmed) {
+      return { success: false, error: 'Label is required' };
+    }
+
+    const { data, error } = await api.createRagDatabase({ label: trimmed, description });
+    if (error || !data) {
+      set({ ragError: error || 'Failed to create knowledge base' });
+      return { success: false, error: error || 'Failed to create knowledge base' };
+    }
+
+    set((state) => {
+      const newDatabases = [...state.ragDatabases, data.database];
+      const shouldSetActive = !state.ragActiveDatabaseId;
+      const nextActive = shouldSetActive
+        ? data.database.id
+        : state.ragActiveDatabaseId;
+
+      return {
+        ragDatabases: newDatabases,
+        ragActiveDatabaseId: nextActive,
+        ragDatabaseDetails: {
+          ...state.ragDatabaseDetails,
+          [data.database.id]: data.database,
+        },
+        ragError: null,
+        settings: {
+          ...state.settings,
+          rag: {
+            ...state.settings.rag,
+            activeDatabaseId: shouldSetActive
+              ? data.database.id
+              : state.settings.rag.activeDatabaseId,
+          },
+        },
+      };
+    });
+
+    return { success: true };
+  },
+
+  deleteRagDatabase: async (id) => {
+    const { error } = await api.deleteRagDatabase(id);
+    if (error) {
+      set({ ragError: error });
+      return { success: false, error };
+    }
+
+    set((state) => {
+      const remaining = state.ragDatabases.filter((db) => db.id !== id);
+      const { [id]: _, ...restDetails } = state.ragDatabaseDetails;
+      const clearedActive =
+        state.ragActiveDatabaseId === id ? undefined : state.ragActiveDatabaseId;
+
+      return {
+        ragDatabases: remaining,
+        ragDatabaseDetails: restDetails,
+        ragActiveDatabaseId: clearedActive,
+        ragError: null,
+        settings: {
+          ...state.settings,
+          rag: {
+            ...state.settings.rag,
+            activeDatabaseId:
+              state.settings.rag.activeDatabaseId === id
+                ? undefined
+                : state.settings.rag.activeDatabaseId,
+          },
+        },
+      };
+    });
+
+    return { success: true };
+  },
+
+  setActiveRagDatabaseId: async (id) => {
+    const { settings } = get();
+    await get().saveSettings({ rag: { ...settings.rag, activeDatabaseId: id } });
+    set({ ragActiveDatabaseId: id });
+  },
+
+  uploadRagDocument: async (dbId, file, options) => {
+    if (!file) {
+      return { success: false, error: 'No file selected' };
+    }
+
+    const { data, error } = await api.uploadRagDocument(dbId, file, options);
+    if (error || !data) {
+      return { success: false, error: error || 'Upload failed' };
+    }
+
+    await get().loadRagDatabaseDetail(dbId);
+    await get().loadRagDatabases();
+    return { success: true };
+  },
+
+  removeRagDocument: async (dbId, sourceId) => {
+    const { error } = await api.deleteRagDocument(dbId, sourceId);
+    if (error) {
+      return { success: false, error };
+    }
+
+    await get().loadRagDatabaseDetail(dbId);
+    await get().loadRagDatabases();
+    return { success: true };
   },
 }));

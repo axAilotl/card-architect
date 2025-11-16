@@ -33,6 +33,12 @@ export default defineConfig({
       },
     }),
   ],
+  define: {
+    // Vue feature flags for Milkdown Crepe (which uses Vue internally)
+    __VUE_OPTIONS_API__: true,
+    __VUE_PROD_DEVTOOLS__: false,
+    __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false,
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,
@@ -41,7 +47,6 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:3456',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },
   },

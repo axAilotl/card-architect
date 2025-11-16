@@ -75,7 +75,7 @@ function buildUserPrompt(
   if (context.ragSnippets && context.ragSnippets.length > 0) {
     prompt += `REFERENCE_DOCUMENTATION:\n`;
     context.ragSnippets.forEach((snippet) => {
-      prompt += `[Source: ${snippet.source}]\n${snippet.content}\n\n`;
+      prompt += `[Source: ${snippet.sourceTitle}]\n${snippet.content}\n\n`;
     });
   }
 

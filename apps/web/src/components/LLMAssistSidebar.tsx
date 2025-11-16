@@ -12,6 +12,7 @@ import type {
   PresetOperation,
   LLMAssistResponse,
   LLMStreamChunk,
+  RagSnippet,
 } from '@card-architect/schemas';
 import { DiffViewer } from './DiffViewer';
 
@@ -23,6 +24,8 @@ interface LLMAssistSidebarProps {
   selection?: string;
   onApply: (value: string, action: 'replace' | 'append' | 'insert') => void;
   cardSpec: 'v2' | 'v3';
+  panelWidth?: string;
+  panelRight?: string;
 }
 
 export function LLMAssistSidebar({
@@ -33,8 +36,11 @@ export function LLMAssistSidebar({
   selection,
   onApply,
   cardSpec,
+  panelWidth = '600px',
+  panelRight = '0px',
 }: LLMAssistSidebarProps) {
-  const { settings, loadSettings } = useLLMStore();
+  const { settings, loadSettings, ragDatabases, ragActiveDatabaseId, loadRagDatabases } =
+    useLLMStore();
 
   const [instruction, setInstruction] = useState('');
   const [selectedPreset, setSelectedPreset] = useState<PresetOperation | null>(null);
@@ -44,6 +50,12 @@ export function LLMAssistSidebar({
   const [temperature, setTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(2048);
   const [streaming, setStreaming] = useState(true);
+  const [useKnowledgeBase, setUseKnowledgeBase] = useState(false);
+  const [ragToggleTouched, setRagToggleTouched] = useState(false);
+  const [selectedKnowledgeBase, setSelectedKnowledgeBase] = useState('');
+  const [ragQuery, setRagQuery] = useState('');
+  const [lastRagSnippets, setLastRagSnippets] = useState<RagSnippet[]>([]);
+  const [ragSearching, setRagSearching] = useState(false);
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [streamedContent, setStreamedContent] = useState('');
@@ -52,7 +64,8 @@ export function LLMAssistSidebar({
 
   useEffect(() => {
     loadSettings();
-  }, [loadSettings]);
+    loadRagDatabases();
+  }, [loadSettings, loadRagDatabases]);
 
   useEffect(() => {
     if (settings.providers.length > 0) {
@@ -67,6 +80,31 @@ export function LLMAssistSidebar({
     }
   }, [settings]);
 
+  useEffect(() => {
+    if (ragDatabases.length === 0) {
+      setSelectedKnowledgeBase('');
+      return;
+    }
+
+    if (ragActiveDatabaseId) {
+      setSelectedKnowledgeBase(ragActiveDatabaseId);
+    } else if (!selectedKnowledgeBase) {
+      setSelectedKnowledgeBase(ragDatabases[0].id);
+    }
+  }, [ragDatabases, ragActiveDatabaseId, selectedKnowledgeBase]);
+
+  useEffect(() => {
+    if (!ragToggleTouched) {
+      setUseKnowledgeBase(settings.rag.enabled && ragDatabases.length > 0);
+    }
+  }, [settings.rag.enabled, ragDatabases.length, ragToggleTouched]);
+
+  useEffect(() => {
+    if (!useKnowledgeBase) {
+      setLastRagSnippets([]);
+    }
+  }, [useKnowledgeBase]);
+
   const handleRun = async () => {
     if (!instruction && !selectedPreset) {
       setError('Please provide an instruction or select a preset');
@@ -77,6 +115,45 @@ export function LLMAssistSidebar({
     setError(null);
     setStreamedContent('');
     setAssistResponse(null);
+    setRagSearching(false);
+
+    const presetInstructionText = selectedPreset
+      ? getPresetInstruction(selectedPreset, presetParams)
+      : '';
+    const finalInstruction = instruction || presetInstructionText;
+
+    let ragSnippets: RagSnippet[] | undefined;
+
+    if (useKnowledgeBase) {
+      if (!settings.rag.enabled) {
+        setError('Enable RAG in Settings to use knowledge bases.');
+        setIsProcessing(false);
+        return;
+      }
+      if (!selectedKnowledgeBase) {
+        setError('Select a knowledge base before running LLM Assist.');
+        setIsProcessing(false);
+        return;
+      }
+
+      const queryText = buildRagQuery(ragQuery, finalInstruction, fieldName, currentValue);
+
+      setRagSearching(true);
+      const { data: ragData, error: ragError } = await api.searchRag(
+        selectedKnowledgeBase,
+        queryText
+      );
+      setRagSearching(false);
+
+      if (ragError) {
+        setError(`RAG search failed: ${ragError}`);
+        setIsProcessing(false);
+        return;
+      }
+
+      ragSnippets = ragData?.snippets ?? [];
+      setLastRagSnippets(ragSnippets);
+    }
 
     const context: FieldContext = {
       fieldName,
@@ -84,11 +161,14 @@ export function LLMAssistSidebar({
       selection,
       spec: cardSpec,
     };
+    if (ragSnippets && ragSnippets.length > 0) {
+      context.ragSnippets = ragSnippets;
+    }
 
     const request = {
       providerId: selectedProvider,
       model,
-      instruction: instruction || getPresetInstruction(selectedPreset!, presetParams),
+      instruction: finalInstruction,
       context,
       preset: selectedPreset ? { operation: selectedPreset, params: presetParams } : undefined,
       temperature,
@@ -148,10 +228,11 @@ export function LLMAssistSidebar({
 
   if (!isOpen) return null;
 
-  const provider = settings.providers.find((p) => p.id === selectedProvider);
-
   return (
-    <div className="fixed right-0 top-0 h-full w-[600px] bg-slate-800 border-l border-dark-border shadow-2xl z-40 flex flex-col">
+    <div
+      className="absolute top-0 h-full bg-slate-800 border-l border-dark-border shadow-2xl z-40 flex flex-col"
+      style={{ width: panelWidth, right: panelRight }}
+    >
       {/* Header */}
       <div className="p-4 border-b border-dark-border flex justify-between items-center">
         <h3 className="text-lg font-bold">LLM Assist: {fieldName}</h3>
@@ -223,7 +304,86 @@ export function LLMAssistSidebar({
             Stream response
           </label>
         </div>
+
+        <div className="pt-3 border-t border-dark-border">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium">Knowledge Base</label>
+            <span className="text-xs text-dark-muted">
+              {settings.rag.enabled ? `${ragDatabases.length} available` : 'Disabled'}
+            </span>
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="useRag"
+              checked={useKnowledgeBase}
+              disabled={!settings.rag.enabled || ragDatabases.length === 0}
+              onChange={(e) => {
+                setUseKnowledgeBase(e.target.checked);
+                setRagToggleTouched(true);
+              }}
+              className="rounded"
+            />
+            <label htmlFor="useRag" className="text-xs text-dark-muted">
+              {settings.rag.enabled
+                ? ragDatabases.length === 0
+                  ? 'Add knowledge bases in Settings to enable.'
+                  : 'Retrieve lore and guide snippets before prompting.'
+                : 'Enable RAG in Settings to use knowledge bases.'}
+            </label>
+          </div>
+
+          {useKnowledgeBase && settings.rag.enabled && ragDatabases.length > 0 && (
+            <div className="mt-3 space-y-2">
+              <select
+                value={selectedKnowledgeBase}
+                onChange={(e) => setSelectedKnowledgeBase(e.target.value)}
+                className="w-full bg-dark-bg border border-dark-border rounded px-3 py-2 text-sm"
+              >
+                {ragDatabases.map((db) => (
+                  <option key={db.id} value={db.id}>
+                    {db.label} ({db.sourceCount} docs)
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                placeholder="Optional focus keywords"
+                value={ragQuery}
+                onChange={(e) => setRagQuery(e.target.value)}
+                className="w-full bg-dark-bg border border-dark-border rounded px-3 py-2 text-sm"
+              />
+              <p className="text-xs text-dark-muted">
+                Leave blank to derive from the current instruction and field text.
+              </p>
+              {ragSearching && (
+                <p className="text-xs text-blue-300">Retrieving knowledge snippets…</p>
+              )}
+            </div>
+          )}
+        </div>
       </div>
+
+      {useKnowledgeBase && lastRagSnippets.length > 0 && (
+        <div className="p-4 border-b border-dark-border bg-slate-900/30">
+          <div className="text-xs font-semibold text-dark-muted uppercase tracking-wide mb-2">
+            Injected Context
+          </div>
+          <div className="space-y-1 max-h-24 overflow-auto pr-1">
+            {lastRagSnippets.slice(0, 4).map((snippet) => (
+              <div key={snippet.id} className="text-xs text-dark-text">
+                <span className="font-medium text-blue-200">{snippet.sourceTitle}</span>{' '}
+                <span className="text-dark-muted">({snippet.tokenCount} tokens)</span>
+              </div>
+            ))}
+            {lastRagSnippets.length > 4 && (
+              <div className="text-xs text-dark-muted">
+                +{lastRagSnippets.length - 4} additional snippets included
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Presets */}
       <div className="p-4 border-b border-dark-border">
@@ -400,16 +560,18 @@ export function LLMAssistSidebar({
               )}
             </div>
 
-            <div className="text-xs text-dark-muted space-y-1">
-              <div>Provider: {assistResponse.metadata.provider}</div>
-              <div>Model: {assistResponse.metadata.model}</div>
-              <div>
-                Tokens: {assistResponse.metadata.promptTokens} prompt +{' '}
-                {assistResponse.metadata.completionTokens} completion
+            {assistResponse.metadata && (
+              <div className="text-xs text-dark-muted space-y-1">
+                <div>Provider: {assistResponse.metadata.provider}</div>
+                <div>Model: {assistResponse.metadata.model}</div>
+                <div>
+                  Tokens: {assistResponse.metadata.promptTokens} prompt +{' '}
+                  {assistResponse.metadata.completionTokens} completion
+                </div>
               </div>
-            </div>
-          </div>
-        )}
+            )}
+         </div>
+       )}
 
         {!isProcessing && !assistResponse && !error && (
           <div className="text-center text-dark-muted text-sm">
@@ -443,4 +605,22 @@ function getPresetInstruction(preset: PresetOperation, params: Record<string, an
     default:
       return '';
   }
+}
+
+function buildRagQuery(
+  customQuery: string,
+  instruction: string,
+  fieldName: string,
+  fieldValue: string
+): string {
+  if (customQuery.trim()) {
+    return customQuery.trim();
+  }
+
+  if (instruction.trim()) {
+    return instruction.trim();
+  }
+
+  const condensed = fieldValue.replace(/\s+/g, ' ').slice(0, 200);
+  return `${fieldName}: ${condensed}`;
 }

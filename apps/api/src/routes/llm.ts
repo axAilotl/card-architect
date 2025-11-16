@@ -21,7 +21,7 @@ export async function llmRoutes(fastify: FastifyInstance) {
   /**
    * Get LLM settings
    */
-  fastify.get('/api/llm/settings', async (request, reply) => {
+  fastify.get('/llm/settings', async (request, reply) => {
     try {
       const settings = await getSettings();
       // Redact API keys in response
@@ -42,14 +42,30 @@ export async function llmRoutes(fastify: FastifyInstance) {
   /**
    * Update LLM settings
    */
-  fastify.post<{ Body: Partial<LLMSettings> }>('/api/llm/settings', async (request, reply) => {
+  fastify.post<{ Body: Partial<LLMSettings> }>('/llm/settings', async (request, reply) => {
     try {
       const updates = request.body;
       const currentSettings = await getSettings();
 
-      // Merge settings
+      // Merge providers while preserving existing secrets when values are redacted or omitted
+      const mergedProviders = updates.providers
+        ? updates.providers.map((incoming) => {
+            const existing = currentSettings.providers.find((p) => p.id === incoming.id);
+            const apiKey =
+              incoming.apiKey && incoming.apiKey !== '***REDACTED***'
+                ? incoming.apiKey
+                : existing?.apiKey || '';
+
+            return {
+              ...existing,
+              ...incoming,
+              apiKey,
+            };
+          })
+        : currentSettings.providers;
+
       const newSettings: LLMSettings = {
-        providers: updates.providers ?? currentSettings.providers,
+        providers: mergedProviders,
         activeProviderId: updates.activeProviderId ?? currentSettings.activeProviderId,
         rag: updates.rag ?? currentSettings.rag,
       };
@@ -66,7 +82,7 @@ export async function llmRoutes(fastify: FastifyInstance) {
    * Test provider connection
    */
   fastify.post<{ Body: { providerId: string } }>(
-    '/api/llm/test-connection',
+    '/llm/test-connection',
     async (request, reply) => {
       try {
         const { providerId } = request.body;
@@ -126,7 +142,7 @@ export async function llmRoutes(fastify: FastifyInstance) {
   /**
    * Invoke LLM (low-level)
    */
-  fastify.post<{ Body: LLMInvokeRequest }>('/api/llm/invoke', async (request, reply) => {
+  fastify.post<{ Body: LLMInvokeRequest }>('/llm/invoke', async (request, reply) => {
     try {
       const { providerId, model, mode, messages, system, temperature, maxTokens, stream } =
         request.body;
@@ -203,7 +219,7 @@ export async function llmRoutes(fastify: FastifyInstance) {
   /**
    * LLM Assist (high-level with prompt building)
    */
-  fastify.post<{ Body: LLMAssistRequest }>('/api/llm/assist', async (request, reply) => {
+  fastify.post<{ Body: LLMAssistRequest }>('/llm/assist', async (request, reply) => {
     try {
       const {
         providerId,

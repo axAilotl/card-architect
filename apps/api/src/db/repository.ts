@@ -82,6 +82,15 @@ export class CardRepository {
   }
 
   /**
+   * Update the original image for a card
+   */
+  updateOriginalImage(id: string, image: Buffer): boolean {
+    const stmt = this.db.prepare('UPDATE cards SET original_image = ?, updated_at = ? WHERE id = ?');
+    const result = stmt.run(image, new Date().toISOString(), id);
+    return result.changes > 0;
+  }
+
+  /**
    * Update a card
    */
   update(id: string, updates: Partial<Card>): Card | null {

@@ -5,6 +5,58 @@ import { detectSpec, validateV2, validateV3, type CCv2Data, type CCv3Data } from
 import { config } from '../config.js';
 import sharp from 'sharp';
 
+/**
+ * Normalize lorebook entry fields to match schema expectations
+ * Handles legacy position values (numeric) and other common issues
+ */
+function normalizeLorebookEntries(dataObj: Record<string, unknown>) {
+  if (!dataObj.character_book || typeof dataObj.character_book !== 'object') {
+    return;
+  }
+
+  const characterBook = dataObj.character_book as Record<string, unknown>;
+  if (!Array.isArray(characterBook.entries)) {
+    return;
+  }
+
+  for (const entry of characterBook.entries) {
+    if (!entry || typeof entry !== 'object') continue;
+
+    // Normalize position field
+    // Some tools use numeric values (0, 1, 2) instead of string enums
+    if ('position' in entry) {
+      const position = entry.position;
+
+      // Convert numeric position to string enum
+      if (typeof position === 'number') {
+        // 0 = before_char, 1+ = after_char (common convention)
+        entry.position = position === 0 ? 'before_char' : 'after_char';
+      }
+      // Handle string values that don't match the enum
+      else if (typeof position === 'string') {
+        const pos = position.toLowerCase();
+        if (pos.includes('before') || pos === '0' || pos === 'before') {
+          entry.position = 'before_char';
+        } else if (pos.includes('after') || pos === '1' || pos === 'after') {
+          entry.position = 'after_char';
+        } else if (pos !== 'before_char' && pos !== 'after_char') {
+          // Invalid value, default to after_char
+          entry.position = 'after_char';
+        }
+      }
+      // Handle null/undefined/other types
+      else if (position === null || position === undefined) {
+        delete entry.position; // Optional field, can be omitted
+      }
+    }
+
+    // Ensure extensions field exists (required in v2 schema)
+    if (!('extensions' in entry)) {
+      entry.extensions = {};
+    }
+  }
+}
+
 export async function importExportRoutes(fastify: FastifyInstance) {
   const cardRepo = new CardRepository(fastify.db);
 
@@ -91,6 +143,42 @@ export async function importExportRoutes(fastify: FastifyInstance) {
       fastify.log.warn({ mimetype: data.mimetype }, 'Unsupported file type');
       reply.code(400);
       return { error: `Unsupported file type: ${data.mimetype}. Only JSON and PNG are supported.` };
+    }
+
+    // Normalize spec values and data BEFORE validation
+    if (cardData && typeof cardData === 'object') {
+      const obj = cardData as Record<string, unknown>;
+
+      // Fix wrapped v2 cards with non-standard spec values
+      if (spec === 'v2' && 'spec' in obj && obj.spec !== 'chara_card_v2') {
+        obj.spec = 'chara_card_v2';
+        if (!obj.spec_version) {
+          obj.spec_version = '2.0';
+        }
+      }
+
+      // Fix wrapped v3 cards with non-standard spec values
+      if (spec === 'v3' && 'spec' in obj && obj.spec !== 'chara_card_v3') {
+        obj.spec = 'chara_card_v3';
+        if (!obj.spec_version || !String(obj.spec_version).startsWith('3')) {
+          obj.spec_version = '3.0';
+        }
+      }
+
+      // Handle character_book being null - should be undefined or an object
+      if ('data' in obj && obj.data && typeof obj.data === 'object') {
+        const dataObj = obj.data as Record<string, unknown>;
+        if (dataObj.character_book === null) {
+          delete dataObj.character_book;
+        }
+        // Normalize lorebook entries
+        normalizeLorebookEntries(dataObj);
+      } else if ('character_book' in obj && obj.character_book === null) {
+        delete obj.character_book;
+      } else if ('character_book' in obj) {
+        // Normalize lorebook entries in legacy format
+        normalizeLorebookEntries(obj);
+      }
     }
 
     // Validate card data
@@ -214,6 +302,58 @@ export async function importExportRoutes(fastify: FastifyInstance) {
       }
     }
   );
+
+  // Get card image (for preview)
+  fastify.get<{ Params: { id: string } }>('/cards/:id/image', async (request, reply) => {
+    const image = cardRepo.getOriginalImage(request.params.id);
+    if (!image) {
+      reply.code(404);
+      return { error: 'No image found for this card' };
+    }
+
+    reply.header('Content-Type', 'image/png');
+    reply.header('Cache-Control', 'public, max-age=3600');
+    return image;
+  });
+
+  // Update card image
+  fastify.post<{ Params: { id: string } }>('/cards/:id/image', async (request, reply) => {
+    const card = cardRepo.get(request.params.id);
+    if (!card) {
+      reply.code(404);
+      return { error: 'Card not found' };
+    }
+
+    const data = await request.file();
+    if (!data) {
+      reply.code(400);
+      return { error: 'No file provided' };
+    }
+
+    const buffer = await data.toBuffer();
+
+    // Validate it's an image
+    if (!data.mimetype.startsWith('image/')) {
+      reply.code(400);
+      return { error: 'File must be an image' };
+    }
+
+    // Convert to PNG if needed
+    let pngBuffer = buffer;
+    if (data.mimetype !== 'image/png') {
+      pngBuffer = await sharp(buffer).png().toBuffer();
+    }
+
+    // Update the card's original image
+    const success = cardRepo.updateOriginalImage(request.params.id, pngBuffer);
+    if (!success) {
+      reply.code(500);
+      return { error: 'Failed to update image' };
+    }
+
+    reply.code(200);
+    return { success: true };
+  });
 
   // Convert between v2 and v3
   fastify.post('/convert', async (request, reply) => {
