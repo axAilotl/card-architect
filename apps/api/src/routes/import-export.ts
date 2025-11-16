@@ -258,23 +258,66 @@ export async function importExportRoutes(fastify: FastifyInstance) {
       if (spec === 'v2' && 'data' in cardData && typeof cardData.data === 'object' && cardData.data) {
         const wrappedData = cardData.data as CCv2Data;
         name = wrappedData.name || 'Untitled';
+
+        // Debug: Check if lorebook is present
+        const hasLorebook = wrappedData.character_book &&
+          Array.isArray(wrappedData.character_book.entries) &&
+          wrappedData.character_book.entries.length > 0;
+
+        fastify.log.info({
+          name,
+          spec,
+          hasLorebook,
+          lorebookEntries: hasLorebook ? wrappedData.character_book!.entries.length : 0,
+          dataKeys: Object.keys(wrappedData).slice(0, 20),
+        }, 'Importing wrapped v2 card');
+
         // Store unwrapped v2 data (CCv2Data type expects unwrapped format)
         storageData = wrappedData;
       }
       // Handle legacy v2 cards (direct fields)
       else if (spec === 'v2' && 'name' in cardData && typeof cardData.name === 'string') {
         name = cardData.name;
-        storageData = cardData as CCv2Data;
+        const v2Data = cardData as CCv2Data;
+
+        // Debug: Check if lorebook is present
+        const hasLorebook = v2Data.character_book &&
+          Array.isArray(v2Data.character_book.entries) &&
+          v2Data.character_book.entries.length > 0;
+
+        fastify.log.info({
+          name,
+          spec,
+          hasLorebook,
+          lorebookEntries: hasLorebook ? v2Data.character_book!.entries.length : 0,
+        }, 'Importing legacy v2 card');
+
+        storageData = v2Data;
       }
       // Handle v3 cards (always wrapped)
       else if (spec === 'v3' && 'data' in cardData && typeof cardData.data === 'object' && cardData.data) {
         const v3Data = cardData as CCv3Data;
         name = v3Data.data.name || 'Untitled';
+
+        // Debug: Check if lorebook is present
+        const hasLorebook = v3Data.data.character_book &&
+          Array.isArray(v3Data.data.character_book.entries) &&
+          v3Data.data.character_book.entries.length > 0;
+
+        fastify.log.info({
+          name,
+          spec,
+          hasLorebook,
+          lorebookEntries: hasLorebook ? v3Data.data.character_book!.entries.length : 0,
+        }, 'Importing v3 card');
+
         // Store wrapped v3 data (CCv3Data type includes wrapper)
         storageData = v3Data;
       }
       else {
         // Fallback
+        fastify.log.warn({ spec, keys: Object.keys(cardData).slice(0, 10) }, 'Using fallback import path');
+
         if ('name' in cardData && typeof cardData.name === 'string') {
           name = cardData.name;
         } else if ('data' in cardData && typeof cardData.data === 'object' && cardData.data && 'name' in cardData.data) {
@@ -295,6 +338,18 @@ export async function importExportRoutes(fastify: FastifyInstance) {
         tags: [],
       },
     }, originalImage);
+
+    // Debug: Verify lorebook is in the created card
+    const cardData = card.data as any;
+    const finalHasLorebook = cardData.character_book?.entries?.length > 0;
+
+    fastify.log.info({
+      cardId: card.meta.id,
+      name: card.meta.name,
+      spec: card.meta.spec,
+      hasLorebookAfterCreate: finalHasLorebook,
+      lorebookEntriesAfterCreate: finalHasLorebook ? cardData.character_book.entries.length : 0,
+    }, 'Card created and ready to return');
 
     reply.code(201);
     return { card, warnings };
