@@ -150,6 +150,20 @@ export function CardGrid({ onCardClick }: CardGridProps) {
     return data.alternate_greetings?.length ?? 0;
   };
 
+  const hasAssets = (card: Card) => {
+    const isV3 = card.meta.spec === 'v3';
+    if (!isV3) return false;
+    const data = (card.data as CCv3Data).data;
+    return (data.assets?.length ?? 0) > 0;
+  };
+
+  const getAssetCount = (card: Card) => {
+    const isV3 = card.meta.spec === 'v3';
+    if (!isV3) return 0;
+    const data = (card.data as CCv3Data).data;
+    return data.assets?.length ?? 0;
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -262,8 +276,16 @@ export function CardGrid({ onCardClick }: CardGridProps) {
                   </div>
 
                   {/* Feature Badges */}
-                  {(hasAlternateGreetings(card) || hasLorebook(card)) && (
+                  {(hasAlternateGreetings(card) || hasLorebook(card) || hasAssets(card)) && (
                     <div className="flex gap-2 mb-2">
+                      {hasAssets(card) && (
+                        <span
+                          className="px-2 py-0.5 bg-cyan-600/20 text-cyan-300 rounded text-xs flex items-center gap-1"
+                          title={`CHARX format with ${getAssetCount(card)} asset(s)`}
+                        >
+                          📦 {getAssetCount(card)}
+                        </span>
+                      )}
                       {hasAlternateGreetings(card) && (
                         <span
                           className="px-2 py-0.5 bg-purple-600/20 text-purple-300 rounded text-xs flex items-center gap-1"

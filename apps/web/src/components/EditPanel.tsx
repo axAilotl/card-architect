@@ -26,6 +26,7 @@ export function EditPanel() {
 
   const [cardAssets, setCardAssets] = useState<CardAssetWithDetails[]>([]);
   const [assetsLoading, setAssetsLoading] = useState(false);
+  const [previewAsset, setPreviewAsset] = useState<CardAssetWithDetails | null>(null);
 
   // Fetch card assets when card changes
   useEffect(() => {
@@ -777,7 +778,14 @@ export function EditPanel() {
                           className="bg-dark-surface rounded border border-dark-border overflow-hidden hover:border-blue-500 transition-colors"
                         >
                           {/* Asset Preview */}
-                          <div className="w-full aspect-square bg-dark-bg flex items-center justify-center relative">
+                          <div
+                            className="w-full aspect-square bg-dark-bg flex items-center justify-center relative cursor-pointer hover:opacity-80 transition-opacity"
+                            onClick={() => {
+                              if (cardAsset.asset.mimetype.startsWith('image/')) {
+                                setPreviewAsset(cardAsset);
+                              }
+                            }}
+                          >
                             {cardAsset.asset.mimetype.startsWith('image/') ? (
                               <img
                                 src={cardAsset.asset.url}
@@ -874,6 +882,37 @@ export function EditPanel() {
         onInsertSnippet={handleInsertSnippet}
         currentField={templatesField}
       />
+
+      {/* Asset Preview Modal */}
+      {previewAsset && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setPreviewAsset(null)}
+        >
+          <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setPreviewAsset(null)}
+              className="absolute -top-10 right-0 text-white hover:text-gray-300 text-xl font-bold"
+            >
+              ✕ Close
+            </button>
+            <img
+              src={previewAsset.asset.url}
+              alt={previewAsset.name}
+              className="max-w-full max-h-[90vh] object-contain rounded"
+            />
+            <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white p-3 rounded-b">
+              <div className="font-semibold">{previewAsset.name}</div>
+              <div className="text-sm text-gray-300">
+                {previewAsset.type} · {(previewAsset.asset.size / 1024).toFixed(1)} KB
+                {previewAsset.asset.width && previewAsset.asset.height && (
+                  <> · {previewAsset.asset.width}×{previewAsset.asset.height}</>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
