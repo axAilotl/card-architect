@@ -12,7 +12,7 @@ import { buildCharx, validateCharxBuild } from '../utils/charx-builder.js';
 
 /**
  * Normalize lorebook entry fields to match schema expectations
- * Handles legacy position values (numeric) and other common issues
+ * Handles legacy position values (numeric), V3 fields in V2 cards, and other common issues
  */
 function normalizeLorebookEntries(dataObj: Record<string, unknown>) {
   if (!dataObj.character_book || typeof dataObj.character_book !== 'object') {
@@ -55,9 +55,22 @@ function normalizeLorebookEntries(dataObj: Record<string, unknown>) {
       }
     }
 
+    // Move V3-specific fields to extensions for V2 compatibility
+    // Some cards (like Lilia) have V3 fields in V2 format which can cause issues
+    const v3Fields = ['probability', 'depth', 'use_regex', 'scan_frequency', 'role', 'group', 'automation_id', 'selective_logic', 'selectiveLogic'];
+
     // Ensure extensions field exists (required in v2 schema)
     if (!('extensions' in entry)) {
       entry.extensions = {};
+    }
+
+    // Move V3 fields into extensions to preserve them
+    const extensions = entry.extensions as Record<string, unknown>;
+    for (const field of v3Fields) {
+      if (field in entry && field !== 'extensions') {
+        extensions[field] = entry[field];
+        delete entry[field];
+      }
     }
   }
 }
