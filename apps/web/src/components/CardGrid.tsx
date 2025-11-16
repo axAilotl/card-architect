@@ -244,10 +244,22 @@ export function CardGrid({ onCardClick }: CardGridProps) {
 
                 {/* Card Info */}
                 <div className="p-4 flex-1 flex flex-col">
-                  {/* Name */}
-                  <h3 className="text-lg font-semibold mb-2 truncate">
-                    {getCardName(card)}
-                  </h3>
+                  {/* Name and Format Badge */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <h3 className="text-lg font-semibold truncate flex-1">
+                      {getCardName(card)}
+                    </h3>
+                    <span
+                      className={`px-2 py-0.5 rounded text-xs font-semibold flex-shrink-0 ${
+                        card.meta.spec === 'v3'
+                          ? 'bg-emerald-600/20 text-emerald-300'
+                          : 'bg-amber-600/20 text-amber-300'
+                      }`}
+                      title={`Character Card ${card.meta.spec.toUpperCase()} Format`}
+                    >
+                      {card.meta.spec.toUpperCase()}
+                    </span>
+                  </div>
 
                   {/* Feature Badges */}
                   {(hasAlternateGreetings(card) || hasLorebook(card)) && (
