@@ -89,6 +89,18 @@ class ApiClient {
     return this.request<CardAssetWithDetails[]>(`/cards/${cardId}/assets`);
   }
 
+  async setAssetAsMain(cardId: string, assetId: string) {
+    return this.request<{ success: boolean }>(`/cards/${cardId}/assets/${assetId}/main`, {
+      method: 'PATCH',
+    });
+  }
+
+  async deleteCardAsset(cardId: string, assetId: string) {
+    return this.request<void>(`/cards/${cardId}/assets/${assetId}`, {
+      method: 'DELETE',
+    });
+  }
+
   // Versions
   async listVersions(cardId: string) {
     return this.request<unknown[]>(`/cards/${cardId}/versions`);

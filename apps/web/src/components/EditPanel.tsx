@@ -30,18 +30,49 @@ export function EditPanel() {
   // Fetch card assets when card changes
   useEffect(() => {
     if (currentCard?.meta.id) {
-      setAssetsLoading(true);
-      api.getCardAssets(currentCard.meta.id).then(({ data, error }) => {
-        if (data) {
-          console.log(`[Assets] Fetched ${data.length} assets for card ${currentCard.meta.id}`, data);
-          setCardAssets(data);
-        } else if (error) {
-          console.error('Failed to fetch card assets:', error);
-        }
-        setAssetsLoading(false);
-      });
+      loadAssets();
     }
   }, [currentCard?.meta.id]);
+
+  const loadAssets = () => {
+    if (!currentCard?.meta.id) return;
+
+    setAssetsLoading(true);
+    api.getCardAssets(currentCard.meta.id).then(({ data, error }) => {
+      if (data) {
+        console.log(`[Assets] Fetched ${data.length} assets for card ${currentCard.meta.id}`, data);
+        setCardAssets(data);
+      } else if (error) {
+        console.error('Failed to fetch card assets:', error);
+      }
+      setAssetsLoading(false);
+    });
+  };
+
+  const handleSetAsMain = async (assetId: string) => {
+    if (!currentCard?.meta.id) return;
+
+    const { error } = await api.setAssetAsMain(currentCard.meta.id, assetId);
+    if (error) {
+      alert('Failed to set as main: ' + error);
+    } else {
+      // Reload assets to reflect the change
+      loadAssets();
+    }
+  };
+
+  const handleDeleteAsset = async (assetId: string, assetName: string) => {
+    if (!currentCard?.meta.id) return;
+    if (!confirm(`Are you sure you want to delete "${assetName}"?`)) return;
+
+    const { error } = await api.deleteCardAsset(currentCard.meta.id, assetId);
+    if (error) {
+      alert('Failed to delete asset: ' + error);
+    } else {
+      // Reload assets to reflect the change
+      loadAssets();
+    }
+  };
 
   if (!currentCard) return null;
 
@@ -697,9 +728,36 @@ export function EditPanel() {
 
                 {/* Card Assets */}
                 <div className="input-group">
-                  <div className="flex items-center gap-2 mb-2">
-                    <label className="label">Card Assets</label>
-                    <span className="text-xs px-2 py-0.5 rounded bg-purple-600 text-white">V3 Only</span>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <label className="label">Card Assets</label>
+                      <span className="text-xs px-2 py-0.5 rounded bg-purple-600 text-white">V3 Only</span>
+                    </div>
+                    <label htmlFor="asset-upload" className="btn-secondary cursor-pointer text-sm">
+                      + Upload Asset
+                      <input
+                        id="asset-upload"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+
+                          console.log('[Assets] Uploading:', file.name);
+                          const { data, error } = await api.uploadAsset(file);
+                          if (error) {
+                            alert('Failed to upload asset: ' + error);
+                          } else if (data) {
+                            console.log('[Assets] Upload successful:', data);
+                            // TODO: Link asset to card
+                            alert('Asset uploaded! Linking assets to cards will be implemented in next phase.');
+                            loadAssets();
+                          }
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
                   </div>
                   <p className="text-sm text-dark-muted mb-3">
                     Assets embedded in this card (icons, backgrounds, etc.). These are imported from CHARX files.
@@ -753,11 +811,31 @@ export function EditPanel() {
                             <div className="text-xs text-dark-muted truncate" title={cardAsset.type}>
                               {cardAsset.type}
                             </div>
-                            <div className="text-xs text-dark-muted">
+                            <div className="text-xs text-dark-muted mb-2">
                               {(cardAsset.asset.size / 1024).toFixed(1)} KB
                               {cardAsset.asset.width && cardAsset.asset.height && (
                                 <> · {cardAsset.asset.width}×{cardAsset.asset.height}</>
                               )}
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex gap-1">
+                              {!cardAsset.isMain && (
+                                <button
+                                  onClick={() => handleSetAsMain(cardAsset.id)}
+                                  className="flex-1 px-2 py-1 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 rounded text-xs transition-colors"
+                                  title="Set as main"
+                                >
+                                  Set Main
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleDeleteAsset(cardAsset.id, cardAsset.name)}
+                                className="flex-1 px-2 py-1 bg-red-600/20 hover:bg-red-600/30 text-red-300 rounded text-xs transition-colors"
+                                title="Delete"
+                              >
+                                Delete
+                              </button>
                             </div>
                           </div>
                         </div>

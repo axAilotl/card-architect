@@ -35,6 +35,47 @@ export async function cardRoutes(fastify: FastifyInstance) {
     return assets;
   });
 
+  // Set asset as main
+  fastify.patch<{ Params: { id: string; assetId: string } }>(
+    '/cards/:id/assets/:assetId/main',
+    async (request, reply) => {
+      const card = cardRepo.get(request.params.id);
+      if (!card) {
+        reply.code(404);
+        return { error: 'Card not found' };
+      }
+
+      const success = cardAssetRepo.setMain(request.params.id, request.params.assetId);
+      if (!success) {
+        reply.code(404);
+        return { error: 'Asset not found' };
+      }
+
+      return { success: true };
+    }
+  );
+
+  // Delete card asset
+  fastify.delete<{ Params: { id: string; assetId: string } }>(
+    '/cards/:id/assets/:assetId',
+    async (request, reply) => {
+      const card = cardRepo.get(request.params.id);
+      if (!card) {
+        reply.code(404);
+        return { error: 'Card not found' };
+      }
+
+      const success = cardAssetRepo.delete(request.params.assetId);
+      if (!success) {
+        reply.code(404);
+        return { error: 'Asset not found' };
+      }
+
+      reply.code(204);
+      return;
+    }
+  );
+
   // Create card
   fastify.post('/cards', async (request, reply) => {
     const body = request.body as { data: unknown; meta?: unknown };
