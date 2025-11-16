@@ -10,6 +10,7 @@ import type {
   RagDatabaseDetail,
   RagSnippet,
   RagSource,
+  CardAssetWithDetails,
 } from '@card-architect/schemas';
 
 const API_BASE = '/api';
@@ -22,14 +23,17 @@ class ApiClient {
   ): Promise<{ data?: T; error?: string }> {
     try {
       // Only set Content-Type if there's a body
-      const headers: Record<string, string> = { ...options?.headers };
+      const headers: Record<string, string> = {};
       if (options?.body) {
         headers['Content-Type'] = 'application/json';
       }
 
       const response = await fetch(`${API_BASE}${endpoint}`, {
         ...options,
-        headers,
+        headers: {
+          ...options?.headers,
+          ...headers,
+        },
       });
 
       if (!response.ok) {
@@ -79,6 +83,10 @@ class ApiClient {
 
   async deleteCard(id: string) {
     return this.request<void>(`/cards/${id}`, { method: 'DELETE' });
+  }
+
+  async getCardAssets(cardId: string) {
+    return this.request<CardAssetWithDetails[]>(`/cards/${cardId}/assets`);
   }
 
   // Versions

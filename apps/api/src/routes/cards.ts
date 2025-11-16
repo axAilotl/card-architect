@@ -1,12 +1,13 @@
 import type { FastifyInstance } from 'fastify';
-import { CardRepository } from '../db/repository.js';
+import { CardRepository, CardAssetRepository } from '../db/repository.js';
 import { validateV2, validateV3, type CCv2Data, type CCv3Data } from '@card-architect/schemas';
 
 export async function cardRoutes(fastify: FastifyInstance) {
   const cardRepo = new CardRepository(fastify.db);
+  const cardAssetRepo = new CardAssetRepository(fastify.db);
 
   // List cards
-  fastify.get('/cards', async (request, reply) => {
+  fastify.get('/cards', async (request) => {
     const { query, page } = request.query as { query?: string; page?: string };
     const cards = cardRepo.list(query, parseInt(page || '1', 10));
     return cards;
@@ -20,6 +21,18 @@ export async function cardRoutes(fastify: FastifyInstance) {
       return { error: 'Card not found' };
     }
     return card;
+  });
+
+  // Get card assets
+  fastify.get<{ Params: { id: string } }>('/cards/:id/assets', async (request, reply) => {
+    const card = cardRepo.get(request.params.id);
+    if (!card) {
+      reply.code(404);
+      return { error: 'Card not found' };
+    }
+
+    const assets = cardAssetRepo.listByCardWithDetails(request.params.id);
+    return assets;
   });
 
   // Create card
@@ -117,7 +130,7 @@ export async function cardRoutes(fastify: FastifyInstance) {
   });
 
   // List versions
-  fastify.get<{ Params: { id: string } }>('/cards/:id/versions', async (request, reply) => {
+  fastify.get<{ Params: { id: string } }>('/cards/:id/versions', async (request) => {
     const versions = cardRepo.listVersions(request.params.id);
     return versions;
   });

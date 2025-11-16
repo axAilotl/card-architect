@@ -37,6 +37,11 @@ export class CharxImportService {
     const warnings: string[] = [];
     let assetsImported = 0;
 
+    console.log('[CHARX Import] Starting CHARX import...');
+    console.log(`[CHARX Import] Card spec: ${data.card.spec}`);
+    console.log(`[CHARX Import] Card name: ${data.card.data.name || 'Untitled'}`);
+    console.log(`[CHARX Import] Assets to import: ${data.assets.length}`);
+
     // Ensure storage directory exists
     await fs.mkdir(options.storagePath, { recursive: true });
 
@@ -104,10 +109,13 @@ export class CharxImportService {
       try {
         // Skip assets without buffers (remote URLs, ccdefault, etc.)
         if (!assetInfo.buffer) {
+          console.log(`[CHARX Import] Skipping remote/default asset: ${assetInfo.descriptor.name} (${assetInfo.descriptor.uri})`);
           // Store the descriptor but don't create physical asset
           // We'll handle remote/default assets differently
           continue;
         }
+
+        console.log(`[CHARX Import] Importing asset: ${assetInfo.descriptor.type}/${assetInfo.descriptor.name} (${assetInfo.buffer.length} bytes)`);
 
         // Generate asset ID
         const assetId = nanoid();
@@ -134,16 +142,19 @@ export class CharxImportService {
 
         // Write file to storage
         await fs.writeFile(assetPath, assetInfo.buffer);
+        console.log(`[CHARX Import] Wrote asset to disk: ${assetPath}`);
 
         // Create asset record
+        const assetUrl = `/storage/${filename}`;
         const asset = this.assetRepo.create({
           filename,
           mimetype,
           size: assetInfo.buffer.length,
           width,
           height,
-          url: `/assets/${assetId}`,
+          url: assetUrl,
         });
+        console.log(`[CHARX Import] Created asset record with URL: ${assetUrl}`);
 
         // Create card_asset association
         const isMain = assetInfo.descriptor.name === 'main';
@@ -190,6 +201,13 @@ export class CharxImportService {
       this.cardRepo.update(card.meta.id, {
         data: data.card,
       });
+    }
+
+    console.log(`[CHARX Import] Import completed successfully`);
+    console.log(`[CHARX Import] Card ID: ${card.meta.id}`);
+    console.log(`[CHARX Import] Assets imported: ${assetsImported}/${data.assets.length}`);
+    if (warnings.length > 0) {
+      console.warn(`[CHARX Import] Warnings (${warnings.length}):`, warnings);
     }
 
     return {

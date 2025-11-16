@@ -232,6 +232,7 @@ export const useCardStore = create<CardStore>((set, get) => ({
           system_prompt: '',
           post_history_instructions: '',
           alternate_greetings: [],
+          group_only_greetings: [],
         },
       } as CCv3Data,
     };
@@ -244,13 +245,30 @@ export const useCardStore = create<CardStore>((set, get) => ({
 
   // Import card
   importCard: async (file) => {
+    console.log(`[Import] Starting import of ${file.name}...`);
     const { data, error } = await api.importCard(file);
     if (error) {
-      console.error('Failed to import card:', error);
+      console.error('[Import] Failed to import card:', error);
       return;
     }
 
     if (data && data.card) {
+      const cardData = data.card.meta.spec === 'v3'
+        ? (data.card.data as any).data
+        : (data.card.data as any);
+      const cardName = cardData?.name || 'Untitled Card';
+
+      console.log(`[Import] Successfully imported card: ${cardName}`);
+      console.log(`[Import] Format: ${data.card.meta.spec.toUpperCase()}`);
+
+      if (data.assetsImported !== undefined) {
+        console.log(`[Import] Assets imported: ${data.assetsImported}`);
+      }
+
+      if (data.warnings && data.warnings.length > 0) {
+        console.warn('[Import] Warnings:', data.warnings);
+      }
+
       set({ currentCard: data.card, isDirty: false });
       get().updateTokenCounts();
     }

@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useCardStore } from '../store/card-store';
-import type { CCv3Data, CCv2Data, CCFieldName, FocusField, Template, Snippet } from '@card-architect/schemas';
+import type { CCv3Data, CCv2Data, CCFieldName, FocusField, Template, Snippet, CardAssetWithDetails } from '@card-architect/schemas';
 import { FieldEditor } from './FieldEditor';
 import { LorebookEditor } from './LorebookEditor';
 import { LLMAssistSidebar } from './LLMAssistSidebar';
 import { TagInput } from './TagInput';
 import { TemplateSnippetPanel } from './TemplateSnippetPanel';
+import { api } from '../lib/api';
 
 type EditTab = 'basic' | 'greetings' | 'advanced' | 'lorebook';
 
@@ -23,12 +24,31 @@ export function EditPanel() {
   const [templatesField, setTemplatesField] = useState<FocusField>('description');
   const [templatesValue, setTemplatesValue] = useState('');
 
+  const [cardAssets, setCardAssets] = useState<CardAssetWithDetails[]>([]);
+  const [assetsLoading, setAssetsLoading] = useState(false);
+
+  // Fetch card assets when card changes
+  useEffect(() => {
+    if (currentCard?.meta.id) {
+      setAssetsLoading(true);
+      api.getCardAssets(currentCard.meta.id).then(({ data, error }) => {
+        if (data) {
+          console.log(`[Assets] Fetched ${data.length} assets for card ${currentCard.meta.id}`, data);
+          setCardAssets(data);
+        } else if (error) {
+          console.error('Failed to fetch card assets:', error);
+        }
+        setAssetsLoading(false);
+      });
+    }
+  }, [currentCard?.meta.id]);
+
   if (!currentCard) return null;
 
   const isV3 = currentCard.meta.spec === 'v3';
   const cardData = isV3 ? (currentCard.data as CCv3Data).data : (currentCard.data as CCv2Data);
 
-  const handleFieldChange = (field: string, value: string) => {
+  const handleFieldChange = (field: string, value: string | string[] | Record<string, string>) => {
     if (isV3) {
       updateCardData({
         data: {
@@ -673,6 +693,77 @@ export function EditPanel() {
                       These timestamps are automatically managed and cannot be edited manually.
                     </p>
                   </div>
+                </div>
+
+                {/* Card Assets */}
+                <div className="input-group">
+                  <div className="flex items-center gap-2 mb-2">
+                    <label className="label">Card Assets</label>
+                    <span className="text-xs px-2 py-0.5 rounded bg-purple-600 text-white">V3 Only</span>
+                  </div>
+                  <p className="text-sm text-dark-muted mb-3">
+                    Assets embedded in this card (icons, backgrounds, etc.). These are imported from CHARX files.
+                  </p>
+
+                  {assetsLoading ? (
+                    <div className="text-center text-dark-muted py-4">Loading assets...</div>
+                  ) : cardAssets.length === 0 ? (
+                    <div className="text-center text-dark-muted py-8 bg-dark-surface rounded border border-dark-border">
+                      No assets found. Import a CHARX file to add assets to this card.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                      {cardAssets.map((cardAsset) => (
+                        <div
+                          key={cardAsset.id}
+                          className="bg-dark-surface rounded border border-dark-border overflow-hidden hover:border-blue-500 transition-colors"
+                        >
+                          {/* Asset Preview */}
+                          <div className="w-full aspect-square bg-dark-bg flex items-center justify-center relative">
+                            {cardAsset.asset.mimetype.startsWith('image/') ? (
+                              <img
+                                src={cardAsset.asset.url}
+                                alt={cardAsset.name}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                  const parent = e.currentTarget.parentElement;
+                                  if (parent) {
+                                    parent.innerHTML = '<div class="text-dark-muted text-xs">Failed to load</div>';
+                                  }
+                                }}
+                              />
+                            ) : (
+                              <div className="text-dark-muted text-xs text-center px-2">
+                                {cardAsset.asset.mimetype}
+                              </div>
+                            )}
+                            {cardAsset.isMain && (
+                              <div className="absolute top-1 right-1 px-2 py-0.5 bg-blue-600 text-white text-xs rounded">
+                                Main
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Asset Info */}
+                          <div className="p-2">
+                            <div className="text-xs font-semibold truncate" title={cardAsset.name}>
+                              {cardAsset.name}
+                            </div>
+                            <div className="text-xs text-dark-muted truncate" title={cardAsset.type}>
+                              {cardAsset.type}
+                            </div>
+                            <div className="text-xs text-dark-muted">
+                              {(cardAsset.asset.size / 1024).toFixed(1)} KB
+                              {cardAsset.asset.width && cardAsset.asset.height && (
+                                <> · {cardAsset.asset.width}×{cardAsset.asset.height}</>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </>
             )}
