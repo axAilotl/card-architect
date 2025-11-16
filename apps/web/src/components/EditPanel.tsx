@@ -337,6 +337,15 @@ export function EditPanel() {
                   placeholder="1.0"
                   specMarker="v3"
                 />
+
+                <FieldEditor
+                  label="Nickname"
+                  value={(cardData as any).nickname || ''}
+                  onChange={(v) => handleFieldChange('nickname', v)}
+                  placeholder="Short nickname (used for {{char}} replacement)"
+                  specMarker="v3"
+                  helpText="If set, {{char}}, <char>, and <bot> will be replaced with this instead of the name"
+                />
               </>
             )}
           </div>
@@ -514,6 +523,159 @@ export function EditPanel() {
               onOpenTemplates={handleOpenTemplates}
               specMarker="both"
             />
+
+            {/* V3-specific advanced fields */}
+            {showV3Fields && (
+              <>
+                {/* Source URLs */}
+                <div className="input-group">
+                  <div className="flex items-center gap-2 mb-2">
+                    <label className="label">Source URLs</label>
+                    <span className="text-xs px-2 py-0.5 rounded bg-purple-600 text-white">V3 Only</span>
+                  </div>
+                  <p className="text-sm text-dark-muted mb-3">
+                    URLs or IDs pointing to the source of this character card. These should generally not be edited manually.
+                  </p>
+                  <div className="space-y-2">
+                    {((cardData as any).source || []).map((url: string, index: number) => (
+                      <div key={index} className="flex gap-2">
+                        <input
+                          type="text"
+                          value={url}
+                          onChange={(e) => {
+                            const updated = [...((cardData as any).source || [])];
+                            updated[index] = e.target.value;
+                            handleFieldChange('source', updated);
+                          }}
+                          className="flex-1"
+                          placeholder="https://..."
+                        />
+                        <button
+                          onClick={() => {
+                            const updated = [...((cardData as any).source || [])];
+                            updated.splice(index, 1);
+                            handleFieldChange('source', updated);
+                          }}
+                          className="btn-secondary text-sm"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      onClick={() => {
+                        const updated = [...((cardData as any).source || []), ''];
+                        handleFieldChange('source', updated);
+                      }}
+                      className="btn-secondary text-sm"
+                    >
+                      + Add Source URL
+                    </button>
+                  </div>
+                </div>
+
+                {/* Multilingual Creator Notes */}
+                <div className="input-group">
+                  <div className="flex items-center gap-2 mb-2">
+                    <label className="label">Multilingual Creator Notes</label>
+                    <span className="text-xs px-2 py-0.5 rounded bg-purple-600 text-white">V3 Only</span>
+                  </div>
+                  <p className="text-sm text-dark-muted mb-3">
+                    Creator notes in multiple languages (ISO 639-1 language codes).
+                  </p>
+                  <div className="space-y-3">
+                    {Object.entries((cardData as any).creator_notes_multilingual || {}).map(([lang, notes]) => (
+                      <div key={lang} className="space-y-2">
+                        <div className="flex gap-2 items-center">
+                          <input
+                            type="text"
+                            value={lang}
+                            onChange={(e) => {
+                              const newLang = e.target.value;
+                              const updated = { ...((cardData as any).creator_notes_multilingual || {}) };
+                              if (newLang !== lang) {
+                                updated[newLang] = updated[lang];
+                                delete updated[lang];
+                                handleFieldChange('creator_notes_multilingual', updated);
+                              }
+                            }}
+                            className="w-24"
+                            placeholder="en"
+                            maxLength={2}
+                          />
+                          <button
+                            onClick={() => {
+                              const updated = { ...((cardData as any).creator_notes_multilingual || {}) };
+                              delete updated[lang];
+                              handleFieldChange('creator_notes_multilingual', updated);
+                            }}
+                            className="btn-secondary text-sm"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <textarea
+                          value={notes as string}
+                          onChange={(e) => {
+                            const updated = { ...((cardData as any).creator_notes_multilingual || {}) };
+                            updated[lang] = e.target.value;
+                            handleFieldChange('creator_notes_multilingual', updated);
+                          }}
+                          rows={3}
+                          className="w-full"
+                          placeholder={`Creator notes in ${lang}`}
+                        />
+                      </div>
+                    ))}
+                    <button
+                      onClick={() => {
+                        const updated = { ...((cardData as any).creator_notes_multilingual || {}) };
+                        // Find next unused language code or use 'xx' as placeholder
+                        let newLang = 'xx';
+                        let counter = 0;
+                        while (updated[newLang]) {
+                          newLang = `x${counter++}`;
+                        }
+                        updated[newLang] = '';
+                        handleFieldChange('creator_notes_multilingual', updated);
+                      }}
+                      className="btn-secondary text-sm"
+                    >
+                      + Add Language
+                    </button>
+                  </div>
+                </div>
+
+                {/* Timestamps (Read-only) */}
+                <div className="input-group">
+                  <div className="flex items-center gap-2 mb-2">
+                    <label className="label">Metadata Timestamps</label>
+                    <span className="text-xs px-2 py-0.5 rounded bg-purple-600 text-white">V3 Only</span>
+                  </div>
+                  <div className="space-y-2 bg-dark-surface p-4 rounded border border-dark-border">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-dark-muted">Creation Date:</span>
+                      <span className="text-dark-text">
+                        {(cardData as any).creation_date
+                          ? new Date((cardData as any).creation_date * 1000).toLocaleString()
+                          : 'Not set'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-dark-muted">Modification Date:</span>
+                      <span className="text-dark-text">
+                        {(cardData as any).modification_date
+                          ? new Date((cardData as any).modification_date * 1000).toLocaleString()
+                          : 'Not set'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-dark-muted mt-2">
+                      These timestamps are automatically managed and cannot be edited manually.
+                    </p>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
 
