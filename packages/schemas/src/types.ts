@@ -92,7 +92,8 @@ export interface CCv3Data {
     alternate_greetings?: string[];
     character_book?: CCv3CharacterBook;
     extensions?: Record<string, unknown>;
-    group_only_greetings?: string[];
+    // CCv3 required field (can be empty array)
+    group_only_greetings: string[];
     // CCv3 Asset and metadata fields
     assets?: AssetDescriptor[];
     nickname?: string;
