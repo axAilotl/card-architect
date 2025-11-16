@@ -313,9 +313,21 @@ export async function importExportRoutes(fastify: FastifyInstance) {
       const format = request.query.format || 'json';
 
       if (format === 'json') {
-        reply.header('Content-Type', 'application/json');
+        // Debug logging to verify card.data structure
+        fastify.log.info({
+          cardId: request.params.id,
+          spec: card.meta.spec,
+          hasSpec: 'spec' in (card.data as Record<string, unknown>),
+          hasSpecVersion: 'spec_version' in (card.data as Record<string, unknown>),
+          dataKeys: Object.keys(card.data as Record<string, unknown>),
+        }, 'Exporting card as JSON');
+
+        reply.header('Content-Type', 'application/json; charset=utf-8');
         reply.header('Content-Disposition', `attachment; filename="${card.meta.name}.json"`);
-        return JSON.stringify(card.data, null, 2);
+
+        // Return the card data directly with pretty printing
+        const jsonString = JSON.stringify(card.data, null, 2);
+        return reply.send(jsonString);
       } else if (format === 'charx') {
         try {
           // CHARX export - get card assets

@@ -78,7 +78,27 @@ export const useCardStore = create<CardStore>((set, get) => ({
     const { currentCard } = get();
     if (!currentCard) return;
 
-    const newData = { ...currentCard.data, ...updates };
+    // Deep merge for V3 cards to preserve spec/spec_version and nested data
+    // Shallow spread would wipe out character_book, extensions, etc when updating single fields
+    let newData;
+    if (currentCard.meta.spec === 'v3') {
+      const v3Data = currentCard.data as CCv3Data;
+      const updatesAsV3 = updates as Partial<CCv3Data>;
+
+      newData = {
+        ...v3Data,
+        ...updatesAsV3,
+        // Deep merge the nested data object
+        data: {
+          ...v3Data.data,
+          ...(updatesAsV3.data || {}),
+        },
+      } as CCv3Data;
+    } else {
+      // V2 cards don't have nested structure, shallow merge is fine
+      newData = { ...currentCard.data, ...updates };
+    }
+
     const newCard = { ...currentCard, data: newData };
 
     set({ currentCard: newCard, isDirty: true });
