@@ -12,6 +12,7 @@ export function CardGrid({ onCardClick }: CardGridProps) {
   const [cards, setCards] = useState<Card[]>([]);
   const [loading, setLoading] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
+  const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
   const { importCard, createNewCard } = useCardStore();
 
   useEffect(() => {
@@ -45,10 +46,64 @@ export function CardGrid({ onCardClick }: CardGridProps) {
         alert('Failed to delete card: ' + response.error);
       } else {
         setCards(cards.filter((c) => c.meta.id !== cardId));
+        setSelectedCards(prev => {
+          const next = new Set(prev);
+          next.delete(cardId);
+          return next;
+        });
       }
     } catch (error) {
       console.error('Failed to delete card:', error);
       alert('Failed to delete card');
+    }
+  };
+
+  const toggleSelectCard = (cardId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedCards(prev => {
+      const next = new Set(prev);
+      if (next.has(cardId)) {
+        next.delete(cardId);
+      } else {
+        next.add(cardId);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedCards.size === cards.length) {
+      setSelectedCards(new Set());
+    } else {
+      setSelectedCards(new Set(cards.map(c => c.meta.id)));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedCards.size === 0) return;
+
+    if (!confirm(`Are you sure you want to delete ${selectedCards.size} card(s)?`)) return;
+
+    const deletePromises = Array.from(selectedCards).map(cardId => api.deleteCard(cardId));
+
+    try {
+      const results = await Promise.allSettled(deletePromises);
+
+      const failedDeletes = results
+        .map((result, index) => ({ result, cardId: Array.from(selectedCards)[index] }))
+        .filter(({ result }) => result.status === 'rejected');
+
+      if (failedDeletes.length > 0) {
+        console.error('Some deletes failed:', failedDeletes);
+        alert(`${selectedCards.size - failedDeletes.length} cards deleted, ${failedDeletes.length} failed`);
+      }
+
+      // Reload cards and clear selection
+      await loadCards();
+      setSelectedCards(new Set());
+    } catch (error) {
+      console.error('Bulk delete failed:', error);
+      alert('Bulk delete failed');
     }
   };
 
@@ -219,7 +274,42 @@ export function CardGrid({ onCardClick }: CardGridProps) {
       {/* Header */}
       <div className="bg-dark-surface border-b border-dark-border p-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Card Architect</h1>
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl font-bold">Card Architect</h1>
+            {cards.length > 0 && (
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-2 text-sm text-dark-muted cursor-pointer hover:text-dark-text">
+                  <input
+                    type="checkbox"
+                    checked={selectedCards.size === cards.length && cards.length > 0}
+                    onChange={toggleSelectAll}
+                    className="w-4 h-4 rounded border-dark-border"
+                  />
+                  Select All ({cards.length})
+                </label>
+                {selectedCards.size > 0 && (
+                  <>
+                    <span className="text-sm text-dark-muted">
+                      {selectedCards.size} selected
+                    </span>
+                    <button
+                      onClick={handleBulkDelete}
+                      className="px-3 py-1 bg-red-600/20 hover:bg-red-600/30 text-red-300 rounded text-sm transition-colors"
+                      title={`Delete ${selectedCards.size} card(s)`}
+                    >
+                      Delete Selected
+                    </button>
+                    <button
+                      onClick={() => setSelectedCards(new Set())}
+                      className="px-3 py-1 bg-dark-bg hover:bg-dark-border rounded text-sm transition-colors"
+                    >
+                      Clear
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
           <div className="flex gap-2">
             <button
               onClick={() => setShowSettings(true)}
@@ -266,10 +356,25 @@ export function CardGrid({ onCardClick }: CardGridProps) {
               <div
                 key={card.meta.id}
                 onClick={() => onCardClick(card.meta.id)}
-                className="bg-dark-surface border border-dark-border rounded-lg overflow-hidden hover:border-blue-500 transition-colors cursor-pointer flex flex-col"
+                className={`bg-dark-surface border rounded-lg overflow-hidden hover:border-blue-500 transition-colors cursor-pointer flex flex-col ${
+                  selectedCards.has(card.meta.id) ? 'border-blue-500 ring-2 ring-blue-500/50' : 'border-dark-border'
+                }`}
               >
                 {/* Image Preview */}
                 <div className="w-full aspect-[2/3] bg-dark-bg relative overflow-hidden">
+                  {/* Selection Checkbox */}
+                  <div
+                    className="absolute top-2 left-2 z-10"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedCards.has(card.meta.id)}
+                      onChange={(e) => toggleSelectCard(card.meta.id, e as any)}
+                      className="w-5 h-5 rounded border-2 border-white bg-dark-bg/80 backdrop-blur cursor-pointer"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
                   <img
                     src={`/api/cards/${card.meta.id}/image`}
                     alt={getCardName(card)}
