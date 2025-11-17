@@ -27,16 +27,21 @@
 - ✅ **LLM Integration** - AI-powered field editing with multiple providers
   - Supports OpenAI (GPT-4, GPT-3.5) and Anthropic (Claude)
   - Streaming responses with live diff viewer
-  - Preset operations: tighten, convert-structured, convert-prose, enforce-style, generate-alts, generate-lore
+  - Built-in presets: tighten, convert-structured, convert-prose, enforce-style, generate-alts, generate-lore
+  - User-defined presets: Create, save, and manage custom AI operations
   - Custom instructions for tailored editing
+  - Preset import/export for sharing custom operations
   - Secure API key storage with automatic redaction
 
-- ✅ **RAG System** - Knowledge base integration for AI assistance
-  - File-based vector storage for documentation and references
-  - Supports PDF, JSON, Markdown, HTML, and plain text
-  - Intelligent chunking with semantic search
-  - Multiple knowledge bases with tags and descriptions
-  - Token-aware snippet retrieval for context injection
+- ✅ **RAG System** - Knowledge base integration with semantic search
+  - **Vector embeddings** powered by FastEmbed (BAAI/bge-small-en-v1.5)
+  - **File uploads**: PDF, JSON, Markdown, HTML, and plain text
+  - **Free text entry**: Direct paste of notes, guidelines, documentation
+  - **Lorebook import**: Import character lorebooks as searchable knowledge
+  - **Semantic search**: Cosine similarity with 384-dimensional embeddings
+  - **Intelligent chunking**: 1200 char chunks with 200 char overlap
+  - **Multiple knowledge bases**: Tags, descriptions, document management
+  - **Context injection**: Automatically provides relevant snippets to AI operations
 
 - ✅ **Prompt Simulator** - Test how cards assemble in different frontends
   - Profiles: Generic CCv3, Strict CCv3, CCv2-compat
@@ -57,11 +62,16 @@
 - ✅ **Snippet Management** - Save and reuse text snippets
 - ✅ **Card Grid View** - Browse and manage multiple cards with sorting and bulk operations
 
+### Recent Updates
+
+- ✅ **RAG Vector Embeddings** (v1.1) - Semantic search with FastEmbed
+- ✅ **Free Text Entry** (v1.1) - Direct paste into knowledge bases
+- ✅ **Lorebook Import** (v1.1) - Import lorebooks as searchable knowledge
+- ✅ **User-Defined Presets** (v1.1) - Create custom AI operations
+
 ### Roadmap
 
 - 🔜 **Voxta Export** - Export to Voxta format (v1.2)
-- 🔜 **User-defined LLM Presets** - Save custom AI operations (v1.2)
-- 🔜 **Vector Embeddings for RAG** - Semantic search improvements (v1.2)
 - 🔜 **Rate Limiting** - Quota management for LLM usage (v1.2)
 - 🔜 **Batch Tools** - Normalize, lint, migrate multiple cards (v1.3)
 - 🔜 **Plugin System** - Extensible architecture for custom tools (v2.0)
@@ -248,11 +258,26 @@ The lorebook editor supports all CCv3 entry fields:
 2. Click the **AI** button to open the LLM Assist sidebar
 3. Select a configured provider
 4. Choose an operation:
-   - **Quick Presets**: tighten, convert-structured, convert-prose, enforce-style, generate-alts, generate-lore
+   - **Built-in Presets**: tighten, convert-structured, convert-prose, enforce-style, generate-alts, generate-lore
+   - **User Presets**: Your custom saved operations (create via Settings → Presets)
    - **Custom Instruction**: Write your own editing instruction
 5. (Optional) Enable **RAG** and select a knowledge base for additional context
 6. Click **Run** - See results stream in with live diff viewer
 7. **Apply** changes by choosing Replace or Append
+
+#### Managing AI Presets
+
+1. Open **Settings** → **Presets** tab
+2. Click **"Add Preset"** to create a custom operation
+3. Configure:
+   - **Name**: Preset identifier (e.g., "Expand Description")
+   - **Description**: What this preset does
+   - **Category**: rewrite, format, generate, or custom
+   - **Instruction**: The AI instruction to execute
+4. **Save** - Preset appears in LLM Assist sidebar
+5. **Import/Export**: Share presets as JSON files
+
+**Note:** Built-in presets (8 total) cannot be modified or deleted.
 
 #### Setting Up RAG Knowledge Bases
 
@@ -262,9 +287,20 @@ The lorebook editor supports all CCv3 entry fields:
    - **Label**: Name (e.g., "Character Writing Guide")
    - **Description**: What it contains
    - **Tags**: Searchable tags
-4. Upload documents (PDF, JSON, Markdown, HTML, or plain text)
-5. Documents are automatically chunked and indexed
-6. Use in AI Assist by selecting the knowledge base
+
+4. **Add Content** (three ways):
+   - **Upload Documents**: PDF, JSON, Markdown, HTML, or plain text files
+   - **Add Free Text**: Paste notes, guidelines, documentation directly
+   - **Import Lorebook**: Import the current card's lorebook as searchable knowledge
+
+5. Documents are automatically chunked, embedded with vector embeddings, and indexed
+6. Use in AI Assist by selecting the knowledge base - provides semantic search context
+
+**How It Works:**
+- Content is split into 1200-character chunks with 200-character overlap
+- Each chunk is converted to a 384-dimensional vector embedding
+- Search queries use cosine similarity to find semantically similar content
+- Most relevant chunks are automatically provided as context to AI operations
 
 **Storage Location:** `~/.card-architect/rag-index/`
 
@@ -375,6 +411,18 @@ POST   /llm/invoke                            # Direct LLM invocation (streaming
 POST   /llm/assist                            # High-level AI assist with presets
 ```
 
+### Presets
+
+```
+GET    /presets                               # List all presets (built-in + user)
+GET    /presets/:id                           # Get single preset
+POST   /presets                               # Create user preset
+PATCH  /presets/:id                           # Update user preset
+DELETE /presets/:id                           # Delete user preset (built-in protected)
+GET    /presets/export/all                    # Export all presets as JSON
+POST   /presets/import                        # Import presets from JSON
+```
+
 ### RAG (Knowledge Bases)
 
 ```
@@ -383,9 +431,11 @@ POST   /rag/databases                         # Create RAG database
 GET    /rag/databases/:dbId                   # Get database details
 PATCH  /rag/databases/:dbId                   # Update database metadata
 DELETE /rag/databases/:dbId                   # Delete database
-POST   /rag/databases/:dbId/documents         # Upload & index document
+POST   /rag/databases/:dbId/documents         # Upload & index document (file)
+POST   /rag/databases/:dbId/text              # Add free text entry
+POST   /rag/databases/:dbId/lorebook          # Import lorebook as knowledge
 DELETE /rag/databases/:dbId/documents/:sourceId  # Remove document
-GET    /rag/search                            # Search RAG database
+GET    /rag/search                            # Search RAG database (semantic)
 GET    /rag/stats                             # Get RAG statistics
 ```
 
