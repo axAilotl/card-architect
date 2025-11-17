@@ -100,12 +100,17 @@ card_doctor/
   - Token delta tracking
   - Custom instructions
   - Connection testing
-- **Preset Operations**:
+- **Built-in Preset Operations** (8 total):
   - Tighten (reduce wordiness)
   - Convert-structured / convert-prose
   - Enforce-style
   - Generate-alts (alternate greetings)
   - Generate-lore (lorebook entries)
+- **User-Defined Presets**:
+  - Create custom AI operations with name, description, instruction
+  - Organized by category: rewrite, format, generate, custom
+  - Import/export for sharing
+  - Built-in presets are read-only (protected from modification/deletion)
 - **Available in**: Edit mode (all text fields), Focused mode
 - **Actions**: Replace, Append, Insert
 - **Security**: API keys stored in `~/.card-architect/config.json` with 600 permissions, redacted in all responses
@@ -246,6 +251,17 @@ POST   /api/llm/invoke                # Direct LLM invocation (streaming/non-str
 POST   /api/llm/assist                # High-level AI assist with presets
 ```
 
+### Presets
+```
+GET    /api/presets                   # List all presets (built-in + user)
+GET    /api/presets/:id               # Get single preset
+POST   /api/presets                   # Create user preset
+PATCH  /api/presets/:id               # Update user preset
+DELETE /api/presets/:id               # Delete user preset (built-in protected)
+GET    /api/presets/export/all        # Export all presets as JSON
+POST   /api/presets/import            # Import presets from JSON
+```
+
 ### RAG (Knowledge Bases)
 ```
 GET    /api/rag/databases             # List RAG knowledge bases
@@ -295,6 +311,32 @@ CREATE TABLE card_versions (
   FOREIGN KEY (card_id) REFERENCES cards(id)
 );
 ```
+
+### LLM Presets Table
+```sql
+CREATE TABLE llm_presets (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT,
+  instruction TEXT NOT NULL,
+  category TEXT NOT NULL,      -- 'rewrite', 'format', 'generate', 'custom'
+  is_built_in INTEGER DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+```
+
+**Built-in Presets** (seeded on first run):
+- `tighten` - Rewrite text to be more concise
+- `convert-structured` - Convert prose to structured bullet points
+- `convert-prose` - Convert structured text to flowing prose
+- `enforce-style` - Make text match a specific style guide
+- `generate-alts` - Generate alternate greetings
+- `generate-lore` - Generate lorebook entries
+- `expand` - Expand and elaborate on text
+- `simplify` - Simplify complex language
+
+**Protection:** Built-in presets have `is_built_in = 1` and return 403 errors on modification/deletion attempts.
 
 ## State Management (Zustand)
 
@@ -353,6 +395,7 @@ CREATE TABLE card_versions (
 - `import-export.ts` - Card import/export with format normalization
 - `tokenize.ts` - Token counting endpoints
 - `llm.ts` - LLM provider invocation and settings management
+- `presets.ts` - User preset CRUD operations with built-in protection
 - `rag.ts` - RAG knowledge base and document operations
 - `prompt-simulator.ts` - Prompt assembly simulation routes
 - `redundancy.ts` - Redundancy detection routes
@@ -372,7 +415,7 @@ CREATE TABLE card_versions (
 - `png.ts` - PNG tEXt chunk extraction and embedding
 
 **Database (apps/api/src/db/):**
-- `repository.ts` - Database operations
+- `repository.ts` - Database operations (cards, versions, presets)
 
 **Providers (apps/api/src/providers/):**
 - `openai.ts` - OpenAI Responses API and Chat Completions API
@@ -599,11 +642,18 @@ docker run -p 3456:3456 -p 8765:8765 \
 2. Add validation logic in `apps/api/src/services/validation.service.ts`
 3. Update frontend to display new validation messages
 
-### Adding a New LLM Preset
-1. Define preset in `packages/schemas/src/types.ts` (`PresetOperation` type)
+### Adding a New Built-in LLM Preset
+1. Add to seed data in `apps/api/src/db/repository.ts` (`seedBuiltInPresets()`)
 2. Add prompt template in `apps/api/src/utils/llm-prompts.ts` (`buildPrompt()`)
-3. Add preset button in `apps/web/src/components/LLMAssistSidebar.tsx`
+3. Update `PresetsTab.tsx` if UI changes needed
 4. Update documentation
+
+### Creating a User-Defined Preset (via UI)
+1. Open Settings → Presets tab
+2. Click "Add Preset"
+3. Fill in name, description, instruction, category
+4. Save - preset is stored in database and immediately available
+5. Export/import via JSON for sharing
 
 ## Troubleshooting & Common Issues
 
@@ -739,6 +789,74 @@ Card Architect solves these problems with professional tooling for character car
 
 - CCv2 Spec: https://github.com/malfoyslastname/character-card-spec-v2
 - CCv3 Spec: https://github.com/kwaroran/character-card-spec-v3
+
+## Recent Implementation: User-Defined LLM Presets (2025-11-16)
+
+### Overview
+Implemented a database-backed system for user-defined LLM presets, allowing users to create, save, and manage custom AI operations alongside the 8 built-in presets.
+
+**Database Schema:**
+- New table: `llm_presets` with fields for name, description, instruction, category, is_built_in flag
+- Auto-seeding of 8 built-in presets on first database initialization
+- Unique constraint on preset names
+
+**Backend Implementation:**
+- **Repository Layer** (`apps/api/src/db/repository.ts`):
+  - `PresetRepository` class with full CRUD operations
+  - `seedBuiltInPresets()` for automatic initialization
+  - Protection methods to prevent modification of built-in presets
+
+- **API Routes** (`apps/api/src/routes/presets.ts`):
+  - `GET /api/presets` - List all presets (built-in + user)
+  - `GET /api/presets/:id` - Get single preset
+  - `POST /api/presets` - Create user preset
+  - `PATCH /api/presets/:id` - Update user preset (403 if built-in)
+  - `DELETE /api/presets/:id` - Delete user preset (403 if built-in)
+  - `GET /api/presets/export/all` - Export all presets as JSON
+  - `POST /api/presets/import` - Import presets with validation
+
+- **Types** (`packages/schemas/src/types.ts`):
+  - `UserPreset` - Preset data structure
+  - `CreatePresetRequest` - Validation for preset creation
+  - `PresetCategory` - Type-safe categories (rewrite, format, generate, custom)
+
+**Frontend Implementation:**
+- **API Client** (`apps/web/src/lib/api.ts`):
+  - Methods for all preset CRUD operations
+  - Import/export helpers with blob handling
+
+- **Settings UI** (`apps/web/src/components/SettingsModal.tsx`):
+  - New "Presets" tab for preset management
+  - Create, edit, delete presets with form validation
+  - Import/export functionality with file handling
+  - Protection UI: built-in presets show as read-only
+
+- **LLM Assist Sidebar** (`apps/web/src/components/LLMAssistSidebar.tsx`):
+  - Dynamic preset loading from database
+  - Presets grouped by category
+  - User presets appear alongside built-in presets
+
+**Built-in Presets:**
+1. tighten (rewrite) - Reduce wordiness
+2. convert-structured (format) - Prose to bullet points
+3. convert-prose (format) - Structured to prose
+4. enforce-style (rewrite) - Apply style guide
+5. generate-alts (generate) - Create alternate greetings
+6. generate-lore (generate) - Create lorebook entries
+7. expand (rewrite) - Elaborate on content
+8. simplify (rewrite) - Simplify language
+
+**Protection Pattern:**
+- Built-in presets have `is_built_in = 1` flag
+- Modification attempts return 403 Forbidden
+- Deletion attempts return 403 Forbidden
+- Frontend UI disables edit/delete buttons for built-in presets
+
+**Import/Export:**
+- Export format: JSON array of `CreatePresetRequest` objects
+- Import validates all presets before creating any
+- Returns detailed success/failure report with error messages
+- Filename format: `card-architect-presets-YYYY-MM-DD.json`
 
 ## Recent Implementation: RAG System Enhancement (2025-11-17)
 
