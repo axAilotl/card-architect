@@ -6,15 +6,19 @@
 
 ### Core Features
 
-- ✅ **Full CCv2/CCv3 Support** - Read, edit, validate both specifications
+- ✅ **Full CCv2/CCv3 Support** - Read, edit, validate both specifications with proper wrapped/unwrapped format handling
+- ✅ **CHARX Support** - Full support for CHARX v1.0 format (ZIP-based cards with embedded assets)
 - ✅ **Real-time Token Counting** - Per-field and global token estimates using Hugging Face tokenizers
 - ✅ **Lorebook Editor** - Complete CCv3 character book with all fields (keywords, secondary, priority, selective AND/NOT, probability, constant, insertion order/position)
 - ✅ **Always-Saving** - Autosave to IndexedDB with background sync to SQLite
 - ✅ **Version History** - Manual snapshots with restore capability
-- ✅ **Import/Export** - JSON and PNG (tEXt embed) support with automatic format normalization
+- ✅ **Import/Export** - JSON, PNG (tEXt embed), and CHARX support with automatic format normalization
+- ✅ **Multiple Import** - Import multiple cards at once (JSON, PNG, or CHARX)
+- ✅ **Bulk Operations** - Select and delete multiple cards with toggle-able selection mode
+- ✅ **Smart Sorting** - Sort cards by Added, Newest, Oldest, or Name
 - ✅ **Markdown Preview** - Sanitized HTML rendering with extended image sizing syntax
-- ✅ **Asset Management** - Upload, crop, resize, and convert images
-- ✅ **Schema Validation** - JSON schema + semantic linting
+- ✅ **Asset Management** - Upload, crop, resize, and convert images with CHARX packaging
+- ✅ **Schema Validation** - JSON schema + semantic linting with format-specific normalization
 - ✅ **Dark Mode** - Modern, accessible UI
 - ✅ **Self-Hostable** - Docker Compose or standalone container
 
@@ -51,12 +55,11 @@
 - ✅ **Focused Editor** - Distraction-free full-screen editing mode
 - ✅ **Template System** - Reusable templates for common card structures
 - ✅ **Snippet Management** - Save and reuse text snippets
-- ✅ **Card Grid View** - Browse and manage multiple cards
+- ✅ **Card Grid View** - Browse and manage multiple cards with sorting and bulk operations
 
 ### Roadmap
 
-- 🔜 **CHARX Support** - Pack/unpack CHARX archives (v1.1)
-- 🔜 **Voxta Export** - Export to Voxta format (v1.1)
+- 🔜 **Voxta Export** - Export to Voxta format (v1.2)
 - 🔜 **User-defined LLM Presets** - Save custom AI operations (v1.2)
 - 🔜 **Vector Embeddings for RAG** - Semantic search improvements (v1.2)
 - 🔜 **Rate Limiting** - Quota management for LLM usage (v1.2)
@@ -153,17 +156,43 @@ Card Architect is a monorepo with:
 
 ### Importing Cards
 
+**Single Import:**
 1. Click **"Import"** in the header
-2. Select a JSON or PNG file
+2. Select a JSON, PNG, or CHARX file
 3. The card will be validated and loaded into the editor
 4. Make any edits and click **"Save"**
 
+**Multiple Import:**
+1. Click **"Import"** in the header
+2. Select multiple files (JSON, PNG, or CHARX)
+3. All cards will be imported at once
+4. See import summary showing success/failure count
+5. Failed imports are logged to console with details
+
 ### Exporting Cards
 
+**From Editor:**
 1. Load a card
 2. Click **"Export"** dropdown
-3. Choose **JSON** (pretty-printed) or **PNG** (embedded in image)
+3. Choose **JSON** (pretty-printed), **PNG** (embedded in image), or **CHARX** (with assets)
 4. File will download automatically
+
+**From Grid:**
+1. Click a card to select it
+2. Use the export buttons (JSON/PNG) in the card footer
+3. For CHARX export, open the card editor first
+
+### Managing Multiple Cards
+
+**Sorting:**
+1. In the card grid, use the **"Sort by"** dropdown
+2. Options: Added (most recent), Newest, Oldest, Name (A-Z)
+
+**Bulk Operations:**
+1. Click **"Select"** to enter selection mode
+2. Click cards or use **"Select All"** to select multiple
+3. Click **"Delete Selected"** to delete chosen cards
+4. Click **"Cancel Selection"** to exit selection mode
 
 ### Token Counting
 
@@ -323,7 +352,8 @@ POST   /tokenize                              # Tokenize fields
 ### Import/Export
 
 ```
-POST   /import                                # Import JSON/PNG
+POST   /import                                # Import single JSON/PNG/CHARX
+POST   /import-multiple                       # Import multiple cards at once
 POST   /convert                               # Convert v2 ↔ v3
 ```
 
