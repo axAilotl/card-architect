@@ -387,6 +387,222 @@ export async function importExportRoutes(fastify: FastifyInstance) {
     return { card, warnings };
   });
 
+  // Import multiple cards at once
+  fastify.post('/import-multiple', async (request, reply) => {
+    const files = await request.files();
+
+    if (!files || files.length === 0) {
+      reply.code(400);
+      return { error: 'No files provided' };
+    }
+
+    const results: Array<{
+      filename: string;
+      success: boolean;
+      card?: any;
+      error?: string;
+      warnings?: string[];
+    }> = [];
+
+    for await (const file of files) {
+      const filename = file.filename || 'unknown';
+
+      try {
+        const buffer = await file.toBuffer();
+        const warnings: string[] = [];
+
+        // Check for CHARX format
+        const isZip = buffer[0] === 0x50 && buffer[1] === 0x4B && buffer[2] === 0x03 && buffer[3] === 0x04;
+        const isCharxExt = filename.endsWith('.charx');
+
+        if (isZip || isCharxExt) {
+          // Handle CHARX import
+          const tempPath = join(tmpdir(), `charx-${Date.now()}-${filename}`);
+          await fs.writeFile(tempPath, buffer);
+
+          try {
+            const result = await charxImportService.importFromFile(tempPath, {
+              storagePath: config.storagePath,
+              preserveTimestamps: true,
+              setAsOriginalImage: true,
+            });
+
+            results.push({
+              filename,
+              success: true,
+              card: result.card,
+              warnings: result.warnings,
+            });
+          } finally {
+            await fs.unlink(tempPath).catch(() => {});
+          }
+          continue;
+        }
+
+        // Regular JSON/PNG import
+        let cardData: unknown;
+        let spec: 'v2' | 'v3';
+        let originalImage: Buffer | undefined;
+
+        if (file.mimetype === 'application/json') {
+          cardData = JSON.parse(buffer.toString('utf-8'));
+          const detectedSpec = detectSpec(cardData);
+          if (!detectedSpec) {
+            results.push({
+              filename,
+              success: false,
+              error: 'Invalid card format: unable to detect v2 or v3 spec',
+            });
+            continue;
+          }
+          spec = detectedSpec;
+        } else if (file.mimetype === 'image/png') {
+          const sizeCheck = validatePNGSize(buffer, {
+            max: config.limits.maxPngSizeMB,
+            warn: config.limits.warnPngSizeMB,
+          });
+
+          if (!sizeCheck.valid) {
+            results.push({
+              filename,
+              success: false,
+              error: 'PNG too large',
+              warnings: sizeCheck.warnings,
+            });
+            continue;
+          }
+
+          warnings.push(...sizeCheck.warnings);
+
+          const extracted = await extractFromPNG(buffer);
+          if (!extracted) {
+            results.push({
+              filename,
+              success: false,
+              error: 'No character card data found in PNG',
+            });
+            continue;
+          }
+          cardData = extracted.data;
+          spec = extracted.spec;
+          originalImage = buffer;
+        } else {
+          results.push({
+            filename,
+            success: false,
+            error: `Unsupported file type: ${file.mimetype}`,
+          });
+          continue;
+        }
+
+        // Normalize and validate
+        if (cardData && typeof cardData === 'object') {
+          const obj = cardData as Record<string, unknown>;
+
+          if (spec === 'v2' && 'spec' in obj && obj.spec !== 'chara_card_v2') {
+            obj.spec = 'chara_card_v2';
+            if (!obj.spec_version) obj.spec_version = '2.0';
+          }
+
+          if (spec === 'v3' && 'spec' in obj && obj.spec !== 'chara_card_v3') {
+            obj.spec = 'chara_card_v3';
+            if (!obj.spec_version || !String(obj.spec_version).startsWith('3')) {
+              obj.spec_version = '3.0';
+            }
+          }
+
+          if ('data' in obj && obj.data && typeof obj.data === 'object') {
+            const dataObj = obj.data as Record<string, unknown>;
+            if (dataObj.character_book === null) delete dataObj.character_book;
+            normalizeLorebookEntries(dataObj);
+          } else if ('character_book' in obj) {
+            if (obj.character_book === null) delete obj.character_book;
+            else normalizeLorebookEntries(obj);
+          }
+        }
+
+        const validation = spec === 'v3' ? validateV3(cardData) : validateV2(cardData);
+        if (!validation.valid) {
+          results.push({
+            filename,
+            success: false,
+            error: 'Card validation failed',
+            warnings: validation.errors.map(e => e.message),
+          });
+          continue;
+        }
+
+        warnings.push(...validation.errors.filter((e) => e.severity !== 'error').map((e) => e.message));
+
+        // Extract name and create card
+        let name = 'Untitled';
+        let storageData: CCv2Data | CCv3Data;
+
+        if (cardData && typeof cardData === 'object') {
+          if (spec === 'v2' && 'data' in cardData && typeof cardData.data === 'object' && cardData.data) {
+            const wrappedData = cardData.data as CCv2Data;
+            name = wrappedData.name || 'Untitled';
+            storageData = cardData as any;
+          } else if (spec === 'v2' && 'name' in cardData && typeof cardData.name === 'string') {
+            name = cardData.name;
+            const v2Data = cardData as CCv2Data;
+            storageData = {
+              spec: 'chara_card_v2',
+              spec_version: '2.0',
+              data: v2Data,
+            } as any;
+          } else if (spec === 'v3' && 'data' in cardData && typeof cardData.data === 'object' && cardData.data) {
+            const v3DataInner = cardData.data as CCv3Data['data'];
+            name = v3DataInner.name || 'Untitled';
+            storageData = cardData as CCv3Data;
+          } else {
+            if ('name' in cardData && typeof cardData.name === 'string') {
+              name = cardData.name;
+            } else if ('data' in cardData && typeof cardData.data === 'object' && cardData.data && 'name' in cardData.data) {
+              name = (cardData.data as { name: string }).name;
+            }
+            storageData = cardData as (CCv2Data | CCv3Data);
+          }
+        } else {
+          storageData = cardData as (CCv2Data | CCv3Data);
+        }
+
+        const card = cardRepo.create({
+          data: storageData,
+          meta: { name, spec, tags: [] },
+        }, originalImage);
+
+        results.push({
+          filename,
+          success: true,
+          card,
+          warnings,
+        });
+
+      } catch (err) {
+        results.push({
+          filename,
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
+
+    fastify.log.info({ successCount, failCount, total: results.length }, 'Multiple card import completed');
+
+    reply.code(201);
+    return {
+      success: true,
+      total: results.length,
+      successCount,
+      failCount,
+      results,
+    };
+  });
+
   // Export card as JSON or PNG
   fastify.get<{ Params: { id: string }; Querystring: { format?: string } }>(
     '/cards/:id/export',
