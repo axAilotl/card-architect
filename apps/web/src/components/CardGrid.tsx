@@ -69,18 +69,52 @@ export function CardGrid({ onCardClick }: CardGridProps) {
   };
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
     try {
-      await importCard(file);
-      // Reload the cards list after successful import
+      // Single file import - use existing store method
+      if (files.length === 1) {
+        await importCard(files[0]);
+        await loadCards();
+        e.target.value = '';
+        return;
+      }
+
+      // Multiple file import
+      const formData = new FormData();
+      for (let i = 0; i < files.length; i++) {
+        formData.append('files', files[i]);
+      }
+
+      const response = await fetch('/api/import-multiple', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to import cards');
+      }
+
+      // Show results
+      const { successCount, failCount, results } = result;
+      let message = `Import complete: ${successCount} succeeded`;
+      if (failCount > 0) {
+        message += `, ${failCount} failed`;
+        const failures = results.filter((r: any) => !r.success);
+        console.error('Failed imports:', failures);
+      }
+
+      alert(message);
+
+      // Reload the cards list
       await loadCards();
-      // Reset the input so the same file can be imported again if needed
       e.target.value = '';
     } catch (error) {
-      console.error('Failed to import card:', error);
-      alert('Failed to import card. Check console for details.');
+      console.error('Failed to import cards:', error);
+      alert('Failed to import cards. Check console for details.');
       e.target.value = '';
     }
   };
@@ -201,9 +235,10 @@ export function CardGrid({ onCardClick }: CardGridProps) {
                 name="import-card-file"
                 type="file"
                 accept=".json,.png,.charx"
+                multiple
                 onChange={handleImport}
                 className="hidden"
-                title="Import JSON, PNG, or CHARX file"
+                title="Import JSON, PNG, or CHARX files (select multiple)"
               />
             </label>
             <button onClick={handleNewCard} className="btn-primary">
