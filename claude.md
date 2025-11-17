@@ -1,35 +1,12 @@
-# Card Architect - Claude Guide
+# Card Architect - Complete Project Guide
 
 ## Project Overview
 
 **Card Architect** (internally called "card_doctor") is a modern, self-hostable character card editor for CCv2 (Character Card v2) and CCv3 (Character Card v3) formats. It's designed as a single-user application with always-saving drafts, version history, and accurate token estimation for AI character cards.
 
-## Purpose
+This tool helps creators build, edit, and maintain AI character cards with advanced features for character development, including AI-assisted content generation, templates, lorebooks, and version control.
 
-This tool helps creators build, edit, and maintain AI character cards with features like:
-- Real-time token counting per field
-- Lorebook (character book) editing with full CCv3 support
-- Version control and snapshot management
-- Import/Export in JSON and PNG formats (with embedded metadata)
-- Advanced validation and linting
-- Prompt simulation for different frontend profiles
-- Redundancy detection and elimination
-- Lore trigger testing
-
-## Architecture
-
-### Monorepo Structure
-
-```
-/apps/api              # Fastify backend (Node 20 + SQLite)
-/apps/web              # React frontend (Vite + TypeScript + Tailwind)
-/packages/schemas      # Shared TypeScript types + JSON schemas
-/packages/tokenizers   # HuggingFace tokenizer adapters
-/packages/charx        # CHARX support (stub)
-/packages/plugins      # Plugin SDK (stub)
-```
-
-### Tech Stack
+## Tech Stack
 
 **Backend (apps/api):**
 - **Fastify** - Fast, low-overhead web framework
@@ -41,151 +18,434 @@ This tool helps creators build, edit, and maintain AI character cards with featu
 **Frontend (apps/web):**
 - **React 18** + **TypeScript** - UI framework
 - **Vite** - Build tool and dev server
-- **Tailwind CSS** - Utility-first styling
+- **Tailwind CSS** - Utility-first styling (custom dark theme)
 - **Zustand** - Lightweight state management
 - **IndexedDB** (idb) - Local persistence with background sync
+- **Milkdown** - WYSIWYG markdown editor
+- **CodeMirror** - Raw markdown editing
 - **marked** - Markdown to HTML rendering
 - **DOMPurify** - HTML sanitization for security
 
-### API Architecture
+**Testing:**
+- **Vitest** - Test framework
+
+## Architecture
+
+### Monorepo Structure
+
+```
+card_doctor/
+├── apps/
+│   ├── api/                 # Fastify backend (Node 20 + SQLite)
+│   │   ├── src/
+│   │   │   ├── routes/      # API endpoints
+│   │   │   ├── services/    # Business logic
+│   │   │   ├── providers/   # LLM provider integrations
+│   │   │   ├── db/          # Database & repository
+│   │   │   ├── utils/       # Utilities (PNG, prompts, RAG, settings)
+│   │   │   └── __tests__/   # Vitest tests
+│   │   └── package.json
+│   └── web/                 # React frontend (Vite + TypeScript + Tailwind)
+│       ├── src/
+│       │   ├── components/  # React components
+│       │   ├── store/       # Zustand state
+│       │   ├── lib/         # API client, IndexedDB
+│       │   └── styles/      # CSS
+│       └── package.json
+└── packages/
+    ├── schemas/             # Shared types & validation
+    ├── tokenizers/          # Token counting
+    ├── charx/              # CHARX support (stub)
+    └── plugins/            # Plugin SDK (stub)
+```
+
+## Key Features
+
+### 1. Dual Format Support (V2/V3)
+- **V2/V3 Mode Switcher**: Toggle between character card formats (EditPanel.tsx:151-172)
+- **Show V3 Fields**: Optional visibility control for V3-specific fields
+- **Field Spec Markers**: Visual badges indicating field compatibility:
+  - "Both" - Works in V2 and V3
+  - "V2" - V2 format only
+  - "V3" - V3 format (required in V3)
+  - "V3 Only" - Only available in V3 spec
+- **Auto-conversion**: Seamlessly converts data between formats (card-store.ts:336-381)
+- **V3-specific fields**:
+  - Creator (required)
+  - Character Version (required)
+  - Tags (required, array)
+  - Group Only Greetings (array)
+
+### 2. Editor Modes
+- **Edit Mode**: Standard tabbed editing interface
+  - Basic Info: Name, description, personality, scenario, avatar
+  - Greetings: First message, alternate greetings, group greetings
+  - Advanced: System prompt, post-history, examples, creator notes
+  - Lorebook: Two-column layout with entry management
+- **Focused Mode**: Distraction-free WYSIWYG + raw markdown editing
+  - Field selector for all major fields
+  - Side-by-side WYSIWYG (Milkdown) and raw markdown (CodeMirror) views
+  - Template & snippet support
+  - AI assistant integration
+- **Preview Mode**: Live markdown rendering with extended syntax
+  - Supports: `![alt](url =widthxheight)` sizing syntax
+  - Examples: `=100%x100%`, `=400x300`, `=50%`
+  - DOMPurify HTML sanitization for XSS protection
+- **Diff Mode**: Version comparison and snapshot management
+
+### 3. AI Assistant Integration (LLM)
+- **Providers**: OpenAI (GPT-4, GPT-3.5), Anthropic (Claude)
+- **Features**:
+  - Streaming responses with live diff viewer
+  - Token delta tracking
+  - Custom instructions
+  - Connection testing
+- **Preset Operations**:
+  - Tighten (reduce wordiness)
+  - Convert-structured / convert-prose
+  - Enforce-style
+  - Generate-alts (alternate greetings)
+  - Generate-lore (lorebook entries)
+- **Available in**: Edit mode (all text fields), Focused mode
+- **Actions**: Replace, Append, Insert
+- **Security**: API keys stored in `~/.card-architect/config.json` with 600 permissions, redacted in all responses
+
+### 4. RAG System (Knowledge Bases)
+- **File-based vector storage**: `~/.card-architect/rag-index/`
+- **Document types**: PDF, JSON, Markdown, HTML, plain text
+- **Intelligent chunking**: 1200 char chunks, 200 char overlap
+- **Semantic search**: Token-aware snippet retrieval (keyword matching for MVP)
+- **Multiple knowledge bases**: Tags, descriptions, document management
+- **Integration**: Automatically provides context to LLM operations
+
+### 5. Templates & Snippets
+- **Templates**: Full field content or multi-field templates
+  - Apply modes: Replace, Append, Prepend
+  - Field-specific or apply to all fields
+- **Snippets**: Small reusable text fragments
+  - Quick insertion into any field
+- **Supported Fields**:
+  - Description, Personality, Scenario
+  - First Message, Example Messages
+  - System Prompt, Post History Instructions
+  - Creator Notes
+
+### 6. Lorebook Editor
+- **Two-column layout**:
+  - Left: Entry list (300px sidebar)
+  - Right: Entry form (selected entry)
+- **Settings** (top section):
+  - Scan Depth, Token Budget, Recursive Scanning
+  - Name, Description
+- **Entry Management**:
+  - Keys (trigger words)
+  - Content (lore text)
+  - Position (before_char/after_char), Priority, Insertion Order
+  - Probability (0-100%), Depth, Case Sensitivity
+  - Selective mode with secondary keys (AND/NOT logic)
+  - Constant (always insert)
+  - Extensions support
+
+### 7. Version Control (Snapshots)
+- **Create snapshots** with optional messages
+- **Compare versions** in Diff mode
+- **Restore** from any previous version
+- **Snapshot button** integrated into editor tabs row (EditorTabs.tsx)
+
+### 8. Import/Export
+- **Import**: JSON or PNG character cards
+  - Automatic normalization of non-standard spec values
+  - Handles legacy numeric position fields
+  - Compatible with: CharacterHub, SillyTavern, Agnai, TavernAI
+  - PNG tEXt chunk extraction with multiple key support
+- **Export**:
+  - JSON (spec-specific based on current mode)
+  - PNG (embedded metadata in tEXt chunks)
+- **Click-based dropdown** (not hover)
+
+### 9. Character Avatar
+- **Upload/replace** character images
+- **Preview** in Basic Info tab (192x192px)
+- **Automatic PNG conversion**
+- **Stored** in database as BLOB
+
+### 10. Card Management
+- **Grid view** with visual indicators:
+  - Purple badge (💬) for alternate greetings
+  - Green badge (📚) for lorebook entries
+- **Bulk operations**: Bulk select and delete (toggle button)
+- **CRUD operations**: Create, read, update, delete
+- **Auto-save** with debouncing (500ms)
+- **Draft recovery** via IndexedDB
+
+### 11. Additional Tools
+- **Tokenization**: Real-time token counting per field
+  - Approximate BPE/SentencePiece tokenizers
+  - Per-field token counts (blue chips)
+  - Total token count in header
+- **Prompt Simulator**: Test how cards will be assembled by different frontends
+  - Profiles: Generic CCv3, Strict CCv3, CCv2-compat
+  - Token budget tracking with drop policies
+- **Redundancy Killer**: Cross-field duplicate detection
+  - Detects: exact duplicates, semantic overlap, repeated phrases
+  - Shows token savings and confidence scores
+  - Status: Implemented but UI disabled (available for future use)
+- **Lore Trigger Tester**: Test lorebook entry activation
+  - Supports: AND/NOT logic, regex patterns, case sensitivity
+  - Real-time phrase testing with preview
+  - Status: Implemented but UI disabled (available for future use)
+
+## API Endpoints
 
 **Base URL (dev):** `http://localhost:3456`
 
-**Key Endpoints:**
+### Cards
 ```
-GET    /cards                     # List all cards
-GET    /cards/:id                 # Get single card
-POST   /cards                     # Create card
-PATCH  /cards/:id                 # Update card
-DELETE /cards/:id                 # Delete card
-GET    /cards/:id/export          # Export (json|png)
-
-GET    /cards/:id/versions        # List versions
-POST   /cards/:id/versions        # Create snapshot
-POST   /cards/:id/versions/:ver/restore  # Restore version
-
-GET    /tokenizers                # List available tokenizer models
-POST   /tokenize                  # Tokenize fields
-
-POST   /import                    # Import JSON/PNG
-POST   /convert                   # Convert v2 ↔ v3
-
-POST   /assets                    # Upload image
-GET    /assets/:id                # Get asset
-POST   /assets/:id/transform      # Crop/resize/convert
-
-POST   /prompt-simulator/simulate # Simulate prompt assembly
-POST   /redundancy/analyze        # Find cross-field redundancy
-POST   /lore-trigger/test         # Test lorebook triggers
-
-GET    /llm/settings              # Get LLM settings (API keys redacted)
-POST   /llm/settings              # Update LLM settings
-POST   /llm/test-connection       # Test provider connection
-POST   /llm/invoke                # Direct LLM invocation (streaming/non-streaming)
-POST   /llm/assist                # High-level AI assist with presets
-
-GET    /rag/databases             # List RAG knowledge bases
-POST   /rag/databases             # Create RAG database
-GET    /rag/databases/:dbId       # Get database details
-PATCH  /rag/databases/:dbId       # Update database metadata
-DELETE /rag/databases/:dbId       # Delete database
-POST   /rag/databases/:dbId/documents  # Upload & index document
-DELETE /rag/databases/:dbId/documents/:sourceId  # Remove document
-GET    /rag/search                # Search RAG database
-GET    /rag/stats                 # Get RAG statistics
+GET    /api/cards                     # List all cards
+GET    /api/cards/:id                 # Get single card
+POST   /api/cards                     # Create card
+PATCH  /api/cards/:id                 # Update card
+DELETE /api/cards/:id                 # Delete card
+GET    /api/cards/:id/image           # Get card image
+POST   /api/cards/:id/image           # Update card image
+GET    /api/cards/:id/export          # Export card (json|png)
 ```
 
-## Key Features & Implementation Status
+### Versions
+```
+GET    /api/cards/:id/versions        # List versions
+POST   /api/cards/:id/versions        # Create snapshot
+POST   /api/cards/:id/versions/:versionId/restore  # Restore version
+```
 
-### ✅ Completed Features
+### Import/Export & Tokenization
+```
+POST   /api/import                    # Import JSON/PNG
+POST   /api/convert                   # Convert v2 ↔ v3
+GET    /api/tokenizers                # List available tokenizer models
+POST   /api/tokenize                  # Tokenize fields
+```
 
-1. **LLM Integration** - AI-powered field editing with multiple providers
-   - Backend: `apps/api/src/routes/llm.ts`, `apps/api/src/providers/`
-   - Frontend: `apps/web/src/components/LLMAssistSidebar.tsx`
-   - Providers: OpenAI (GPT-4, GPT-3.5), Anthropic (Claude)
-   - Features: streaming responses, custom instructions, preset operations
-   - Presets: tighten, convert-structured, convert-prose, enforce-style, generate-alts, generate-lore
-   - Secure API key storage with redaction pattern
-   - Real-time diff viewer with token delta tracking
-   - Connection testing before use
+### Assets
+```
+POST   /api/assets                    # Upload image
+GET    /api/assets/:id                # Get asset
+POST   /api/assets/:id/transform      # Crop/resize/convert
+```
 
-2. **RAG System** - Knowledge base integration for AI assistance
-   - Backend: `apps/api/src/routes/rag.ts`, `apps/api/src/utils/rag-store.ts`
-   - Frontend: Settings modal with Knowledge tab
-   - File-based vector storage in `~/.card-architect/rag-index/`
-   - Document types: PDF, JSON, Markdown, HTML, plain text
-   - Intelligent chunking (1200 char chunks, 200 char overlap)
-   - Semantic search with token-aware snippet retrieval
-   - Multiple knowledge bases with tags and descriptions
-   - Document management: upload, index, remove, view
+### LLM Integration
+```
+GET    /api/llm/settings              # Get LLM settings (API keys redacted)
+POST   /api/llm/settings              # Update LLM settings
+POST   /api/llm/test-connection       # Test provider connection
+POST   /api/llm/invoke                # Direct LLM invocation (streaming/non-streaming)
+POST   /api/llm/assist                # High-level AI assist with presets
+```
 
-3. **Settings System** - Secure configuration management
-   - Backend: `apps/api/src/utils/settings.ts`
-   - Frontend: `apps/web/src/components/SettingsModal.tsx`
-   - Storage: `~/.card-architect/config.json` with 600 permissions
-   - API key redaction in responses (never logged)
-   - Smart merging preserves existing secrets
-   - Provider configuration with connection testing
-   - RAG database management interface
+### RAG (Knowledge Bases)
+```
+GET    /api/rag/databases             # List RAG knowledge bases
+POST   /api/rag/databases             # Create RAG database
+GET    /api/rag/databases/:dbId       # Get database details
+PATCH  /api/rag/databases/:dbId       # Update database metadata
+DELETE /api/rag/databases/:dbId       # Delete database
+POST   /api/rag/databases/:dbId/documents      # Upload & index document
+DELETE /api/rag/databases/:dbId/documents/:sourceId  # Remove document
+GET    /api/rag/search                # Search RAG database
+GET    /api/rag/stats                 # Get RAG statistics
+```
 
-4. **Prompt Simulator** - Test how cards will be assembled by different frontends
-   - Backend: `apps/api/src/services/prompt-simulator.ts`
-   - Frontend: `apps/web/src/components/PromptSimulatorPanel.tsx`
-   - Profiles: Generic CCv3, Strict CCv3, CCv2-compat
-   - Token budget tracking with drop policies
+### Tools & Utilities
+```
+POST   /api/prompt-simulator/simulate # Simulate prompt assembly
+POST   /api/redundancy/analyze        # Find cross-field redundancy
+POST   /api/lore-trigger/test         # Test lorebook triggers
+```
 
-5. **Redundancy Killer** - Cross-field duplicate detection
-   - Backend: `apps/api/src/services/redundancy-killer.ts`
-   - Frontend: `apps/web/src/components/RedundancyPanel.tsx`
-   - Detects: exact duplicates, semantic overlap, repeated phrases
-   - Shows token savings and confidence scores
+## Database Schema
 
-6. **Lore Trigger Tester** - Test lorebook entry activation
-   - Backend: `apps/api/src/services/lore-trigger-tester.ts`
-   - Frontend: `apps/web/src/components/LoreTriggerPanel.tsx`
-   - Supports: AND/NOT logic, regex patterns, case sensitivity
-   - Real-time phrase testing with preview
+### Cards Table
+```sql
+CREATE TABLE cards (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  spec TEXT NOT NULL,        -- 'v2' or 'v3'
+  data TEXT NOT NULL,        -- JSON
+  tags TEXT,                 -- JSON array
+  original_image BLOB,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+```
 
-7. **Full CCv2/CCv3 Support** - Complete spec compliance
-8. **Token Counting** - Accurate per-field and total token counts
-9. **Version History** - Manual snapshots with restore capability
-10. **Import/Export** - JSON and PNG (with tEXt chunk embedding)
-   - Backend: `apps/api/src/routes/import-export.ts`
-   - Automatic normalization of non-standard spec values
-   - Handles legacy numeric position fields in lorebook entries
-   - Compatible with cards from CharacterHub, SillyTavern, and other editors
-   - PNG tEXt chunk extraction with multiple key support
-11. **Asset Management** - Image upload, crop, resize, convert
-12. **Dark Mode** - Modern, accessible UI
-13. **Markdown Rendering** - Enhanced markdown preview with extended syntax
-   - Frontend: `apps/web/src/components/PreviewPanel.tsx`
-   - Supports standard markdown (headings, lists, links, images, etc.)
-   - Extended image sizing syntax: `![alt](url =widthxheight)`
-   - Examples: `=100%x100%`, `=400x300`, `=50%`
-   - HTML sanitization via DOMPurify for security
+### Versions Table
+```sql
+CREATE TABLE card_versions (
+  id TEXT PRIMARY KEY,
+  card_id TEXT NOT NULL,
+  data TEXT NOT NULL,
+  message TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (card_id) REFERENCES cards(id)
+);
+```
 
-### 🚧 Planned Features
+## State Management (Zustand)
 
-- User-defined LLM presets (save custom operations)
-- Vector embeddings for RAG (currently uses keyword matching)
-- Rate limiting and quota management for LLM usage
-- Style Guard (format enforcement)
-- Alt-Greeting Workbench (variant generation)
-- Enhanced version timeline with field-aware diff
-- PNG export verifier (import works, export needs completion)
-- Command Palette (Ctrl/Cmd+K)
-- Keyboard-first editing
-- Health checks and backup system
+### CardStore (apps/web/src/store/card-store.ts)
+- **currentCard**: Active card being edited
+- **isDirty**: Unsaved changes flag
+- **isSaving**: Save operation in progress
+- **activeTab**: Current editor tab
+- **specMode**: 'v2' | 'v3' - Current spec for editing/export
+- **showV3Fields**: Toggle V3-specific field visibility
+- **tokenCounts**: Per-field token counts
+- **Actions**:
+  - setCurrentCard, updateCardData, updateCardMeta
+  - saveCard, loadCard, createNewCard
+  - importCard, exportCard
+  - createSnapshot, updateTokenCounts
+  - setSpecMode, toggleV3Fields
 
-See `IMPLEMENTATION_STATUS.md` for detailed status.
+### LLM Store (apps/web/src/store/llm-store.ts)
+- **provider**: Selected LLM provider
+- **model**: Selected model
+- **temperature**, **maxTokens**: Generation parameters
+- **ragDatabases**: Available RAG knowledge bases
+- **Actions**: setProvider, setModel, updateSettings, loadRAGDatabases
 
-### ⚠️ Known Limitations
+## File Locations Reference
 
-- **RAG Search**: Uses keyword matching instead of semantic embeddings (acceptable for MVP)
-- **No Rate Limiting**: LLM usage not tracked; could burn through API credits
-- **No Tests**: Test suite not yet implemented
-- **Streaming Error Recovery**: Broken SSE streams not gracefully handled
-- **Settings Validation**: No JSON schema validation on settings deserialization
+### Key Frontend Components (apps/web/src/components/)
+- `App.tsx` - Main application container
+- `Header.tsx` - Top navigation bar
+- `CardGrid.tsx` - Card list view with bulk operations
+- `CardEditor.tsx` - Main editor container
+- `EditorTabs.tsx` - Tab navigation + snapshot button
+- `EditPanel.tsx` - Standard edit mode with V2/V3 switcher
+- `FocusedEditor.tsx` - Focused mode with Milkdown + CodeMirror
+- `PreviewPanel.tsx` - Markdown preview with extended syntax
+- `DiffPanel.tsx` - Version history and diff view
+- `DiffViewer.tsx` - Live diff visualization component
+- `LorebookEditor.tsx` - Lorebook management (two-column)
+- `FieldEditor.tsx` - Reusable field component
+- `LLMAssistSidebar.tsx` - AI assistant with streaming
+- `TemplateSnippetPanel.tsx` - Templates/snippets management
+- `SettingsModal.tsx` - Settings UI (Providers + RAG)
+- `PromptSimulatorPanel.tsx` - Prompt simulation UI
+- `RedundancyPanel.tsx` - Redundancy detection UI (disabled)
+- `LoreTriggerPanel.tsx` - Lore trigger testing UI (disabled)
+
+### Key Backend Files (apps/api/src/)
+
+**Core:**
+- `app.ts` - Fastify app builder
+- `index.ts` - Server entry point
+
+**Routes (apps/api/src/routes/):**
+- `cards.ts` - Card CRUD operations
+- `import-export.ts` - Card import/export with format normalization
+- `tokenize.ts` - Token counting endpoints
+- `llm.ts` - LLM provider invocation and settings management
+- `rag.ts` - RAG knowledge base and document operations
+- `prompt-simulator.ts` - Prompt assembly simulation routes
+- `redundancy.ts` - Redundancy detection routes
+- `lore-trigger.ts` - Lore trigger testing routes
+
+**Services (apps/api/src/services/):**
+- `prompt-simulator.ts` - Prompt assembly simulation logic
+- `redundancy-killer.ts` - Cross-field duplicate detection
+- `lore-trigger-tester.ts` - Lorebook trigger testing
+
+**Utilities (apps/api/src/utils/):**
+- `settings.ts` - Secure settings storage and retrieval
+- `rag-store.ts` - File-based RAG vector storage
+- `llm-prompts.ts` - LLM prompt construction and presets
+- `tokenizer.ts` - Token counting utilities
+- `diff.ts` - Text diff computation
+- `png.ts` - PNG tEXt chunk extraction and embedding
+
+**Database (apps/api/src/db/):**
+- `repository.ts` - Database operations
+
+**Providers (apps/api/src/providers/):**
+- `openai.ts` - OpenAI Responses API and Chat Completions API
+- `anthropic.ts` - Anthropic Messages API (Claude)
+
+### Shared Packages
+- `packages/schemas/src/types.ts` - TypeScript types
+- `packages/schemas/src/schemas.ts` - JSON schemas (CCv2/CCv3)
+- `packages/schemas/src/validator.ts` - Validation logic
+- `packages/tokenizers/` - Tokenizer adapters (GPT-2-like, LLaMA-like)
+
+## Design System
+
+### Colors (Tailwind)
+- `dark-bg`: #0f172a (slate-900)
+- `dark-surface`: #1e293b (slate-800)
+- `dark-border`: #334155 (slate-700)
+- `dark-text`: #f1f5f9 (slate-100)
+- `dark-muted`: #94a3b8 (slate-400)
+
+### Component Classes
+- `.btn-primary` - Primary action button
+- `.btn-secondary` - Secondary action button
+- `.input-group` - Form field container
+- `.label` - Form label
+- `.chip` - Small badge/tag
+- `.card` - Card container
+
+## Recent Implementation Details
+
+### V2/V3 Mode Switcher
+- Location: `apps/web/src/components/EditPanel.tsx:151-172`
+- State: `apps/web/src/store/card-store.ts:25-26, 336-381`
+- Features:
+  - Toggle buttons in editor tab header
+  - Automatic data conversion on switch
+  - Field visibility control
+  - Spec markers on all fields
+
+### Bulk Selection (Card Grid)
+- Added: Bulk select and delete functionality
+- UI: Toggle button to show/hide bulk selection interface
+- Prevents UI clutter when not in use
+
+### Snapshot Button Repositioning
+- Moved from floating (`App.tsx`) to tabs row (`EditorTabs.tsx`)
+- Right-aligned in tab navigation
+- Popup positioned below button
+- No longer blocks other UI elements
+
+### Export Dropdown Fix
+- Changed from hover-based to click-based
+- State management for menu visibility
+- Click-outside-to-close functionality
+- Auto-close on option selection
+
+### Template Button Additions
+- Added to: system_prompt, post_history_instructions, creator_notes
+- Updated FocusField type in schemas
+- Template panel supports all major text fields
+
+### New Card Button Fix
+- Made `createNewCard()` async
+- Immediately saves to API to get real ID
+- Prevents navigation to cards with empty IDs
+
+### PNG Import Normalization
+- Automatic normalization of non-standard spec values
+- Handles legacy numeric position fields in lorebook entries
+- Missing extensions fields auto-added
+- Null character_book values handled
+- Location: `apps/api/src/routes/import-export.ts`
+
+### Enhanced Markdown Preview
+- Custom marked extension for image sizing
+- Supports: `![alt](url =widthxheight)`
+- Examples: `=100%x100%`, `=400x300`, `=50%`
+- Also supports angled brackets: `![alt](<url> =100%x100%)`
+- Location: `apps/web/src/components/PreviewPanel.tsx`
 
 ## Development Workflow
 
@@ -214,6 +474,7 @@ npm run build
 # Build specific workspace
 npm run build:api
 npm run build:web
+npm run build:schemas
 
 # Lint all code
 npm run lint
@@ -224,6 +485,29 @@ npm run type-check
 # Clean all build artifacts and dependencies
 npm run clean
 ```
+
+### Testing
+
+```bash
+cd apps/api
+
+# Run tests
+npm test           # Run once
+npm run test:watch # Watch mode
+npm run test:ui    # UI mode
+```
+
+**Test Coverage:**
+- Card CRUD operations
+- V2 and V3 validation
+- Import/Export (JSON, PNG)
+- Tokenization
+- Lorebook validation
+- Alternate greetings
+
+**Test Files:**
+- `apps/api/src/__tests__/api-endpoints.test.ts` - API integration tests
+- `apps/api/src/__tests__/card-validation.test.ts` - Schema validation tests
 
 ### Docker Deployment
 
@@ -243,7 +527,7 @@ docker run -p 3456:3456 -p 8765:8765 \
   card-architect
 ```
 
-## Important Files & Directories
+## Configuration Files
 
 ### Configuration
 - `package.json` - Root workspace configuration
@@ -256,158 +540,47 @@ docker run -p 3456:3456 -p 8765:8765 \
 
 ### Documentation
 - `README.md` - User-facing documentation
-- `IMPLEMENTATION_STATUS.md` - Feature status and roadmap
-- `LLM_ASSIST_V2_DOCUMENTATION.md` - LLM integration docs
+- `IMPLEMENTATION_STATUS.md` - Feature status and roadmap (DELETED in current branch)
+- `LLM_ASSIST_V2_DOCUMENTATION.md` - LLM integration docs (DELETED in current branch)
+- `CCV3.md` - CCv3 specification notes (DELETED in current branch)
+- `CHARX_CARDS.md` - CHARX format notes (DELETED in current branch)
+- `CCv3_ASSETS_CHARX_IMPLEMENTATION_PLAN.md` - Implementation plan (DELETED in current branch)
 - `CONTRIBUTING.md` - Contribution guidelines
 
-### Backend Services (apps/api/src/)
-**Routes (apps/api/src/routes/):**
-- `import-export.ts` - Card import/export with format normalization
-- `llm.ts` - LLM provider invocation and settings management
-- `rag.ts` - RAG knowledge base and document operations
-- `prompt-simulator.ts` - Prompt assembly simulation routes
-- `redundancy.ts` - Redundancy detection routes
-- `lore-trigger.ts` - Lore trigger testing routes
-- `cards.ts` - Card CRUD operations
-- `tokenize.ts` - Token counting endpoints
+## Character Card Formats
 
-**Services (apps/api/src/services/):**
-- `prompt-simulator.ts` - Prompt assembly simulation logic
-- `redundancy-killer.ts` - Cross-field duplicate detection
-- `lore-trigger-tester.ts` - Lorebook trigger testing
-
-**Utilities (apps/api/src/utils/):**
-- `settings.ts` - Secure settings storage and retrieval
-- `rag-store.ts` - File-based RAG vector storage
-- `llm-prompts.ts` - LLM prompt construction and presets
-- `tokenizer.ts` - Token counting utilities
-- `diff.ts` - Text diff computation
-- `png.ts` - PNG tEXt chunk extraction and embedding
-
-**Providers (apps/api/src/providers/):**
-- `openai.ts` - OpenAI Responses API and Chat Completions API
-- `anthropic.ts` - Anthropic Messages API (Claude)
-
-### Frontend Components (apps/web/src/components/)
-- `CardEditor.tsx` - Main card editing interface
-- `LorebookEditor.tsx` - Lorebook entry management
-- `LLMAssistSidebar.tsx` - AI-powered field editing sidebar
-- `SettingsModal.tsx` - Settings management UI (Providers + RAG)
-- `PromptSimulatorPanel.tsx` - Prompt simulation UI
-- `RedundancyPanel.tsx` - Redundancy detection UI
-- `LoreTriggerPanel.tsx` - Lore trigger testing UI
-- `DiffPanel.tsx` - Version history and diff view
-- `DiffViewer.tsx` - Live diff visualization component
-- `FocusedEditor.tsx` - Dedicated full-screen editor mode
-- `EditPanel.tsx` - Field editing panel with AI integration
-- `EditorTabs.tsx` - Tab navigation for editor panels
-
-### Frontend State (apps/web/src/store/)
-- `card-store.ts` - Card state, field edits, versions
-- `llm-store.ts` - LLM settings, providers, RAG databases
-
-### Shared Packages
-- `packages/schemas/` - TypeScript types and JSON schemas for CCv2/CCv3
-- `packages/tokenizers/` - Tokenizer adapters (GPT-2-like, LLaMA-like)
-
-## Working with Character Cards
-
-### Card Formats
-
-**CCv2** - Character Card v2 specification
+### CCv2 (Character Card v2)
 - Basic fields: name, description, personality, scenario, first_mes
 - Extensions for lorebooks, alternate greetings
+- Spec value: `chara_card_v2`
 
-**CCv3** - Character Card v3 specification (superset of v2)
+### CCv3 (Character Card v3)
 - All CCv2 fields plus enhanced lorebook
 - Better structured character books with priority, position, logic
+- Required fields: creator, character_version, tags
+- Spec value: `chara_card_v3`
 
-### Token Counting
-- Uses approximate BPE/SentencePiece tokenizers
-- Per-field token counts displayed as blue chips
-- Total token count in header
-- Useful for staying within model context limits
-
-### Lorebook Structure
-Each lorebook entry supports:
+### Lorebook Entry Structure
 - **Keywords** - Primary trigger words (comma-separated)
 - **Secondary Keywords** - For selective matching
 - **Content** - The lorebook entry text
 - **Priority** - Insertion priority (higher = inserted first)
 - **Insertion Order** - Order among same-priority entries
-- **Position** - Before or after character definition
+- **Position** - before_char | after_char
 - **Probability** - 0-100% chance of insertion
 - **Selective Logic** - AND (all match) or NOT (none match)
 - **Constant** - Always insert regardless of triggers
 - **Case Sensitive** - Match keywords with exact case
-
-## Validation System
-
-The system performs two types of validation:
-
-1. **Schema Validation** - Ensures structure matches CCv2/CCv3 specs
-2. **Semantic Validation** - Checks for:
-   - Empty required fields
-   - Placeholder text ({{char}}, {{user}})
-   - Redundant information across fields
-   - Invalid lorebook entries
-   - Size warnings (2MB JSON, 2-4MB PNG)
-
-Validation errors appear inline with severity levels (error, warning, info).
-
-## Using LLM Features
-
-### Setting Up LLM Providers
-
-1. **Open Settings Modal** - Click the ⚙️ icon in the header
-2. **Add Provider** - In the Providers tab, click "Add Provider"
-3. **Configure Provider:**
-   - **Label**: Friendly name (e.g., "My GPT-4")
-   - **Type**: `openai` or `anthropic`
-   - **Model**: Model name (e.g., `gpt-4`, `claude-3-5-sonnet-20241022`)
-   - **API Key**: Your API key from the provider
-   - **Base URL**: Custom endpoint (optional, for proxies)
-4. **Test Connection** - Click "Test" to verify configuration
-5. **Save** - Settings are saved to `~/.card-architect/config.json`
-
-**Security Note:** API keys are stored with 600 permissions (owner read/write only) and never logged.
-
-### Using AI Assist
-
-1. **Open Field Editor** - Edit any card field
-2. **Click AI Button** - Opens LLM Assist sidebar
-3. **Select Provider** - Choose configured provider
-4. **Choose Operation:**
-   - **Quick Presets**: tighten, convert-structured, convert-prose, enforce-style, generate-alts, generate-lore
-   - **Custom Instruction**: Write your own editing instruction
-5. **Optional: Enable RAG** - Select knowledge base for context
-6. **Run** - Streams result with live diff viewer
-7. **Apply** - Choose Replace or Append to apply changes
-
-### Setting Up RAG Knowledge Bases
-
-1. **Open Settings Modal** - ⚙️ icon → Knowledge tab
-2. **Create Database** - Click "Create Knowledge Base"
-   - **Label**: Name (e.g., "Character Writing Guide")
-   - **Description**: What it contains
-   - **Tags**: Searchable tags
-3. **Upload Documents:**
-   - Supports: PDF, JSON, Markdown, HTML, plain text
-   - Documents are chunked (1200 chars, 200 overlap)
-   - Indexed with token counting
-4. **Use in AI Assist** - Select database when using LLM features
-   - RAG searches for relevant snippets
-   - Snippets added to LLM context automatically
-
-**Storage Location:** `~/.card-architect/rag-index/`
+- **Depth** - Scan depth override
+- **Extensions** - Custom metadata
 
 ## Common Tasks
 
 ### Adding a New API Endpoint
-1. Create service in `apps/api/src/services/`
+1. Create service in `apps/api/src/services/` (if needed)
 2. Create route in `apps/api/src/routes/`
 3. Register route in `apps/api/src/index.ts`
-4. Update TypeScript types if needed
+4. Update TypeScript types in `packages/schemas/` if needed
 
 ### Adding a New Frontend Component
 1. Create component in `apps/web/src/components/`
@@ -416,7 +589,7 @@ Validation errors appear inline with severity levels (error, warning, info).
 4. Add API calls using fetch with proper error handling
 
 ### Adding a New Validation Rule
-1. Update schema in `packages/schemas/`
+1. Update schema in `packages/schemas/src/schemas.ts`
 2. Add validation logic in `apps/api/src/services/validation.service.ts`
 3. Update frontend to display new validation messages
 
@@ -470,13 +643,6 @@ The system is compatible with cards exported from:
 
 All formats are normalized during import to match CCv2/CCv3 specifications.
 
-## Performance Considerations
-
-- Frontend panels use debounced API calls (500ms) to reduce server load
-- Token counting uses approximate tokenizers for speed
-- Large cards (>10k tokens) may need optimization
-- Consider caching redundancy analysis results for repeated scans
-
 ## Security Notes
 
 ### Current Implementation
@@ -499,6 +665,50 @@ All formats are normalized during import to match CCv2/CCv3 specifications.
 - Add Content Security Policy headers
 - Add request/response size limits
 - Implement token usage tracking and quota management
+
+## Performance Considerations
+
+- Frontend panels use debounced API calls (500ms) to reduce server load
+- Token counting uses approximate tokenizers for speed
+- Large cards (>10k tokens) may need optimization
+- Consider caching redundancy analysis results for repeated scans
+- IndexedDB for local draft storage reduces API calls
+
+## Known Limitations
+
+### Features Disabled in UI
+- **Redundancy Detection**: Backend implemented, UI disabled (available for future use)
+- **Lore Trigger Tester**: Backend implemented, UI disabled (available for future use)
+
+### Technical Limitations
+- **RAG Search**: Uses keyword matching instead of semantic embeddings (acceptable for MVP)
+- **No Rate Limiting**: LLM usage not tracked; could burn through API credits
+- **Streaming Error Recovery**: Broken SSE streams not gracefully handled
+- **Settings Validation**: No JSON schema validation on settings deserialization
+- **No Multi-user Support**: Single-user application design
+- **No Cloud Sync**: Local IndexedDB and SQLite only
+
+## Future Considerations
+
+### Planned Features
+- User-defined LLM presets (save custom operations)
+- Vector embeddings for RAG (semantic search)
+- Rate limiting and quota management for LLM usage
+- Style Guard (format enforcement)
+- Alt-Greeting Workbench (variant generation)
+- Enhanced version timeline with field-aware diff
+- PNG export verifier (import works, export needs completion)
+- Command Palette (Ctrl/Cmd+K)
+- Keyboard-first editing
+- Health checks and backup system
+
+### UI Improvements
+- Re-enable redundancy detection panel
+- Re-enable lore trigger tester panel
+- Mobile responsive improvements
+- Batch operations on multiple cards
+- Collaboration features
+- Cloud storage integration
 
 ## Useful Context
 
