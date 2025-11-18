@@ -7,6 +7,7 @@ import { useLLMStore } from '../store/llm-store';
 import type { ProviderConfig, ProviderKind, OpenAIMode, UserPreset, CreatePresetRequest } from '@card-architect/schemas';
 import { TemplateSnippetPanel } from './TemplateSnippetPanel';
 import { api } from '../lib/api';
+import { SearchableSelect } from './SearchableSelect';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -33,12 +34,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setActiveRagDatabaseId,
     uploadRagDocument,
     removeRagDocument,
+    fetchModelsForProvider,
+    getCachedModels,
   } = useLLMStore();
 
   const [activeTab, setActiveTab] = useState<'providers' | 'rag' | 'templates' | 'presets'>('providers');
   const [editingProvider, setEditingProvider] = useState<Partial<ProviderConfig> | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { success: boolean; error?: string }>>({});
-  const [modelOptions, setModelOptions] = useState<string[]>([]);
   const [modelFetchError, setModelFetchError] = useState<string | null>(null);
   const [modelFetchLoading, setModelFetchLoading] = useState(false);
   const [selectedDbId, setSelectedDbId] = useState<string | null>(null);
@@ -69,7 +71,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   }, [isOpen, loadSettings]);
 
   useEffect(() => {
-    setModelOptions([]);
     setModelFetchError(null);
     setModelFetchLoading(false);
   }, [editingProvider?.id]);
@@ -675,114 +676,63 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                         <div>
                           <label className="block text-sm font-medium mb-1">Default Model</label>
-                          <div className="flex flex-col gap-2">
-                            <div className="flex gap-2">
-                              <input
-                                type="text"
+                          <div className="flex gap-2">
+                            {editingProvider.id && getCachedModels(editingProvider.id).length > 0 ? (
+                              <SearchableSelect
+                                options={getCachedModels(editingProvider.id)}
                                 value={editingProvider.defaultModel || ''}
-                                onChange={(e) =>
+                                onChange={(value) =>
                                   setEditingProvider({
                                     ...editingProvider,
-                                    defaultModel: e.target.value,
+                                    defaultModel: value,
                                   })
                                 }
-                                placeholder="gpt-4, claude-3-5-sonnet-20241022, etc."
-                                className="flex-1 bg-dark-card border border-dark-border rounded px-3 py-2"
+                                placeholder="Search models..."
+                                className="flex-1"
                               />
-                              <button
-                                onClick={async () => {
-                                  if (!editingProvider.baseURL || !editingProvider.apiKey) {
-                                    alert('Please enter Base URL and API Key first');
-                                    return;
-                                  }
-
-                                  setModelFetchLoading(true);
-                                  setModelFetchError(null);
-                                  setModelOptions([]);
-
-                                  try {
-                                    let headers: Record<string, string> = {};
-                                    let url = `${editingProvider.baseURL.replace(/\/$/, '')}/v1/models`;
-
-                                    if (editingProvider.kind === 'anthropic') {
-                                      headers = {
-                                        'x-api-key': editingProvider.apiKey,
-                                        'anthropic-version': editingProvider.anthropicVersion || '2023-06-01',
-                                      };
-                                    } else {
-                                      headers = {
-                                        Authorization: `Bearer ${editingProvider.apiKey}`,
-                                      };
-                                    }
-
-                                    const response = await fetch(url, { headers });
-                                    if (!response.ok) {
-                                      throw new Error(`Failed to fetch models (${response.status})`);
-                                    }
-
-                                    const data = await response.json();
-                                    const models =
-                                      Array.isArray(data.data) && data.data.length > 0
-                                        ? data.data
-                                            .map((m: any) => m.id || m.model || m.name)
-                                            .filter(Boolean)
-                                        : [];
-
-                                    if (models.length === 0) {
-                                      setModelFetchError('No models returned by provider.');
-                                    } else {
-                                      setModelOptions(models);
-                                      if (!editingProvider.defaultModel) {
-                                        setEditingProvider({
-                                          ...editingProvider,
-                                          defaultModel: models[0],
-                                        });
-                                      }
-                                    }
-                                  } catch (err) {
-                                    setModelFetchError(
-                                      err instanceof Error ? err.message : 'Failed to fetch models.'
-                                    );
-                                  } finally {
-                                    setModelFetchLoading(false);
-                                  }
-                                }}
-                                className="px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors whitespace-nowrap disabled:opacity-60"
-                                title="Fetch available models from provider"
-                                disabled={modelFetchLoading}
-                              >
-                                {modelFetchLoading ? 'Fetching…' : 'Fetch Models'}
-                              </button>
-                            </div>
-
-                            {modelOptions.length > 0 && (
-                              <div className="space-y-1">
-                                <label className="block text-xs text-dark-muted">
-                                  Select from fetched models
-                                </label>
-                                <select
-                                  value={editingProvider.defaultModel || modelOptions[0]}
-                                  onChange={(e) =>
-                                    setEditingProvider({
-                                      ...editingProvider,
-                                      defaultModel: e.target.value,
-                                    })
-                                  }
-                                  className="w-full bg-dark-card border border-dark-border rounded px-3 py-2 text-sm"
-                                >
-                                  {modelOptions.map((modelId) => (
-                                    <option key={modelId} value={modelId}>
-                                      {modelId}
-                                    </option>
-                                  ))}
-                                </select>
+                            ) : (
+                              <div className="flex-1 bg-dark-card border border-dark-border rounded px-3 py-2 text-dark-muted">
+                                Click "Fetch Models" to load available models
                               </div>
                             )}
+                            <button
+                              onClick={async () => {
+                                if (!editingProvider.id) {
+                                  alert('Please save provider first');
+                                  return;
+                                }
 
-                            {modelFetchError && (
-                              <p className="text-xs text-red-300">{modelFetchError}</p>
-                            )}
+                                if (!editingProvider.baseURL || !editingProvider.apiKey) {
+                                  alert('Please enter Base URL and API Key first');
+                                  return;
+                                }
+
+                                setModelFetchLoading(true);
+                                setModelFetchError(null);
+
+                                const result = await fetchModelsForProvider(editingProvider.id);
+                                setModelFetchLoading(false);
+
+                                if (!result.success) {
+                                  setModelFetchError(result.error || 'Failed to fetch models');
+                                } else if (!editingProvider.defaultModel && result.models && result.models.length > 0) {
+                                  // Auto-select first model if none selected
+                                  setEditingProvider({
+                                    ...editingProvider,
+                                    defaultModel: result.models[0],
+                                  });
+                                }
+                              }}
+                              className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors whitespace-nowrap disabled:opacity-60"
+                              title="Fetch available models from provider"
+                              disabled={modelFetchLoading}
+                            >
+                              {modelFetchLoading ? 'Fetching…' : 'Fetch Models'}
+                            </button>
                           </div>
+                          {modelFetchError && (
+                            <p className="text-xs text-red-300 mt-1">{modelFetchError}</p>
+                          )}
                         </div>
 
                     <div className="grid grid-cols-2 gap-4">

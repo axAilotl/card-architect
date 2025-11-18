@@ -41,6 +41,7 @@ export function LLMAssistSidebar({
   const [instruction, setInstruction] = useState('');
   const [presets, setPresets] = useState<UserPreset[]>([]);
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
+  const [showCustomInstruction, setShowCustomInstruction] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<string>('');
   const [model, setModel] = useState('');
   const [temperature, setTemperature] = useState(0.7);
@@ -233,7 +234,7 @@ export function LLMAssistSidebar({
 
   return (
     <div
-      className="absolute top-0 right-0 h-full bg-slate-800 border-l border-dark-border shadow-2xl z-40 flex flex-col w-[500px]"
+      className="absolute top-0 right-0 bottom-0 bg-slate-800 border-l border-dark-border shadow-2xl z-40 flex flex-col w-[500px]"
     >
       {/* Header */}
       <div className="p-4 border-b border-dark-border flex justify-between items-center">
@@ -270,44 +271,7 @@ export function LLMAssistSidebar({
           </select>
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="block text-sm font-medium mb-1">Model</label>
-            <input
-              type="text"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className="w-full bg-dark-bg border border-dark-border rounded px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Temp</label>
-            <input
-              type="number"
-              step="0.1"
-              min="0"
-              max="2"
-              value={temperature}
-              onChange={(e) => setTemperature(parseFloat(e.target.value))}
-              className="w-full bg-dark-bg border border-dark-border rounded px-3 py-2 text-sm"
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="streaming"
-            checked={streaming}
-            onChange={(e) => setStreaming(e.target.checked)}
-            className="rounded"
-          />
-          <label htmlFor="streaming" className="text-sm">
-            Stream response
-          </label>
-        </div>
-
-        <div className="pt-3 border-t border-dark-border">
+        <div>
           <div className="flex items-center justify-between">
             <label className="text-sm font-medium">Knowledge Base</label>
             <span className="text-xs text-dark-muted">
@@ -388,7 +352,7 @@ export function LLMAssistSidebar({
       )}
 
       {/* Presets - Fixed height scrollable */}
-      <div className="border-b border-dark-border flex flex-col" style={{ height: '200px' }}>
+      <div className="border-b border-dark-border flex flex-col" style={{ height: '400px' }}>
         <div className="p-4 pb-2">
           <label className="block text-sm font-medium mb-2">Presets</label>
         </div>
@@ -432,27 +396,48 @@ export function LLMAssistSidebar({
         </div>
       </div>
 
-      {/* Custom Instruction - Fixed height */}
-      <div className="p-4 border-b border-dark-border flex flex-col" style={{ minHeight: '200px' }}>
-        <label className="block text-sm font-medium mb-2">
-          Custom Instruction {selectedPresetId && '(overrides preset)'}
-        </label>
-        <textarea
-          value={instruction}
-          onChange={(e) => {
-            setInstruction(e.target.value);
-            if (e.target.value) {
-              setSelectedPresetId(null);
-            }
-          }}
-          placeholder="Describe what you want to do..."
-          className="flex-1 w-full bg-dark-bg border border-dark-border rounded px-3 py-2 text-sm resize-none min-h-[120px]"
-        />
+      {/* Custom Instruction - Collapsible */}
+      <div className="border-b border-dark-border">
+        <button
+          onClick={() => setShowCustomInstruction(!showCustomInstruction)}
+          className="w-full p-4 flex items-center justify-between text-left hover:bg-slate-700/30 transition-colors"
+        >
+          <span className="text-sm font-medium">
+            Custom Instruction {selectedPresetId && '(overrides preset)'}
+          </span>
+          <svg
+            className={`w-4 h-4 transition-transform ${showCustomInstruction ? 'rotate-180' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
 
+        {showCustomInstruction && (
+          <div className="p-4 pt-0 flex flex-col gap-2">
+            <textarea
+              value={instruction}
+              onChange={(e) => {
+                setInstruction(e.target.value);
+                if (e.target.value) {
+                  setSelectedPresetId(null);
+                }
+              }}
+              placeholder="Describe what you want to do..."
+              className="w-full bg-dark-bg border border-dark-border rounded px-3 py-2 text-sm resize-none h-32"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Run Button - Always visible */}
+      <div className="p-4 border-b border-dark-border">
         <button
           onClick={handleRun}
           disabled={isProcessing || (!instruction && !selectedPresetId)}
-          className="mt-2 w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {isProcessing ? 'Processing...' : 'Run'}
         </button>

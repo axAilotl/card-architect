@@ -6,21 +6,6 @@ interface HeaderProps {
   onBack: () => void;
 }
 
-// Simple circular favicon icon
-function FaviconIcon() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="12" cy="12" r="10" fill="url(#gradient)" />
-      <path d="M8 10 L12 14 L16 10" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      <defs>
-        <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#3b82f6" />
-          <stop offset="100%" stopColor="#8b5cf6" />
-        </linearGradient>
-      </defs>
-    </svg>
-  );
-}
 
 export function Header({ onBack }: HeaderProps) {
   const { currentCard, isSaving, createNewCard } = useCardStore();
@@ -44,6 +29,16 @@ export function Header({ onBack }: HeaderProps) {
     const data = extractCardData(currentCard);
     return data.name || 'Untitled';
   };
+
+  // Get character avatar URL - use thumbnail endpoint for fast loading
+  const getAvatarUrl = () => {
+    if (!currentCard?.meta?.id) return null;
+    const timestamp = currentCard.meta.updatedAt || '';
+    return `/api/cards/${currentCard.meta.id}/thumbnail?size=96&t=${timestamp}`;
+  };
+
+  const hasAvatar = currentCard?.meta?.id;
+  const avatarUrl = getAvatarUrl();
 
   const handleImport = async () => {
     const input = document.createElement('input');
@@ -71,9 +66,21 @@ export function Header({ onBack }: HeaderProps) {
         </button>
 
         <div className="flex items-center gap-2">
-          <FaviconIcon />
+          <img src="/logo.png" alt="Card Architect" className="w-6 h-6" />
           <h1 className="text-lg font-semibold text-dark-muted">Card Architect</h1>
         </div>
+
+        {avatarUrl && (
+          <img
+            src={avatarUrl}
+            alt={getCharacterName()}
+            className="w-24 h-24 rounded-full object-cover border-2 border-dark-border bg-slate-700"
+            onError={(e) => {
+              // Hide on error - card might not have an image
+              (e.target as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        )}
 
         {currentCard && (
           <span className="text-2xl font-bold">
