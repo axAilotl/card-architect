@@ -361,13 +361,31 @@ export async function importExportRoutes(fastify: FastifyInstance) {
       storageData = cardData as (CCv2Data | CCv3Data);
     }
 
+    // Extract tags from card data
+    let tags: string[] = [];
+    try {
+      if (spec === 'v3' && 'data' in storageData && storageData.data && typeof storageData.data === 'object') {
+        const extracted = (storageData.data as any).tags;
+        tags = Array.isArray(extracted) ? extracted : [];
+      } else if (spec === 'v2' && 'data' in storageData && storageData.data && typeof storageData.data === 'object') {
+        const extracted = (storageData.data as any).tags;
+        tags = Array.isArray(extracted) ? extracted : [];
+      } else if (spec === 'v2' && 'tags' in storageData) {
+        const extracted = (storageData as any).tags;
+        tags = Array.isArray(extracted) ? extracted : [];
+      }
+    } catch (err) {
+      fastify.log.warn({ error: err }, 'Failed to extract tags, using empty array');
+      tags = [];
+    }
+
     // Create card
     const card = cardRepo.create({
       data: storageData,
       meta: {
         name,
         spec,
-        tags: [],
+        tags,
       },
     }, originalImage);
 
@@ -733,6 +751,34 @@ export async function importExportRoutes(fastify: FastifyInstance) {
     reply.header('Cache-Control', 'public, max-age=3600');
     return image;
   });
+
+  // Get card thumbnail (optimized for UI display)
+  fastify.get<{ Params: { id: string }; Querystring: { size?: string } }>(
+    '/cards/:id/thumbnail',
+    async (request, reply) => {
+      const image = cardRepo.getOriginalImage(request.params.id);
+      if (!image) {
+        reply.code(404);
+        return { error: 'No image found for this card' };
+      }
+
+      // Default to 96px for retina displays (48px displayed at 2x)
+      const size = parseInt(request.query.size || '96', 10);
+
+      // Create square thumbnail with top-center crop
+      const thumbnail = await sharp(image)
+        .resize(size, size, {
+          fit: 'cover',
+          position: 'top',
+        })
+        .png({ quality: 90 })
+        .toBuffer();
+
+      reply.header('Content-Type', 'image/png');
+      reply.header('Cache-Control', 'public, max-age=3600');
+      return thumbnail;
+    }
+  );
 
   // Update card image
   fastify.post<{ Params: { id: string } }>('/cards/:id/image', async (request, reply) => {

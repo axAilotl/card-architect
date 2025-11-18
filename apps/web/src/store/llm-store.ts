@@ -21,6 +21,8 @@ interface LLMStore {
   ragDatabaseDetails: Record<string, RagDatabaseDetail>;
   ragIsLoading: boolean;
   ragError: string | null;
+  // Model cache: providerId -> sorted model list
+  modelCache: Record<string, string[]>;
 
   // Actions
   loadSettings: () => Promise<void>;
@@ -47,6 +49,12 @@ interface LLMStore {
     dbId: string,
     sourceId: string
   ) => Promise<{ success: boolean; error?: string }>;
+  fetchModelsForProvider: (providerId: string) => Promise<{
+    success: boolean;
+    models?: string[];
+    error?: string;
+  }>;
+  getCachedModels: (providerId: string) => string[];
 }
 
 export const useLLMStore = create<LLMStore>((set, get) => ({
@@ -70,6 +78,7 @@ export const useLLMStore = create<LLMStore>((set, get) => ({
   ragDatabaseDetails: {},
   ragIsLoading: false,
   ragError: null,
+  modelCache: {},
 
   // Load settings from API
   loadSettings: async () => {
@@ -305,5 +314,70 @@ export const useLLMStore = create<LLMStore>((set, get) => ({
     await get().loadRagDatabaseDetail(dbId);
     await get().loadRagDatabases();
     return { success: true };
+  },
+
+  // Fetch models for a provider and cache them
+  fetchModelsForProvider: async (providerId) => {
+    const { settings } = get();
+    const provider = settings.providers.find((p) => p.id === providerId);
+
+    if (!provider) {
+      return { success: false, error: 'Provider not found' };
+    }
+
+    if (!provider.baseURL || !provider.apiKey) {
+      return { success: false, error: 'Provider missing baseURL or apiKey' };
+    }
+
+    try {
+      let headers: Record<string, string> = {};
+      let url = `${provider.baseURL.replace(/\/$/, '')}/v1/models`;
+
+      if (provider.kind === 'anthropic') {
+        headers = {
+          'x-api-key': provider.apiKey,
+          'anthropic-version': provider.anthropicVersion || '2023-06-01',
+        };
+      } else {
+        headers = {
+          Authorization: `Bearer ${provider.apiKey}`,
+        };
+      }
+
+      const response = await fetch(url, { headers });
+      if (!response.ok) {
+        throw new Error(`Failed to fetch models (${response.status})`);
+      }
+
+      const data = await response.json();
+      const models =
+        Array.isArray(data.data) && data.data.length > 0
+          ? data.data
+              .map((m: any) => m.id || m.model || m.name)
+              .filter(Boolean)
+              .sort((a: string, b: string) => a.localeCompare(b)) // Sort alphabetically
+          : [];
+
+      if (models.length === 0) {
+        return { success: false, error: 'No models returned by provider' };
+      }
+
+      // Cache the sorted models
+      set((state) => ({
+        modelCache: { ...state.modelCache, [providerId]: models },
+      }));
+
+      return { success: true, models };
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Failed to fetch models',
+      };
+    }
+  },
+
+  // Get cached models for a provider (returns empty array if not cached)
+  getCachedModels: (providerId) => {
+    return get().modelCache[providerId] || [];
   },
 }));

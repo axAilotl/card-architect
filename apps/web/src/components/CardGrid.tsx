@@ -310,7 +310,10 @@ export function CardGrid({ onCardClick }: CardGridProps) {
       <div className="bg-dark-surface border-b border-dark-border">
         {/* Main Row */}
         <div className="p-4 flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Card Architect</h1>
+          <div className="flex items-center gap-3">
+            <img src="/logo.png" alt="Card Architect" className="w-24 h-24" />
+            <h1 className="text-2xl font-bold">Card Architect</h1>
+          </div>
           <div className="flex gap-2">
             <button
               onClick={() => setShowSettings(true)}

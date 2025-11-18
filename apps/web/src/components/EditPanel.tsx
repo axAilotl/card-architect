@@ -169,12 +169,11 @@ export function EditPanel() {
     handleFieldChange(templatesField, newValue);
   };
 
-  const ASSIST_WIDTH_PX = 420;
+  const ASSIST_WIDTH_PX = 500;
   const ASSIST_GAP_PX = 24;
   const contentStyle = llmAssistOpen
     ? {
         width: `calc(100% - ${ASSIST_WIDTH_PX + ASSIST_GAP_PX}px)`,
-        marginLeft: '0px',
         marginRight: `${ASSIST_GAP_PX}px`,
       }
     : undefined;
@@ -244,13 +243,14 @@ export function EditPanel() {
         </div>
       </div>
 
-      {/* Tab Content */}
-      <div
-        className={`flex-1 overflow-y-auto w-full p-6 space-y-6 transition-all duration-300 relative ${
-          llmAssistOpen ? '' : 'max-w-5xl mx-auto'
-        }`}
-        style={contentStyle}
-      >
+      {/* Tab Content - wrapper for positioning */}
+      <div className="flex-1 relative flex">
+        <div
+          className={`overflow-y-auto p-6 space-y-6 transition-all duration-300 ${
+            llmAssistOpen ? 'w-full' : 'max-w-[66%] w-full mx-auto'
+          }`}
+          style={contentStyle}
+        >
         {/* Basic Info Tab */}
         {activeTab === 'basic' && (
           <div className="space-y-6">
@@ -270,7 +270,7 @@ export function EditPanel() {
               onChange={(v) => handleFieldChange('description', v)}
               tokenCount={tokenCounts.description}
               multiline
-              rows={6}
+              rows={20}
               fieldName="description"
               onOpenLLMAssist={handleOpenLLMAssist}
               onOpenTemplates={handleOpenTemplates}
@@ -283,7 +283,7 @@ export function EditPanel() {
               onChange={(v) => handleFieldChange('personality', v)}
               tokenCount={tokenCounts.personality}
               multiline
-              rows={6}
+              rows={12}
               fieldName="personality"
               onOpenLLMAssist={handleOpenLLMAssist}
               onOpenTemplates={handleOpenTemplates}
@@ -296,7 +296,7 @@ export function EditPanel() {
               onChange={(v) => handleFieldChange('scenario', v)}
               tokenCount={tokenCounts.scenario}
               multiline
-              rows={6}
+              rows={12}
               fieldName="scenario"
               onOpenLLMAssist={handleOpenLLMAssist}
               onOpenTemplates={handleOpenTemplates}
@@ -431,7 +431,7 @@ export function EditPanel() {
               onChange={(v) => handleFieldChange('first_mes', v)}
               tokenCount={tokenCounts.first_mes}
               multiline
-              rows={6}
+              rows={12}
               fieldName="first_mes"
               onOpenLLMAssist={handleOpenLLMAssist}
               onOpenTemplates={handleOpenTemplates}
@@ -480,7 +480,7 @@ export function EditPanel() {
                       updated[index] = e.target.value;
                       handleFieldChange('alternate_greetings', updated as any);
                     }}
-                    rows={3}
+                    rows={5}
                     className="w-full"
                   />
                 </div>
@@ -879,8 +879,9 @@ export function EditPanel() {
         {activeTab === 'lorebook' && (
           <LorebookEditor />
         )}
+        </div>
 
-        {/* LLM Assist Sidebar - positioned within content area */}
+        {/* LLM Assist Sidebar - positioned within wrapper */}
         {llmAssistOpen && (
           <LLMAssistSidebar
             isOpen={llmAssistOpen}
