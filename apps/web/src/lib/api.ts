@@ -148,6 +148,13 @@ class ApiClient {
     return { data };
   }
 
+  async importCardFromURL(url: string) {
+    return this.request<{ card: Card; warnings?: string[]; source: string }>('/import-url', {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    });
+  }
+
   async exportCard(cardId: string, format: 'json' | 'png' | 'charx') {
     const response = await fetch(`${API_BASE}/cards/${cardId}/export?format=${format}`);
 

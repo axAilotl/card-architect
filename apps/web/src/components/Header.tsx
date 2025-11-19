@@ -12,6 +12,7 @@ export function Header({ onBack }: HeaderProps) {
   const tokenCounts = useCardStore((state) => state.tokenCounts);
   const [showSettings, setShowSettings] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showImportMenu, setShowImportMenu] = useState(false);
 
   // Calculate permanent tokens (name + description + personality + scenario)
   const getPermanentTokens = () => {
@@ -37,10 +38,10 @@ export function Header({ onBack }: HeaderProps) {
     return `/api/cards/${currentCard.meta.id}/thumbnail?size=96&t=${timestamp}`;
   };
 
-  const hasAvatar = currentCard?.meta?.id;
   const avatarUrl = getAvatarUrl();
 
-  const handleImport = async () => {
+  const handleImportFile = async () => {
+    setShowImportMenu(false);
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json,.png,.charx';
@@ -51,6 +52,14 @@ export function Header({ onBack }: HeaderProps) {
       }
     };
     input.click();
+  };
+
+  const handleImportURL = async () => {
+    setShowImportMenu(false);
+    const url = prompt('Enter the URL to the character card (PNG, JSON, or CHARX file):');
+    if (url && url.trim()) {
+      await useCardStore.getState().importCardFromURL(url.trim());
+    }
   };
 
   const handleExport = async (format: 'json' | 'png' | 'charx') => {
@@ -109,9 +118,38 @@ export function Header({ onBack }: HeaderProps) {
           New
         </button>
 
-        <button onClick={handleImport} className="btn-secondary">
-          Import
-        </button>
+        <div className="relative">
+          <button
+            onClick={() => setShowImportMenu(!showImportMenu)}
+            className="btn-secondary"
+          >
+            Import ▾
+          </button>
+          {showImportMenu && (
+            <>
+              <div
+                className="fixed inset-0 z-40"
+                onClick={() => setShowImportMenu(false)}
+              />
+              <div className="absolute right-0 mt-1 bg-dark-surface border border-dark-border rounded shadow-lg z-50 min-w-[150px]">
+                <button
+                  onClick={handleImportFile}
+                  className="block w-full px-4 py-2 text-left hover:bg-slate-700 rounded-t"
+                  title="Import from local file (JSON, PNG, or CHARX)"
+                >
+                  From File
+                </button>
+                <button
+                  onClick={handleImportURL}
+                  className="block w-full px-4 py-2 text-left hover:bg-slate-700 rounded-b"
+                  title="Import from URL (direct link to PNG, JSON, or CHARX)"
+                >
+                  From URL
+                </button>
+              </div>
+            </>
+          )}
+        </div>
 
         {currentCard && (
           <div className="relative">

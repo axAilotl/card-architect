@@ -58,6 +58,7 @@ interface CardStore {
   loadCard: (id: string) => Promise<void>;
   createNewCard: () => Promise<void>;
   importCard: (file: File) => Promise<void>;
+  importCardFromURL: (url: string) => Promise<void>;
   exportCard: (format: 'json' | 'png' | 'charx') => Promise<void>;
 
   // Token counting
@@ -324,6 +325,32 @@ export const useCardStore = create<CardStore>((set, get) => ({
       if (data.assetsImported !== undefined) {
         console.log(`[Import] Assets imported: ${data.assetsImported}`);
       }
+
+      if (data.warnings && data.warnings.length > 0) {
+        console.warn('[Import] Warnings:', data.warnings);
+      }
+
+      set({ currentCard: data.card, isDirty: false });
+      get().updateTokenCounts();
+    }
+  },
+
+  importCardFromURL: async (url) => {
+    console.log(`[Import] Starting import from URL: ${url}...`);
+    const { data, error } = await api.importCardFromURL(url);
+    if (error) {
+      console.error('[Import] Failed to import card from URL:', error);
+      alert(`Failed to import card: ${error}`);
+      return;
+    }
+
+    if (data && data.card) {
+      const cardData = extractCardData(data.card);
+      const cardName = cardData?.name || 'Untitled Card';
+
+      console.log(`[Import] Successfully imported card from URL: ${cardName}`);
+      console.log(`[Import] Source: ${data.source}`);
+      console.log(`[Import] Format: ${data.card.meta.spec.toUpperCase()}`);
 
       if (data.warnings && data.warnings.length > 0) {
         console.warn('[Import] Warnings:', data.warnings);
