@@ -9,6 +9,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { CharxImportService } from '../services/charx-import.service.js';
 import { buildCharx, validateCharxBuild } from '../utils/charx-builder.js';
+import { validateCharxExport, applyExportFixes } from '../utils/charx-validator.js';
 
 /**
  * Normalize card data to fix common issues before validation
@@ -988,12 +989,46 @@ export async function importExportRoutes(fastify: FastifyInstance) {
       } else if (format === 'charx') {
         try {
           // CHARX export - get card assets
-          const assets = cardAssetRepo.listByCardWithDetails(request.params.id);
+          let assets = cardAssetRepo.listByCardWithDetails(request.params.id);
 
-          // Validate CHARX structure
+          // Pre-export validation with auto-fixes
+          const exportValidation = await validateCharxExport(
+            card.data as CCv3Data,
+            assets,
+            config.storagePath
+          );
+
+          // Log validation results
+          if (exportValidation.errors.length > 0) {
+            fastify.log.error({
+              cardId: request.params.id,
+              errors: exportValidation.errors,
+            }, 'CHARX export validation failed');
+            reply.code(400);
+            return {
+              error: 'Cannot export CHARX: validation errors',
+              errors: exportValidation.errors,
+              warnings: exportValidation.warnings,
+            };
+          }
+
+          if (exportValidation.warnings.length > 0) {
+            fastify.log.warn({
+              cardId: request.params.id,
+              warnings: exportValidation.warnings,
+              fixes: exportValidation.fixes,
+            }, 'CHARX export validation warnings (auto-fixed)');
+          }
+
+          // Apply auto-fixes (deduplicate names, normalize order)
+          if (exportValidation.fixes.length > 0) {
+            assets = applyExportFixes(assets);
+          }
+
+          // Validate CHARX structure (legacy check)
           const validation = validateCharxBuild(card.data as CCv3Data, assets);
           if (!validation.valid) {
-            fastify.log.warn({ errors: validation.errors }, 'CHARX validation warnings');
+            fastify.log.warn({ errors: validation.errors }, 'CHARX build validation warnings');
             // Continue anyway, just warn
           }
 
@@ -1006,6 +1041,8 @@ export async function importExportRoutes(fastify: FastifyInstance) {
             cardId: request.params.id,
             assetCount: result.assetCount,
             totalSize: result.totalSize,
+            validationWarnings: exportValidation.warnings.length,
+            appliedFixes: exportValidation.fixes.length,
           }, 'CHARX export successful');
 
           // Return the CHARX file
