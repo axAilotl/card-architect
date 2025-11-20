@@ -162,7 +162,12 @@ card_doctor/
 - **Snapshot button** integrated into editor tabs row (EditorTabs.tsx)
 
 ### 8. Import/Export
-- **Import**: JSON or PNG character cards
+- **Import**: JSON, PNG, or CHARX character cards
+  - **From File**: Upload from local filesystem (JSON, PNG, CHARX)
+  - **From URL**: Import directly from web URLs (PNG, JSON, CHARX)
+    - Supports HTTP/HTTPS URLs
+    - Auto-detects file type from Content-Type header or file extension
+    - Works with direct file links from hosting services
   - Automatic normalization of non-standard spec values
   - Handles legacy numeric position fields
   - Compatible with: CharacterHub, SillyTavern, Agnai, TavernAI
@@ -170,7 +175,8 @@ card_doctor/
 - **Export**:
   - JSON (spec-specific based on current mode)
   - PNG (embedded metadata in tEXt chunks)
-- **Click-based dropdown** (not hover)
+  - CHARX (with assets)
+- **Click-based dropdown menus** (not hover)
 
 ### 9. Character Avatar
 - **Upload/replace** character images
@@ -229,10 +235,113 @@ POST   /api/cards/:id/versions/:versionId/restore  # Restore version
 
 ### Import/Export & Tokenization
 ```
-POST   /api/import                    # Import JSON/PNG
+POST   /api/import                    # Import JSON/PNG/CHARX from file upload
+POST   /api/import-url                # Import JSON/PNG/CHARX from URL
+POST   /api/import-multiple           # Import multiple files at once
 POST   /api/convert                   # Convert v2 ↔ v3
 GET    /api/tokenizers                # List available tokenizer models
 POST   /api/tokenize                  # Tokenize fields
+```
+
+#### Import from URL Endpoint Details
+
+**Endpoint:** `POST /api/import-url`
+
+**Request Body:**
+```json
+{
+  "url": "https://example.com/character-card.png"
+}
+```
+
+**Response (Success - 201):**
+```json
+{
+  "card": {
+    "meta": {
+      "id": "card-uuid",
+      "name": "Character Name",
+      "spec": "v3",
+      "tags": ["tag1", "tag2"],
+      "createdAt": "2025-11-18T...",
+      "updatedAt": "2025-11-18T..."
+    },
+    "data": { /* card data */ }
+  },
+  "warnings": ["optional warning messages"],
+  "source": "https://example.com/character-card.png"
+}
+```
+
+**Response (Error - 400/500):**
+```json
+{
+  "error": "Error message description"
+}
+```
+
+**Supported URL Formats:**
+- Direct links to PNG files with embedded card data
+- Direct links to JSON files (CCv2 or CCv3 format)
+- Direct links to CHARX files (ZIP format)
+- HTTP and HTTPS protocols only
+
+**Example cURL:**
+```bash
+curl -X POST http://localhost:3456/api/import-url \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com/my-character.png"}'
+```
+
+**Example JavaScript:**
+```javascript
+async function pushCard(cardUrl) {
+  const response = await fetch('http://localhost:3456/api/import-url', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: cardUrl })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error);
+  }
+
+  const result = await response.json();
+  console.log('Card imported:', result.card.meta.name);
+  return result;
+}
+
+// Usage
+pushCard('https://example.com/character.png')
+  .then(result => console.log('Success:', result))
+  .catch(err => console.error('Failed:', err));
+```
+
+**Example Python:**
+```python
+import requests
+
+def push_card(card_url):
+    response = requests.post(
+        'http://localhost:3456/api/import-url',
+        json={'url': card_url}
+    )
+
+    if response.status_code != 201:
+        error = response.json()
+        raise Exception(error.get('error', 'Import failed'))
+
+    result = response.json()
+    print(f"Card imported: {result['card']['meta']['name']}")
+    return result
+
+# Usage
+try:
+    result = push_card('https://example.com/character.png')
+    print(f"Success: {result}")
+except Exception as e:
+    print(f"Failed: {e}")
 ```
 
 ### Assets
@@ -526,6 +635,29 @@ CREATE TABLE llm_presets (
 - **Root cause**: Two-pass processing (collect files, then process) caused Fastify multipart async iterator deadlock
 - **Fix**: Changed to single-pass processing - files consumed during iteration with `for await (const file of request.files())`
 - **Location**: `apps/api/src/routes/import-export.ts:518-595`
+
+### URL Import Feature (2025-11-18)
+- **Import from URL**: New feature to import cards directly from web URLs
+  - Added `POST /api/import-url` endpoint that downloads and processes cards from URLs
+  - Supports HTTP and HTTPS protocols only
+  - Auto-detects file type from Content-Type header or file extension
+  - Works with PNG, JSON, and CHARX files
+  - Import dropdown menu now has two options: "From File" and "From URL"
+  - Available on both the main card grid and the editor header
+  - URL input via browser prompt dialog
+  - Full validation and normalization same as file uploads
+  - **Enhanced Normalization**: Auto-adds missing required V3 fields
+    - `group_only_greetings` defaults to empty array
+    - `creator` defaults to empty string
+    - `character_version` defaults to "1.0"
+    - `tags` defaults to empty array
+    - Fixes common validation errors from external card sources
+  - Locations:
+    - Backend: `apps/api/src/routes/import-export.ts:17-67, 173-447`
+    - API Client: `apps/web/src/lib/api.ts:151-156`
+    - Store: `apps/web/src/store/card-store.ts:61, 338-362`
+    - UI Header: `apps/web/src/components/Header.tsx:44-64, 122-153`
+    - UI CardGrid: `apps/web/src/components/CardGrid.tsx:21-22, 190-197, 327-368`
 
 ### UI and UX Improvements (2025-11-18)
 - **Searchable Model Selector**:

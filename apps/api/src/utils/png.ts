@@ -246,6 +246,54 @@ function calculateCRC32(buffer: Buffer): Buffer {
 }
 
 /**
+ * Remove all tEXt chunks from PNG buffer
+ * CRITICAL: Must remove old chunks before adding new ones to prevent duplicate data
+ */
+function removeAllTextChunks(pngBuffer: Buffer): Buffer {
+  const signature = pngBuffer.slice(0, 8);
+  if (signature.toString('hex') !== '89504e470d0a1a0a') {
+    throw new Error('Invalid PNG signature');
+  }
+
+  const chunks: Buffer[] = [signature]; // Start with PNG signature
+  let offset = 8;
+
+  while (offset < pngBuffer.length) {
+    // Read chunk length (4 bytes, big-endian)
+    if (offset + 4 > pngBuffer.length) break;
+    const length = pngBuffer.readUInt32BE(offset);
+    const lengthBuf = pngBuffer.slice(offset, offset + 4);
+    offset += 4;
+
+    // Read chunk type (4 bytes ASCII)
+    if (offset + 4 > pngBuffer.length) break;
+    const type = pngBuffer.slice(offset, offset + 4).toString('ascii');
+    const typeBuf = pngBuffer.slice(offset, offset + 4);
+    offset += 4;
+
+    // Read chunk data + CRC
+    if (offset + length + 4 > pngBuffer.length) break;
+    const dataBuf = pngBuffer.slice(offset, offset + length);
+    const crcBuf = pngBuffer.slice(offset + length, offset + length + 4);
+    offset += length + 4;
+
+    // Skip tEXt chunks (don't add them to output)
+    if (type === 'tEXt') {
+      console.log('[PNG] Removing tEXt chunk during cleanup');
+      continue;
+    }
+
+    // Keep all other chunks
+    chunks.push(lengthBuf, typeBuf, dataBuf, crcBuf);
+
+    // Stop after IEND
+    if (type === 'IEND') break;
+  }
+
+  return Buffer.concat(chunks);
+}
+
+/**
  * Manually inject tEXt chunk into PNG buffer
  * This is necessary because pngjs doesn't reliably write text chunks
  */
@@ -306,6 +354,10 @@ function injectTextChunk(pngBuffer: Buffer, keyword: string, text: string): Buff
  * Embed character card JSON into PNG tEXt chunk
  */
 export async function embedIntoPNG(imageBuffer: Buffer, cardData: CCv2Data | CCv3Data): Promise<Buffer> {
+  // CRITICAL: Remove all existing tEXt chunks first to prevent duplicate/stale data
+  console.log('[PNG] Removing old tEXt chunks before embedding new data');
+  const cleanPng = removeAllTextChunks(imageBuffer);
+
   // Use 'chara' key for both V2 and V3 (SillyTavern standard)
   const key = 'chara';
   const json = JSON.stringify(cardData, null, 0); // Minified for smaller size
@@ -313,8 +365,9 @@ export async function embedIntoPNG(imageBuffer: Buffer, cardData: CCv2Data | CCv
   // Base64 encode the JSON (standard for SillyTavern and other tools)
   const base64 = Buffer.from(json, 'utf-8').toString('base64');
 
-  // Manually inject the text chunk into the PNG
-  return injectTextChunk(imageBuffer, key, base64);
+  console.log('[PNG] Embedding new card data into PNG');
+  // Manually inject the text chunk into the cleaned PNG
+  return injectTextChunk(cleanPng, key, base64);
 }
 
 /**

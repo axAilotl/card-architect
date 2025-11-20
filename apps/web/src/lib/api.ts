@@ -91,6 +91,99 @@ class ApiClient {
     return this.request<CardAssetWithDetails[]>(`/cards/${cardId}/assets`);
   }
 
+  async getAssets(cardId: string) {
+    const result = await this.getCardAssets(cardId);
+    if (result.error) throw new Error(result.error);
+    return result.data || [];
+  }
+
+  async getAssetGraph(cardId: string) {
+    const result = await this.request<any>(`/cards/${cardId}/asset-graph`);
+    if (result.error) throw new Error(result.error);
+    return result.data;
+  }
+
+  async uploadAsset(
+    cardId: string,
+    file: File,
+    type: string,
+    name: string,
+    isMain: boolean,
+    tags: string[]
+  ) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const params = new URLSearchParams();
+    params.set('type', type);
+    params.set('name', name);
+    if (isMain) params.set('isMain', 'true');
+    if (tags.length > 0) params.set('tags', tags.join(','));
+
+    const response = await fetch(`${API_BASE}/cards/${cardId}/assets/upload?${params}`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Upload failed' }));
+      throw new Error(error.error);
+    }
+
+    return await response.json();
+  }
+
+  async updateAsset(cardId: string, assetId: string, updates: any) {
+    const result = await this.request<any>(`/cards/${cardId}/assets/${assetId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    });
+    if (result.error) throw new Error(result.error);
+    return result.data;
+  }
+
+  async deleteAsset(cardId: string, assetId: string) {
+    const result = await this.request<void>(`/cards/${cardId}/assets/${assetId}`, {
+      method: 'DELETE',
+    });
+    if (result.error) throw new Error(result.error);
+  }
+
+  async setPortraitOverride(cardId: string, assetId: string) {
+    const result = await this.request<any>(
+      `/cards/${cardId}/assets/${assetId}/set-portrait-override`,
+      { method: 'POST' }
+    );
+    if (result.error) throw new Error(result.error);
+    return result.data;
+  }
+
+  async setMainBackground(cardId: string, assetId: string) {
+    const result = await this.request<any>(
+      `/cards/${cardId}/assets/${assetId}/set-main-background`,
+      { method: 'POST' }
+    );
+    if (result.error) throw new Error(result.error);
+    return result.data;
+  }
+
+  async bindAssetToActor(cardId: string, assetId: string, actorIndex: number) {
+    const result = await this.request<any>(`/cards/${cardId}/assets/${assetId}/bind-actor`, {
+      method: 'POST',
+      body: JSON.stringify({ actorIndex }),
+    });
+    if (result.error) throw new Error(result.error);
+    return result.data;
+  }
+
+  async unbindAssetFromActor(cardId: string, assetId: string) {
+    const result = await this.request<any>(`/cards/${cardId}/assets/${assetId}/unbind-actor`, {
+      method: 'POST',
+    });
+    if (result.error) throw new Error(result.error);
+    return result.data;
+  }
+
   async setAssetAsMain(cardId: string, assetId: string) {
     return this.request<{ success: boolean }>(`/cards/${cardId}/assets/${assetId}/main`, {
       method: 'PATCH',
@@ -148,6 +241,13 @@ class ApiClient {
     return { data };
   }
 
+  async importCardFromURL(url: string) {
+    return this.request<{ card: Card; warnings?: string[]; source: string }>('/import-url', {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    });
+  }
+
   async exportCard(cardId: string, format: 'json' | 'png' | 'charx') {
     const response = await fetch(`${API_BASE}/cards/${cardId}/export?format=${format}`);
 
@@ -160,8 +260,8 @@ class ApiClient {
     return { data: blob };
   }
 
-  // Assets
-  async uploadAsset(file: File) {
+  // Assets (generic, not card-specific)
+  async uploadGenericAsset(file: File) {
     const formData = new FormData();
     formData.append('file', file);
 
@@ -338,6 +438,31 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ presets }),
     });
+  }
+
+  // SillyTavern integration
+  async pushToSillyTavern(cardId: string) {
+    return this.request<{ success: boolean; status?: number; imported?: any; fileName?: string; error?: string }>(
+      `/cards/${cardId}/push-to-sillytavern`,
+      { method: 'POST' }
+    );
+  }
+
+  // Settings
+  async getSillyTavernSettings() {
+    return this.request<{ settings: { enabled: boolean; baseUrl: string; importEndpoint: string; sessionCookie: string } }>(
+      '/settings/sillytavern'
+    );
+  }
+
+  async updateSillyTavernSettings(settings: { enabled: boolean; baseUrl: string; importEndpoint: string; sessionCookie: string }) {
+    return this.request<{ success: boolean; settings: any }>(
+      '/settings/sillytavern',
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ sillyTavern: settings }),
+      }
+    );
   }
 
   // LLM streaming version
