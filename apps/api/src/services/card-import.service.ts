@@ -328,15 +328,19 @@ export class CardImportService {
           }
         } 
         // Case 2: PNG Chunk Reference (e.g. __asset:0)
-        else if (extraChunks && descriptor.uri.startsWith('__asset:')) {
-            const assetId = descriptor.uri.split(':')[1];
+        else if (extraChunks && (descriptor.uri.startsWith('__asset:') || !descriptor.uri.includes(':') || descriptor.uri.startsWith('asset:'))) {
+            let assetId = descriptor.uri;
+            if (descriptor.uri.startsWith('__asset:')) assetId = descriptor.uri.split(':')[1];
+            if (descriptor.uri.startsWith('asset:')) assetId = descriptor.uri.split(':')[1];
             
             // Try different key variations
             const candidates = [
-                assetId,                // "0"
-                descriptor.uri,         // "__asset:0"
-                `asset:${assetId}`,     // "asset:0"
-                `__asset_${assetId}`    // "__asset_0" (rare variant)
+                assetId,                        // "0" or "filename.png"
+                descriptor.uri,                 // "__asset:0"
+                `asset:${assetId}`,             // "asset:0"
+                `__asset_${assetId}`,           // "__asset_0"
+                `chara-ext-asset_${assetId}`,   // "chara-ext-asset_0" or "chara-ext-asset_filename.png"
+                `chara-ext-asset_:${assetId}`   // "chara-ext-asset_:0" (implied by user comment about :90)
             ];
 
             const chunk = extraChunks.find(c => candidates.includes(c.keyword));
@@ -356,8 +360,12 @@ export class CardImportService {
                 }
             } else {
                 console.warn(`[Card Import] Referenced asset chunk not found: ${descriptor.uri} (checked: ${candidates.join(', ')})`);
+                // Don't spam logs with all chunks if there are too many, just show first few matching pattern
                 if (extraChunks) {
-                    console.warn(`[Card Import] Available chunk keys: ${extraChunks.map(c => `"${c.keyword}"`).join(', ')}`);
+                    const similarChunks = extraChunks.filter(c => c.keyword.includes('asset') || c.keyword.includes(assetId));
+                    if (similarChunks.length > 0) {
+                        console.warn(`[Card Import] Similar chunks found: ${similarChunks.map(c => `"${c.keyword}"`).join(', ')}`);
+                    }
                 }
             }
         }
