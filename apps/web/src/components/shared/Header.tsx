@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { useCardStore, extractCardData } from '../store/card-store';
-import { useTokenStore } from '../store/token-store';
+import { useCardStore, extractCardData } from '../../store/card-store';
+import { useTokenStore } from '../../store/token-store';
 import { SettingsModal } from './SettingsModal';
-import { api } from '../lib/api';
+import { api } from '../../lib/api';
 import { useNavigate } from 'react-router-dom';
 
 interface HeaderProps {

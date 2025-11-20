@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { useCardStore, extractCardData } from '../store/card-store';
-import { useUIStore } from '../store/ui-store';
-import { useTokenStore } from '../store/token-store';
+import { useCardStore, extractCardData } from '../../../store/card-store';
+import { useUIStore } from '../../../store/ui-store';
+import { useTokenStore } from '../../../store/token-store';
 import type { CCFieldName, FocusField, Template, Snippet } from '@card-architect/schemas';
 import { FieldEditor } from './FieldEditor';
 import { LorebookEditor } from './LorebookEditor';

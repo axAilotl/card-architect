@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useCardStore, extractCardData } from '../store/card-store';
-import { api } from '../lib/api';
+import { useCardStore, extractCardData } from '../../store/card-store';
+import { api } from '../../lib/api';
 import type { Card, CCv3Data } from '@card-architect/schemas';
-import { SettingsModal } from './SettingsModal';
+import { SettingsModal } from '../../components/shared/SettingsModal';
 
 interface CardGridProps {
   onCardClick: (cardId: string) => void;

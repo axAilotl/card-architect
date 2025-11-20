@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useCardStore } from './store/card-store';
-import { CardEditor } from './components/CardEditor';
-import { CardGrid } from './components/CardGrid';
-import { Header } from './components/Header';
+import { CardEditor } from './features/editor/CardEditor';
+import { CardGrid } from './features/dashboard/CardGrid';
+import { Header } from './components/shared/Header';
 
 function GridRoute() {
   const navigate = useNavigate();

@@ -1,12 +1,12 @@
-import { useUIStore } from '../store/ui-store';
-import { EditorTabs } from './EditorTabs';
-import { EditPanel } from './EditPanel';
-import { PreviewPanel } from './PreviewPanel';
-import { DiffPanel } from './DiffPanel';
-import { AssetsPanel } from './AssetsPanel';
-// import { RedundancyPanel } from './RedundancyPanel'; // Disabled
-// import { LoreTriggerPanel } from './LoreTriggerPanel'; // Disabled
-import { FocusedEditor } from './FocusedEditor';
+import { useUIStore } from '../../store/ui-store';
+import { EditorTabs } from './components/EditorTabs';
+import { EditPanel } from './components/EditPanel';
+import { PreviewPanel } from './components/PreviewPanel';
+import { DiffPanel } from './components/DiffPanel';
+import { AssetsPanel } from './components/AssetsPanel';
+// import { RedundancyPanel } from './components/RedundancyPanel'; // Disabled
+// import { LoreTriggerPanel } from './components/LoreTriggerPanel'; // Disabled
+import { FocusedEditor } from './components/FocusedEditor';
 
 export function CardEditor() {
   const activeTab = useUIStore((state) => state.activeTab);

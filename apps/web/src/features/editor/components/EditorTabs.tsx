@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useCardStore } from '../store/card-store';
-import { useUIStore } from '../store/ui-store';
+import { useCardStore } from '../../../store/card-store';
+import { useUIStore } from '../../../store/ui-store';
 
 export function EditorTabs() {
   const { currentCard, createSnapshot } = useCardStore();

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useCardStore } from '../store/card-store';
-import { api } from '../lib/api';
+import { useCardStore } from '../../../store/card-store';
+import { api } from '../../../lib/api';
 import type { CardAssetWithDetails } from '@card-architect/schemas';
 
 interface AssetGraph {
