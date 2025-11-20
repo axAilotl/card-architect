@@ -402,11 +402,18 @@ export function AssetsPanel() {
                       <div className="font-medium truncate">{asset.name}</div>
                       <div className="text-xs text-dark-muted mt-1 flex flex-wrap gap-1">
                         <span className="px-1.5 py-0.5 bg-dark-bg rounded">{asset.type}</span>
-                        {asset.tags?.map(tag => (
-                          <span key={tag} className="px-1.5 py-0.5 bg-blue-900/30 text-blue-400 rounded">
-                            {tag}
-                          </span>
-                        ))}
+                        {asset.tags?.map(tag => {
+                          let bgColor = 'bg-blue-900/30 text-blue-400';
+                          if (tag.startsWith('emotion:')) bgColor = 'bg-purple-900/30 text-purple-400';
+                          if (tag.startsWith('state:')) bgColor = 'bg-orange-900/30 text-orange-400';
+                          if (tag.startsWith('variant:')) bgColor = 'bg-green-900/30 text-green-400';
+                          
+                          return (
+                            <span key={tag} className={`px-1.5 py-0.5 rounded ${bgColor}`}>
+                              {tag}
+                            </span>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
@@ -557,11 +564,18 @@ export function AssetsPanel() {
             <div>
               <h3 className="text-sm font-semibold mb-3">Tags</h3>
               <div className="flex flex-wrap gap-2">
-                {selectedAssetData.tags?.map(tag => (
-                  <span key={tag} className="px-3 py-1.5 bg-blue-900/30 text-blue-400 rounded-lg text-sm">
-                    {tag}
-                  </span>
-                ))}
+                {selectedAssetData.tags?.map(tag => {
+                  let bgColor = 'bg-blue-900/30 text-blue-400';
+                  if (tag.startsWith('emotion:')) bgColor = 'bg-purple-900/30 text-purple-400';
+                  if (tag.startsWith('state:')) bgColor = 'bg-orange-900/30 text-orange-400';
+                  if (tag.startsWith('variant:')) bgColor = 'bg-green-900/30 text-green-400';
+
+                  return (
+                    <span key={tag} className={`px-3 py-1.5 rounded-lg text-sm ${bgColor}`}>
+                      {tag}
+                    </span>
+                  );
+                })}
                 {!selectedAssetData.tags || selectedAssetData.tags.length === 0 && (
                   <p className="text-sm text-dark-muted">No tags</p>
                 )}
