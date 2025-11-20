@@ -18,6 +18,7 @@ This tool helps creators build, edit, and maintain AI character cards with advan
 **Frontend (apps/web):**
 - **React 18** + **TypeScript** - UI framework
 - **Vite** - Build tool and dev server
+- **React Router** - Client-side routing
 - **Tailwind CSS** - Utility-first styling (custom dark theme)
 - **Zustand** - Lightweight state management
 - **IndexedDB** (idb) - Local persistence with background sync
@@ -488,25 +489,27 @@ CREATE TABLE llm_presets (
 
 ## File Locations Reference
 
-### Key Frontend Components (apps/web/src/components/)
-- `App.tsx` - Main application container
-- `Header.tsx` - Top navigation bar
-- `CardGrid.tsx` - Card list view with bulk operations
-- `CardEditor.tsx` - Main editor container
-- `EditorTabs.tsx` - Tab navigation + snapshot button
-- `EditPanel.tsx` - Standard edit mode with V2/V3 switcher
-- `FocusedEditor.tsx` - Focused mode with Milkdown + CodeMirror
-- `PreviewPanel.tsx` - Markdown preview with extended syntax
-- `DiffPanel.tsx` - Version history and diff view
-- `DiffViewer.tsx` - Live diff visualization component
-- `LorebookEditor.tsx` - Lorebook management (two-column)
-- `FieldEditor.tsx` - Reusable field component
-- `LLMAssistSidebar.tsx` - AI assistant with streaming
-- `TemplateSnippetPanel.tsx` - Templates/snippets management
-- `SettingsModal.tsx` - Settings UI (Providers + RAG)
-- `PromptSimulatorPanel.tsx` - Prompt simulation UI
-- `RedundancyPanel.tsx` - Redundancy detection UI (disabled)
-- `LoreTriggerPanel.tsx` - Lore trigger testing UI (disabled)
+### Key Frontend Components (apps/web/src/)
+
+**Features:**
+- `features/dashboard/CardGrid.tsx` - Card list view with bulk operations
+- `features/editor/CardEditor.tsx` - Main editor container
+- `features/editor/components/` - Editor sub-components:
+  - `EditPanel.tsx`, `FocusedEditor.tsx`
+  - `PreviewPanel.tsx`, `DiffPanel.tsx`
+  - `LorebookEditor.tsx`, `AssetsPanel.tsx`
+  - `EditorTabs.tsx`, `FieldEditor.tsx`
+  - `LLMAssistSidebar.tsx`, `TemplateSnippetPanel.tsx`
+
+**Shared Components:**
+- `components/shared/Header.tsx` - Top navigation bar
+- `components/shared/SettingsModal.tsx` - Settings UI (Providers + RAG)
+- `components/ui/` - Reusable UI elements:
+  - `SearchableSelect.tsx`, `SnapshotButton.tsx`
+  - `DiffViewer.tsx`
+
+**Core:**
+- `App.tsx` - Main application container with Routes
 
 ### Key Backend Files (apps/api/src/)
 
@@ -1032,6 +1035,51 @@ Card Architect solves these problems with professional tooling for character car
 
 - CCv2 Spec: https://github.com/malfoyslastname/character-card-spec-v2
 - CCv3 Spec: https://github.com/kwaroran/character-card-spec-v3
+
+## Recent Implementation: Frontend Architecture Refactor (2025-11-20)
+
+### Overview
+Refactored the frontend application to improve maintainability, scalability, and navigation.
+
+**Key Changes:**
+- **React Router Integration**: Replaced manual state-based view switching with `react-router-dom`.
+  - Routes: `/` (Dashboard), `/cards/:id` (Editor).
+  - Enables deep linking, browser history navigation, and URL sharing.
+- **Store Decomposition**: Broke down the monolithic `card-store.ts` into domain-specific stores.
+  - `ui-store.ts`: Manages ephemeral UI state (tabs, visibility toggles).
+  - `token-store.ts`: Handles token counting logic.
+  - `card-store.ts`: Focused on data persistence and CRUD operations.
+- **Feature Isolation**: Restructured `apps/web/src/components` into feature-based directories.
+  - `features/dashboard/`: Card grid and management.
+  - `features/editor/`: Card editor and sub-panels.
+  - `components/shared/`: Common components (Header, Settings).
+  - `components/ui/`: Generic UI elements.
+
+## Recent Implementation: Embedded Asset Extraction (CharX-in-PNG) (2025-11-20)
+
+### Overview
+Implemented support for extracting assets embedded within PNG text chunks, a format often referred to as "CharX-in-PNG" used by some character card tools.
+
+**Problem:**
+Standard PNG cards store metadata in a single `chara` or `ccv3` chunk. Advanced cards with assets (alternate expressions) may store them as base64-encoded strings within additional `tEXt` or `zTXt` chunks, often with keys like `__asset:0` or `chara-ext-asset_filename.png`. Previous importers ignored these, resulting in missing assets.
+
+**Solution:**
+- **Enhanced PNG Parser**: Updated `extractFromPNG` to capture *all* text chunks, including those not matching standard metadata keys.
+- **Smart Chunk Matching**: Implemented logic to match asset URIs (e.g., `__asset:0`) to PNG chunks using various key strategies:
+  - Exact ID match (`0`)
+  - Namespaced match (`asset:0`, `__asset:0`)
+  - Prefix stripping (`chara-ext-asset_0` matches ID `0`)
+- **Automatic Extraction**: When importing a single card, the system now:
+  1. Extracts the main metadata.
+  2. Scans for asset references (`data:` URIs or `__asset:` references).
+  3. Extracts and decodes the corresponding data (handling base64 and zlib compression).
+  4. Saves assets to disk and creates database records.
+  5. Links assets to the card, making them immediately available in the editor.
+
+**Files:**
+- `apps/api/src/utils/png.ts`: Added `zTXt` support and extra chunk capture.
+- `apps/api/src/services/card-import.service.ts`: Added extraction and linking logic.
+- `apps/api/src/routes/import-export.ts`: Integrated extraction into import flow.
 
 ## Recent Implementation: Voxta Support (2025-11-20)
 
