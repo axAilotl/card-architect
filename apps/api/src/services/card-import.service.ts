@@ -330,10 +330,16 @@ export class CardImportService {
         // Case 2: PNG Chunk Reference (e.g. __asset:0)
         else if (extraChunks && descriptor.uri.startsWith('__asset:')) {
             const assetId = descriptor.uri.split(':')[1];
-            // Try to find a chunk with this ID
-            // Some tools might use just the ID, others might use other keys?
-            // Assuming the chunk keyword IS the ID (e.g. "0", "1")
-            const chunk = extraChunks.find(c => c.keyword === assetId);
+            
+            // Try different key variations
+            const candidates = [
+                assetId,                // "0"
+                descriptor.uri,         // "__asset:0"
+                `asset:${assetId}`,     // "asset:0"
+                `__asset_${assetId}`    // "__asset_0" (rare variant)
+            ];
+
+            const chunk = extraChunks.find(c => candidates.includes(c.keyword));
             
             if (chunk) {
                 console.log(`[Card Import] Found embedded asset chunk for ${descriptor.uri} (key: ${chunk.keyword})`);
@@ -346,10 +352,10 @@ export class CardImportService {
                         mimetype = 'application/octet-stream'; // Fallback
                     }
                 } catch (e) {
-                    warnings.push(`Failed to decode embedded asset chunk ${assetId}: ${e}`);
+                    warnings.push(`Failed to decode embedded asset chunk ${chunk.keyword}: ${e}`);
                 }
             } else {
-                console.warn(`[Card Import] Referenced asset chunk not found: ${descriptor.uri} (looked for key: "${assetId}")`);
+                console.warn(`[Card Import] Referenced asset chunk not found: ${descriptor.uri} (checked: ${candidates.join(', ')})`);
                 if (extraChunks) {
                     console.warn(`[Card Import] Available chunk keys: ${extraChunks.map(c => `"${c.keyword}"`).join(', ')}`);
                 }
