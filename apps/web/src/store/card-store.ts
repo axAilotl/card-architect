@@ -218,8 +218,13 @@ export const useCardStore = create<CardStore>((set, get) => ({
 
   // Save card to API
   saveCard: async () => {
+    console.log('[saveCard] ENTRY - function called');
     const { currentCard } = get();
-    if (!currentCard) return;
+    console.log('[saveCard] currentCard exists?', !!currentCard, 'id:', currentCard?.meta?.id);
+    if (!currentCard) {
+      console.error('[saveCard] EARLY RETURN - currentCard is null!');
+      return;
+    }
 
     console.log('[saveCard] Starting save...', { isDirty: get().isDirty, cardId: currentCard.meta.id });
     set({ isSaving: true });
@@ -371,15 +376,20 @@ export const useCardStore = create<CardStore>((set, get) => ({
 
   // Export card
   exportCard: async (format) => {
-    const { currentCard, isDirty } = get();
+    const { currentCard } = get();
     if (!currentCard || !currentCard.meta.id) return;
 
-    // CRITICAL: Save any pending edits before exporting
-    if (isDirty) {
-      console.log('Saving pending edits before export...');
+    // CRITICAL: ALWAYS save before exporting to ensure DB has latest data
+    console.log('[exportCard] FORCE SAVING before export, format:', format);
+    try {
       await get().saveCard();
       // Small delay to ensure database write completes
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 150));
+      console.log('[exportCard] Save completed, proceeding with export');
+    } catch (err) {
+      console.error('[exportCard] FAILED to save before export:', err);
+      alert(`Failed to save card before export: ${err}`);
+      return;
     }
 
     const { data, error } = await api.exportCard(currentCard.meta.id, format);
