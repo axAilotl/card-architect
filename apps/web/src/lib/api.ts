@@ -448,6 +448,23 @@ class ApiClient {
     );
   }
 
+  // Settings
+  async getSillyTavernSettings() {
+    return this.request<{ settings: { enabled: boolean; baseUrl: string; importEndpoint: string; sessionCookie: string } }>(
+      '/settings/sillytavern'
+    );
+  }
+
+  async updateSillyTavernSettings(settings: { enabled: boolean; baseUrl: string; importEndpoint: string; sessionCookie: string }) {
+    return this.request<{ success: boolean; settings: any }>(
+      '/settings/sillytavern',
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ sillyTavern: settings }),
+      }
+    );
+  }
+
   // LLM streaming version
   async llmAssistStream(
     req: LLMAssistRequest,
