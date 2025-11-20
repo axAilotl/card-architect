@@ -1,10 +1,15 @@
 import type { FastifyInstance } from 'fastify';
 import { CardRepository } from '../db/repository.js';
 import { config } from '../config.js';
-import { join } from 'path';
-import { existsSync, createReadStream } from 'fs';
+import { join, dirname } from 'path';
+import { existsSync, createReadStream, readFileSync } from 'fs';
 import FormData from 'form-data';
 import axios from 'axios';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const SETTINGS_PATH = join(__dirname, '../../data/settings.json');
 
 export async function sillyTavernRoutes(fastify: FastifyInstance) {
   const cardRepo = new CardRepository(fastify.db);
@@ -30,14 +35,27 @@ export async function sillyTavernRoutes(fastify: FastifyInstance) {
     '/cards/:id/push-to-sillytavern',
     async (request, reply) => {
       try {
-        const settings = config.sillyTavern;
+        // Load settings from file, fallback to config
+        let settings = config.sillyTavern;
+
+        if (existsSync(SETTINGS_PATH)) {
+          try {
+            const data = readFileSync(SETTINGS_PATH, 'utf-8');
+            const parsed = JSON.parse(data);
+            if (parsed.sillyTavern) {
+              settings = parsed.sillyTavern;
+            }
+          } catch (err) {
+            fastify.log.warn('Failed to load settings file, using config defaults');
+          }
+        }
 
         // Validate configuration
         if (!settings.enabled) {
           reply.code(400);
           return {
             success: false,
-            error: 'SillyTavern integration is disabled in configuration',
+            error: 'SillyTavern integration is disabled. Please enable it in Settings.',
           };
         }
 
@@ -45,7 +63,7 @@ export async function sillyTavernRoutes(fastify: FastifyInstance) {
           reply.code(400);
           return {
             success: false,
-            error: 'SillyTavern baseUrl is not configured',
+            error: 'SillyTavern baseUrl is not configured. Please set it in Settings.',
           };
         }
 
