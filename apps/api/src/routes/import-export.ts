@@ -723,6 +723,7 @@ export async function importExportRoutes(fastify: FastifyInstance) {
     let storageData: CCv2Data | CCv3Data;
 
     if (cardData && typeof cardData === 'object') {
+      // ... (existing logic to determine storageData and name) ...
       // Handle wrapped v2 cards (CharacterHub format)
       if (spec === 'v2' && 'data' in cardData && typeof cardData.data === 'object' && cardData.data) {
         const wrappedData = cardData.data as CCv2Data;
@@ -804,6 +805,28 @@ export async function importExportRoutes(fastify: FastifyInstance) {
       storageData = cardData as (CCv2Data | CCv3Data);
     }
 
+    // Handle V3 Data URI Asset Extraction
+    let assetsImported = 0;
+    if (spec === 'v3') {
+      try {
+        const extractionResult = await cardImportService.extractAssetsFromDataURIs(
+          storageData as CCv3Data,
+          { storagePath: config.storagePath }
+        );
+        storageData = extractionResult.data;
+        assetsImported = extractionResult.assetsImported;
+        if (extractionResult.warnings.length > 0) {
+          warnings.push(...extractionResult.warnings);
+        }
+        if (assetsImported > 0) {
+          fastify.log.info({ assetsImported }, 'Extracted assets from Data URIs');
+        }
+      } catch (err) {
+        fastify.log.error({ error: err }, 'Failed to extract assets from Data URIs');
+        warnings.push(`Failed to extract embedded assets: ${err}`);
+      }
+    }
+
     // Extract tags from card data
     let tags: string[] = [];
     try {
@@ -831,6 +854,16 @@ export async function importExportRoutes(fastify: FastifyInstance) {
         tags,
       },
     }, originalImage);
+
+    // Link extracted assets to the card
+    if (spec === 'v3' && assetsImported > 0) {
+      try {
+        await cardImportService.linkAssetsToCard(card.meta.id, (storageData as CCv3Data).data);
+      } catch (err) {
+        fastify.log.error({ error: err }, 'Failed to link extracted assets to card');
+        warnings.push('Failed to link extracted assets to card record');
+      }
+    }
 
     // Debug: Verify lorebook is in the created card
     const createdCardData = card.data as any;
