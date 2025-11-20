@@ -363,8 +363,14 @@ export const useCardStore = create<CardStore>((set, get) => ({
 
   // Export card
   exportCard: async (format) => {
-    const { currentCard } = get();
+    const { currentCard, isDirty } = get();
     if (!currentCard || !currentCard.meta.id) return;
+
+    // CRITICAL: Save any pending edits before exporting
+    if (isDirty) {
+      console.log('Saving pending edits before export...');
+      await get().saveCard();
+    }
 
     const { data, error } = await api.exportCard(currentCard.meta.id, format);
     if (error) {

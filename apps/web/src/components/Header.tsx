@@ -73,6 +73,23 @@ export function Header({ onBack }: HeaderProps) {
     if (!currentCard?.meta?.id) return;
 
     setPushStatus(null);
+
+    // CRITICAL: Save any pending edits before pushing
+    const store = useCardStore.getState();
+    if (store.isDirty) {
+      console.log('Saving pending edits before push...');
+      try {
+        await store.saveCard();
+      } catch (error: any) {
+        setPushStatus({
+          type: 'error',
+          message: `Failed to save edits: ${error.message}`
+        });
+        setTimeout(() => setPushStatus(null), 8000);
+        return;
+      }
+    }
+
     try {
       const result = await api.pushToSillyTavern(currentCard.meta.id);
 
