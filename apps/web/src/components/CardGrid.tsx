@@ -18,7 +18,8 @@ export function CardGrid({ onCardClick }: CardGridProps) {
   const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<SortOption>('added');
-  const { importCard, createNewCard } = useCardStore();
+  const [showImportMenu, setShowImportMenu] = useState(false);
+  const { importCard, importCardFromURL, createNewCard } = useCardStore();
 
   useEffect(() => {
     loadCards();
@@ -134,7 +135,8 @@ export function CardGrid({ onCardClick }: CardGridProps) {
     }
   };
 
-  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setShowImportMenu(false);
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
@@ -182,6 +184,15 @@ export function CardGrid({ onCardClick }: CardGridProps) {
       console.error('Failed to import cards:', error);
       alert('Failed to import cards. Check console for details.');
       e.target.value = '';
+    }
+  };
+
+  const handleImportURL = async () => {
+    setShowImportMenu(false);
+    const url = prompt('Enter the URL to the character card (PNG, JSON, or CHARX file):');
+    if (url && url.trim()) {
+      await importCardFromURL(url.trim());
+      await loadCards();
     }
   };
 
@@ -322,22 +333,48 @@ export function CardGrid({ onCardClick }: CardGridProps) {
             >
               ⚙️
             </button>
-            <label
-              htmlFor="import-card-file"
-              className="btn-secondary cursor-pointer px-4 py-2 rounded font-medium transition-colors inline-block"
-            >
-              Import
-              <input
-                id="import-card-file"
-                name="import-card-file"
-                type="file"
-                accept=".json,.png,.charx"
-                multiple
-                onChange={handleImport}
-                className="hidden"
-                title="Import JSON, PNG, or CHARX files (select multiple)"
-              />
-            </label>
+            <div className="relative">
+              <button
+                onClick={() => setShowImportMenu(!showImportMenu)}
+                className="btn-secondary"
+              >
+                Import ▾
+              </button>
+              {showImportMenu && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowImportMenu(false)}
+                  />
+                  <div className="absolute right-0 mt-1 bg-dark-surface border border-dark-border rounded shadow-lg z-50 min-w-[150px]">
+                    <label
+                      htmlFor="import-card-file"
+                      className="block w-full px-4 py-2 text-left hover:bg-slate-700 rounded-t cursor-pointer"
+                      title="Import from local file (JSON, PNG, or CHARX)"
+                    >
+                      From File
+                      <input
+                        id="import-card-file"
+                        name="import-card-file"
+                        type="file"
+                        accept=".json,.png,.charx"
+                        multiple
+                        onChange={handleImportFile}
+                        className="hidden"
+                        title="Import JSON, PNG, or CHARX files (select multiple)"
+                      />
+                    </label>
+                    <button
+                      onClick={handleImportURL}
+                      className="block w-full px-4 py-2 text-left hover:bg-slate-700 rounded-b"
+                      title="Import from URL (direct link to PNG, JSON, or CHARX)"
+                    >
+                      From URL
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
             <button onClick={handleNewCard} className="btn-primary">
               New Card
             </button>

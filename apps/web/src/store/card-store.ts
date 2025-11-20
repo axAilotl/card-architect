@@ -43,7 +43,7 @@ interface CardStore {
   tokenizerModel: string;
 
   // UI state
-  activeTab: 'edit' | 'preview' | 'diff' | 'simulator' | 'redundancy' | 'lore-trigger' | 'focused';
+  activeTab: 'edit' | 'preview' | 'diff' | 'simulator' | 'redundancy' | 'lore-trigger' | 'focused' | 'assets';
   showAdvanced: boolean;
   specMode: 'v2' | 'v3'; // Current spec mode for editing and export
   showV3Fields: boolean; // Whether to show v3-only fields in the UI
@@ -58,6 +58,7 @@ interface CardStore {
   loadCard: (id: string) => Promise<void>;
   createNewCard: () => Promise<void>;
   importCard: (file: File) => Promise<void>;
+  importCardFromURL: (url: string) => Promise<void>;
   exportCard: (format: 'json' | 'png' | 'charx') => Promise<void>;
 
   // Token counting
@@ -66,7 +67,7 @@ interface CardStore {
 
   // UI
   setActiveTab: (
-    tab: 'edit' | 'preview' | 'diff' | 'simulator' | 'redundancy' | 'lore-trigger' | 'focused'
+    tab: 'edit' | 'preview' | 'diff' | 'simulator' | 'redundancy' | 'lore-trigger' | 'focused' | 'assets'
   ) => void;
   setShowAdvanced: (show: boolean) => void;
   setSpecMode: (mode: 'v2' | 'v3') => void;
@@ -217,15 +218,26 @@ export const useCardStore = create<CardStore>((set, get) => ({
 
   // Save card to API
   saveCard: async () => {
+    console.log('[saveCard] ENTRY - function called');
     const { currentCard } = get();
-    if (!currentCard) return;
+    console.log('[saveCard] currentCard exists?', !!currentCard, 'id:', currentCard?.meta?.id);
+    if (!currentCard) {
+      console.error('[saveCard] EARLY RETURN - currentCard is null!');
+      return;
+    }
 
+    console.log('[saveCard] Starting save...', { isDirty: get().isDirty, cardId: currentCard.meta.id });
     set({ isSaving: true });
 
     try {
       if (currentCard.meta.id) {
         // Update existing card
-        await api.updateCard(currentCard.meta.id, currentCard);
+        console.log('[saveCard] Calling API updateCard...');
+        const result = await api.updateCard(currentCard.meta.id, currentCard);
+        console.log('[saveCard] API updateCard result:', { error: result.error, hasData: !!result.data });
+        if (result.error) {
+          throw new Error(result.error);
+        }
       } else {
         // Create new card
         const { data, error } = await api.createCard(currentCard);
@@ -233,6 +245,7 @@ export const useCardStore = create<CardStore>((set, get) => ({
         if (data) set({ currentCard: data });
       }
 
+      console.log('[saveCard] Save successful, setting isDirty=false');
       set({ isDirty: false });
 
       // Clear draft from IndexedDB
@@ -240,7 +253,8 @@ export const useCardStore = create<CardStore>((set, get) => ({
         await localDB.deleteDraft(currentCard.meta.id);
       }
     } catch (err) {
-      console.error('Failed to save card:', err);
+      console.error('[saveCard] FAILED to save card:', err);
+      throw err; // Re-throw so caller knows it failed
     } finally {
       set({ isSaving: false });
     }
@@ -334,10 +348,49 @@ export const useCardStore = create<CardStore>((set, get) => ({
     }
   },
 
+  importCardFromURL: async (url) => {
+    console.log(`[Import] Starting import from URL: ${url}...`);
+    const { data, error } = await api.importCardFromURL(url);
+    if (error) {
+      console.error('[Import] Failed to import card from URL:', error);
+      alert(`Failed to import card: ${error}`);
+      return;
+    }
+
+    if (data && data.card) {
+      const cardData = extractCardData(data.card);
+      const cardName = cardData?.name || 'Untitled Card';
+
+      console.log(`[Import] Successfully imported card from URL: ${cardName}`);
+      console.log(`[Import] Source: ${data.source}`);
+      console.log(`[Import] Format: ${data.card.meta.spec.toUpperCase()}`);
+
+      if (data.warnings && data.warnings.length > 0) {
+        console.warn('[Import] Warnings:', data.warnings);
+      }
+
+      set({ currentCard: data.card, isDirty: false });
+      get().updateTokenCounts();
+    }
+  },
+
   // Export card
   exportCard: async (format) => {
     const { currentCard } = get();
     if (!currentCard || !currentCard.meta.id) return;
+
+    // CRITICAL: ALWAYS save before exporting to ensure DB has latest data
+    console.log('[exportCard] FORCE SAVING before export, format:', format);
+    try {
+      await get().saveCard();
+      // Small delay to ensure database write completes
+      await new Promise(resolve => setTimeout(resolve, 150));
+      console.log('[exportCard] Save completed, proceeding with export');
+    } catch (err) {
+      console.error('[exportCard] FAILED to save before export:', err);
+      alert(`Failed to save card before export: ${err}`);
+      return;
+    }
 
     const { data, error } = await api.exportCard(currentCard.meta.id, format);
     if (error) {
