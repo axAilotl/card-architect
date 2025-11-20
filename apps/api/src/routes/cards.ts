@@ -122,6 +122,7 @@ export async function cardRoutes(fastify: FastifyInstance) {
 
   // Update card
   fastify.patch<{ Params: { id: string } }>('/cards/:id', async (request, reply) => {
+    fastify.log.info({ cardId: request.params.id }, '[PATCH] Starting card update');
     const body = request.body as { data?: unknown; meta?: unknown };
 
     const existing = cardRepo.get(request.params.id);
@@ -129,6 +130,14 @@ export async function cardRoutes(fastify: FastifyInstance) {
       reply.code(404);
       return { error: 'Card not found' };
     }
+
+    // Log what we're receiving
+    fastify.log.info({
+      cardId: request.params.id,
+      hasData: !!body.data,
+      hasMeta: !!body.meta,
+      dataKeys: body.data ? Object.keys(body.data as object) : [],
+    }, '[PATCH] Received update payload');
 
     // Validate if data is being updated
     if (body.data) {
@@ -167,12 +176,19 @@ export async function cardRoutes(fastify: FastifyInstance) {
       }
     }
 
+    fastify.log.info({
+      cardId: request.params.id,
+      updateHasData: !!updateData.data,
+      updateHasMeta: !!updateData.meta,
+    }, '[PATCH] Calling cardRepo.update');
+
     const card = cardRepo.update(request.params.id, updateData as any);
     if (!card) {
       reply.code(404);
       return { error: 'Card not found' };
     }
 
+    fastify.log.info({ cardId: request.params.id }, '[PATCH] Card updated successfully');
     return card;
   });
 

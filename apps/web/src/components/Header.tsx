@@ -74,22 +74,22 @@ export function Header({ onBack }: HeaderProps) {
 
     setPushStatus(null);
 
-    // CRITICAL: Save any pending edits before pushing
+    // CRITICAL: ALWAYS save before pushing to ensure DB has latest data
     const store = useCardStore.getState();
-    if (store.isDirty) {
-      console.log('Saving pending edits before push...');
-      try {
-        await store.saveCard();
-        // Small delay to ensure database write completes
-        await new Promise(resolve => setTimeout(resolve, 100));
-      } catch (error: any) {
-        setPushStatus({
-          type: 'error',
-          message: `Failed to save edits: ${error.message}`
-        });
-        setTimeout(() => setPushStatus(null), 8000);
-        return;
-      }
+    console.log('[pushToST] FORCE SAVING before push');
+    try {
+      await store.saveCard();
+      // Small delay to ensure database write completes
+      await new Promise(resolve => setTimeout(resolve, 150));
+      console.log('[pushToST] Save completed, proceeding with push');
+    } catch (error: any) {
+      console.error('[pushToST] FAILED to save before push:', error);
+      setPushStatus({
+        type: 'error',
+        message: `Failed to save edits: ${error.message}`
+      });
+      setTimeout(() => setPushStatus(null), 8000);
+      return;
     }
 
     try {
