@@ -70,6 +70,13 @@
 
 - ✅ **SillyTavern Push** (v1.3) - Direct push integration with Settings UI
 - ✅ **Critical PNG Fix** (v1.3) - Strip old tEXt chunks to ensure exports contain latest edits
+- ✅ **Voxta Support** (v1.3) - Import/Export `.voxpkg` files
+  - Preserves character data, assets, and metadata
+  - Maps Voxta profile fields to CCv3 format
+  - Visual asset tagging (emotion/state/variant)
+- ✅ **Embedded Asset Extraction** (v1.3) - Extract assets from "CharX-in-PNG" files
+  - Automatically detects and extracts base64 assets from PNG chunks
+  - Links extracted assets to the card record
 - ✅ **Searchable Model Selector** (v1.2) - Filterable dropdown with model caching and alphabetical sorting
 - ✅ **Card Thumbnails** (v1.2) - Efficient 96x96 avatar thumbnails with top-centered cropping
 - ✅ **Enhanced UI** (v1.2) - Improved textarea heights, streamlined LLM sidebar, collapsible custom instructions
@@ -80,7 +87,6 @@
 
 ### Roadmap
 
-- 🔜 **Voxta Export** - Export to Voxta format (v1.2)
 - 🔜 **Rate Limiting** - Quota management for LLM usage (v1.2)
 - 🔜 **Batch Tools** - Normalize, lint, migrate multiple cards (v1.3)
 - 🔜 **Plugin System** - Extensible architecture for custom tools (v2.0)
@@ -177,13 +183,14 @@ Card Architect is a monorepo with:
 
 **Single Import:**
 1. Click **"Import"** in the header
-2. Select a JSON, PNG, or CHARX file
+2. Select a JSON, PNG, CHARX, or VOXPKG file
 3. The card will be validated and loaded into the editor
+   - **Note:** For Voxta packages with multiple characters, only the first one is loaded currently.
 4. Make any edits and click **"Save"**
 
 **Multiple Import:**
 1. Click **"Import"** in the header
-2. Select multiple files (JSON, PNG, or CHARX)
+2. Select multiple files (JSON, PNG, CHARX, or VOXPKG)
 3. All cards will be imported at once
 4. See import summary showing success/failure count
 5. Failed imports are logged to console with details
@@ -193,7 +200,7 @@ Card Architect is a monorepo with:
 **From Editor:**
 1. Load a card
 2. Click **"Export"** dropdown
-3. Choose **JSON** (pretty-printed), **PNG** (embedded in image), or **CHARX** (with assets)
+3. Choose **JSON**, **PNG**, **CHARX**, or **Voxta**
 4. File will download automatically
 
 **From Grid:**
