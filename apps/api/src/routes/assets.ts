@@ -31,18 +31,35 @@ export async function assetRoutes(fastify: FastifyInstance) {
 
     const buffer = await data.toBuffer();
 
-    // Validate it's an image
-    if (!data.mimetype.startsWith('image/')) {
+    // Validate allowed MIME types
+    if (
+      !data.mimetype.startsWith('image/') &&
+      !data.mimetype.startsWith('video/') &&
+      !data.mimetype.startsWith('audio/')
+    ) {
+      fastify.log.warn({ mimetype: data.mimetype }, 'Upload rejected: unsupported file type');
       reply.code(400);
-      return { error: 'File must be an image' };
+      return { error: 'File must be an image, video, or audio file' };
     }
 
-    // Get image metadata
-    const metadata = await sharp(buffer).metadata();
+    // Get image metadata if it is an image
+    let width: number | undefined;
+    let height: number | undefined;
+
+    if (data.mimetype.startsWith('image/')) {
+      try {
+        const metadata = await sharp(buffer).metadata();
+        width = metadata.width;
+        height = metadata.height;
+      } catch (err) {
+        // Ignore metadata errors for images (e.g. corrupted or unsupported by sharp)
+        fastify.log.warn({ error: err, filename: data.filename }, 'Failed to read image metadata');
+      }
+    }
 
     // Save to disk
     const id = nanoid();
-    const ext = data.mimetype.split('/')[1];
+    const ext = data.mimetype.split('/')[1] || 'bin';
     const filename = `${id}.${ext}`;
     const filepath = join(config.storagePath, filename);
 
@@ -53,8 +70,8 @@ export async function assetRoutes(fastify: FastifyInstance) {
       filename: data.filename,
       mimetype: data.mimetype,
       size: buffer.length,
-      width: metadata.width,
-      height: metadata.height,
+      width,
+      height,
       url: `/storage/${filename}`,
     });
 

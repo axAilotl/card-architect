@@ -388,6 +388,12 @@ export function AssetsPanel() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                         </div>
+                      ) : asset.asset.mimetype.startsWith('audio/') ? (
+                        <div className="w-full h-full flex items-center justify-center bg-green-900/20">
+                          <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                          </svg>
+                        </div>
                       ) : (
                         <div className="w-full h-full flex items-center justify-center bg-dark-bg">
                           <svg className="w-6 h-6 text-dark-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -448,6 +454,15 @@ export function AssetsPanel() {
                     className="max-w-full max-h-96 rounded"
                     onError={() => {
                       console.error('Failed to load video preview:', selectedAssetData.asset.url);
+                    }}
+                  />
+                ) : selectedAssetData.asset.mimetype.startsWith('audio/') ? (
+                  <audio
+                    src={selectedAssetData.asset.url}
+                    controls
+                    className="w-full"
+                    onError={() => {
+                      console.error('Failed to load audio preview:', selectedAssetData.asset.url);
                     }}
                   />
                 ) : (
