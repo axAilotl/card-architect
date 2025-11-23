@@ -9,6 +9,7 @@ import { nanoid } from 'nanoid';
 import { config } from '../config.js';
 import type { AssetTransformOptions } from '@card-architect/schemas';
 import { detectAnimatedAsset, type AssetTag } from '@card-architect/schemas';
+import { getMimeTypeFromExt } from '../utils/uri-utils.js';
 
 export async function assetRoutes(fastify: FastifyInstance) {
   const assetRepo = new AssetRepository(fastify.db);
@@ -59,16 +60,21 @@ export async function assetRoutes(fastify: FastifyInstance) {
 
     // Save to disk
     const id = nanoid();
-    const ext = data.mimetype.split('/')[1] || 'bin';
+    const ext = data.filename.split('.').pop()?.toLowerCase() || data.mimetype.split('/')[1] || 'bin';
     const filename = `${id}.${ext}`;
     const filepath = join(config.storagePath, filename);
+    
+    // Refine mimetype
+    const mimetype = (data.mimetype === 'application/octet-stream') 
+        ? getMimeTypeFromExt(ext) 
+        : data.mimetype;
 
     await writeFile(filepath, buffer);
 
     // Save to database
     const asset = assetRepo.create({
       filename: data.filename,
-      mimetype: data.mimetype,
+      mimetype: mimetype,
       size: buffer.length,
       width,
       height,
@@ -221,7 +227,12 @@ export async function assetRoutes(fastify: FastifyInstance) {
       : [];
 
     const ext = file.filename?.split('.').pop()?.toLowerCase() || 'bin';
-    const mimetype = file.mimetype;
+    let mimetype = file.mimetype;
+
+    // Fix generic or incorrect mime types using extension
+    if (mimetype === 'application/octet-stream' || mimetype === 'application/x-www-form-urlencoded') {
+       mimetype = getMimeTypeFromExt(ext);
+    }
 
     // Get image dimensions
     let width: number | undefined;
