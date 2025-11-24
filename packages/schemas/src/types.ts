@@ -61,10 +61,13 @@ export interface CCv2LorebookEntry {
  * Based on: https://github.com/kwaroran/character-card-spec-v3
  */
 export interface AssetDescriptor {
-  type: 'icon' | 'background' | 'user_icon' | 'emotion' | string; // x-prefixed for custom
-  uri: string; // embeded://, http://, https://, data:, ccdefault:
-  name: string; // 'main' for primary, arbitrary for others
-  ext: string; // file extension without dot (e.g., 'png', 'webp', 'jpg')
+  type: 'icon' | 'background' | 'emotion' | 'user_icon' | 'sound' | 'video' | 'custom' | 'x-risu-asset';
+  uri: string;
+  name: string;
+  ext: string;
+  width?: number;
+  height?: number;
+  size?: number;
 }
 
 /**
