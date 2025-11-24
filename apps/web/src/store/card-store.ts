@@ -377,7 +377,13 @@ export const useCardStore = create<CardStore>((set, get) => ({
       const url = URL.createObjectURL(data);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${currentCard.meta.name}.${format}`;
+      
+      let ext: string = format;
+      if (format === 'voxta') {
+          ext = 'voxpkg';
+      }
+      
+      a.download = `${currentCard.meta.name}.${ext}`;
       a.click();
       URL.revokeObjectURL(url);
     }
