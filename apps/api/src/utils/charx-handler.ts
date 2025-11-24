@@ -197,9 +197,9 @@ export async function extractCharx(
               assets.push({
                 path: fileName,
                 descriptor: {
-                  type: 'unknown', // Will be determined from card.json
+                  type: 'custom', // Will be determined from card.json
+                  name: fileName.split('/').pop() || 'unknown',
                   uri: `embeded://${fileName}`,
-                  name: 'unknown',
                   ext: fileName.split('.').pop() || 'bin',
                 },
                 buffer,

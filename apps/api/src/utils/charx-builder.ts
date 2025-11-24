@@ -45,28 +45,36 @@ export async function buildCharx(
         const assetPath = join(options.storagePath, filename);
         const buffer = await fs.readFile(assetPath);
         
-        if (asset.asset.mimetype.startsWith('image/')) {
-            const meta = await sharp(buffer).metadata();
-            // Return a new object with updated metadata (non-mutating original db record, but effective for export)
-            return {
-                ...asset,
-                asset: {
-                    ...asset.asset,
-                    width: meta.width || asset.asset.width,
-                    height: meta.height || asset.asset.height,
-                    size: buffer.length, // Ensure size is correct too
-                }
-            };
-        } else {
-             // For non-images, at least ensure size is correct
-             return {
-                ...asset,
-                asset: {
-                    ...asset.asset,
-                    size: buffer.length,
-                }
-            };
+        const isImage = asset.asset.mimetype.startsWith('image/') || 
+                        ['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif'].includes(asset.ext.toLowerCase());
+
+        if (isImage) {
+            try {
+                const meta = await sharp(buffer).metadata();
+                console.log(`[CHARX Builder] Calculated metadata for ${asset.name}: ${meta.width}x${meta.height}`);
+                // Return a new object with updated metadata
+                return {
+                    ...asset,
+                    asset: {
+                        ...asset.asset,
+                        width: meta.width || asset.asset.width,
+                        height: meta.height || asset.asset.height,
+                        size: buffer.length,
+                    }
+                };
+            } catch (imgErr) {
+                console.warn(`[CHARX Builder] Sharp failed to read image ${asset.name}:`, imgErr);
+            }
         }
+        
+        // Always update size at least
+        return {
+            ...asset,
+            asset: {
+                ...asset.asset,
+                size: buffer.length,
+            }
+        };
       } catch (e) {
         console.warn(`[CHARX Builder] Failed to calculate metadata for ${asset.name}:`, e);
       }
@@ -188,6 +196,11 @@ function transformAssetUris(card: CCv3Data, assets: CardAssetWithDetails[]): CCv
         }
 
         const embedUri = `embeded://assets/${cardAsset.type}/${subtype}/${safeName}.${cardAsset.ext}`;
+
+        // Log if we are missing metadata for an image
+        if ((subtype === 'png' || subtype === 'webp' || subtype === 'jpeg') && !cardAsset.asset.width) {
+             console.warn(`[CHARX Builder] Warning: Asset ${safeName} has no width metadata`);
+        }
 
         return {
           ...descriptor,
