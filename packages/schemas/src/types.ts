@@ -65,9 +65,6 @@ export interface AssetDescriptor {
   uri: string;
   name: string;
   ext: string;
-  width?: number;
-  height?: number;
-  size?: number;
 }
 
 /**
