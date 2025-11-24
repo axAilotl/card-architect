@@ -280,20 +280,25 @@ export class AssetGraphService {
   /**
    * Set an asset as the main portrait (portrait-override)
    * Removes portrait-override from other assets
+   * Also sets isMain flag for icons
    */
   setPortraitOverride(graph: AssetNode[], assetId: string): AssetNode[] {
     return graph.map((node) => {
+      const isIcon = node.metadata.type === 'icon';
+      
       if (node.id === assetId) {
-        // Add portrait-override tag
+        // Add portrait-override tag and set isMain if it's an icon
         return {
           ...node,
           metadata: addTag(node.metadata, 'portrait-override'),
+          isMain: isIcon ? true : node.isMain,
         };
       } else {
-        // Remove portrait-override tag from others
+        // Remove portrait-override tag from others and unset isMain if it's an icon
         return {
           ...node,
           metadata: removeTag(node.metadata, 'portrait-override'),
+          isMain: isIcon ? false : node.isMain,
         };
       }
     });
@@ -416,11 +421,13 @@ export class AssetGraphService {
       // Check if metadata changed
       if (JSON.stringify(original.metadata) !== JSON.stringify(node.metadata)) {
         changes.push(node);
+        return;
       }
 
-      // Check if name changed
-      if (original.name !== node.name) {
+      // Check if name or isMain changed
+      if (original.name !== node.name || original.isMain !== node.isMain) {
         changes.push(node);
+        return;
       }
     });
 
@@ -430,6 +437,7 @@ export class AssetGraphService {
         name: node.name,
         tags: node.metadata.tags as string[],
         order: node.metadata.order,
+        isMain: node.isMain,
       });
     }
   }
