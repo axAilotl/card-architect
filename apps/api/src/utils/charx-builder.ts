@@ -20,6 +20,14 @@ export interface CharxBuildResult {
   totalSize: number;
 }
 
+function getCharxCategory(mimetype: string): string {
+  if (mimetype.startsWith('image/')) return 'images';
+  if (mimetype.startsWith('audio/')) return 'audio';
+  if (mimetype.startsWith('video/')) return 'video';
+  // TODO: Add l2d, 3d, ai, fonts, code detection if needed
+  return 'other';
+}
+
 /**
  * Build a CHARX ZIP file from card data and assets
  */
@@ -56,8 +64,8 @@ export async function buildCharx(
         const buffer = await fs.readFile(assetPath);
 
         // Organize assets by type following CHARX convention
-        // Format: assets/{type}/{subtype}/{name}.{ext}
-        const subtype = cardAsset.asset.mimetype.split('/')[1] || 'bin';
+        // Format: assets/{type}/{category}/{name}.{ext}
+        const category = getCharxCategory(cardAsset.asset.mimetype);
         let safeName = cardAsset.name.replace(/[^a-zA-Z0-9._-]/g, '_');
         
         // Strip extension if present in name to avoid double extension (e.g. image.png.png)
@@ -65,7 +73,7 @@ export async function buildCharx(
             safeName = safeName.substring(0, safeName.length - (cardAsset.ext.length + 1));
         }
 
-        const assetZipPath = `assets/${cardAsset.type}/${subtype}/${safeName}.${cardAsset.ext}`;
+        const assetZipPath = `assets/${cardAsset.type}/${category}/${safeName}.${cardAsset.ext}`;
 
         zipfile.addBuffer(buffer, assetZipPath);
         console.log(`[CHARX Builder] Added asset: ${assetZipPath} (${buffer.length} bytes)`);
@@ -137,8 +145,8 @@ function transformAssetUris(card: CCv3Data, assets: CardAssetWithDetails[]): CCv
 
       if (cardAsset.asset.url.startsWith('/storage/')) {
         // Convert to embeded:// format
-        // Format: embeded://assets/{type}/{subtype}/{name}.{ext}
-        const subtype = cardAsset.asset.mimetype.split('/')[1] || 'bin';
+        // Format: embeded://assets/{type}/{category}/{name}.{ext}
+        const category = getCharxCategory(cardAsset.asset.mimetype);
         let safeName = cardAsset.name.replace(/[^a-zA-Z0-9._-]/g, '_');
         
         // Strip extension if present in name
@@ -146,10 +154,10 @@ function transformAssetUris(card: CCv3Data, assets: CardAssetWithDetails[]): CCv
             safeName = safeName.substring(0, safeName.length - (cardAsset.ext.length + 1));
         }
 
-        const embedUri = `embeded://assets/${cardAsset.type}/${subtype}/${safeName}.${cardAsset.ext}`;
+        const embedUri = `embeded://assets/${cardAsset.type}/${category}/${safeName}.${cardAsset.ext}`;
 
         // Log if we are missing metadata for an image (internal debugging)
-        if ((subtype === 'png' || subtype === 'webp' || subtype === 'jpeg') && !cardAsset.asset.width) {
+        if ((category === 'images') && !cardAsset.asset.width) {
              // console.warn(`[CHARX Builder] Warning: Asset ${safeName} has no width metadata`);
         }
 
