@@ -56,9 +56,10 @@ export async function buildCharx(
         const buffer = await fs.readFile(assetPath);
 
         // Organize assets by type following CHARX convention
-        // Format: assets/{type}/{subtype}/{index}.{ext}
+        // Format: assets/{type}/{subtype}/{name}.{ext}
         const subtype = cardAsset.asset.mimetype.split('/')[1] || 'bin';
-        const assetZipPath = `assets/${cardAsset.type}/${subtype}/${cardAsset.order}.${cardAsset.ext}`;
+        const safeName = cardAsset.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const assetZipPath = `assets/${cardAsset.type}/${subtype}/${safeName}.${cardAsset.ext}`;
 
         zipfile.addBuffer(buffer, assetZipPath);
         console.log(`[CHARX Builder] Added asset: ${assetZipPath} (${buffer.length} bytes)`);
@@ -120,13 +121,18 @@ function transformAssetUris(card: CCv3Data, assets: CardAssetWithDetails[]): CCv
 
     if (cardAsset && cardAsset.asset.url.startsWith('/storage/')) {
       // Convert to embeded:// format
-      // Format: embeded://assets/{type}/{subtype}/{index}.{ext}
+      // Format: embeded://assets/{type}/{subtype}/{name}.{ext}
       const subtype = cardAsset.asset.mimetype.split('/')[1] || 'bin';
-      const embedUri = `embeded://assets/${cardAsset.type}/${subtype}/${cardAsset.order}.${cardAsset.ext}`;
+      const safeName = cardAsset.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const embedUri = `embeded://assets/${cardAsset.type}/${subtype}/${safeName}.${cardAsset.ext}`;
 
       return {
         ...descriptor,
         uri: embedUri,
+        // Inject metadata from DB if available
+        width: cardAsset.asset.width || undefined,
+        height: cardAsset.asset.height || undefined,
+        size: cardAsset.asset.size || undefined,
       };
     }
 
