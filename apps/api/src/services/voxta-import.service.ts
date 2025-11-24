@@ -22,6 +22,7 @@ import { writeFile } from 'fs/promises';
 import { config } from '../config.js';
 import { detectAnimatedAsset } from '@card-architect/schemas';
 import { getMimeTypeFromExt } from '../utils/uri-utils.js';
+import sharp from 'sharp';
 
 export class VoxtaImportService {
   constructor(
@@ -241,14 +242,27 @@ export class VoxtaImportService {
       
       await writeFile(storagePath, asset.buffer);
 
+      // Calculate dimensions if image
+      let width = 0;
+      let height = 0;
+      if (mimetype.startsWith('image/')) {
+        try {
+          const meta = await sharp(asset.buffer).metadata();
+          width = meta.width || 0;
+          height = meta.height || 0;
+        } catch (e) {
+          console.warn(`[Voxta Import] Failed to get dimensions for ${filename}:`, e);
+        }
+      }
+
       // Create Asset Record
       const assetRecord = this.assetRepo.create({
         filename: storageFilename,
         mimetype,
         size: asset.buffer.length,
         url: `/storage/${storageFilename}`,
-        width: 0, // Would need sharp to get dimensions, skipping for perf
-        height: 0
+        width,
+        height
       });
 
       // Create Card Asset Link

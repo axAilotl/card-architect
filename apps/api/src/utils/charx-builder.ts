@@ -7,6 +7,7 @@ import yazl from 'yazl';
 import type { CCv3Data, CardAssetWithDetails } from '@card-architect/schemas';
 import { promises as fs } from 'fs';
 import { join } from 'path';
+import sharp from 'sharp';
 
 export interface CharxBuildOptions {
   storagePath: string; // Base path where asset files are stored
@@ -34,8 +35,48 @@ export async function buildCharx(
 
   const zipfile = new yazl.ZipFile();
 
+  // Pre-process assets to ensure metadata exists
+  // This fixes issues where imported assets (e.g. from Voxta) have 0/null dimensions
+  const processedAssets = await Promise.all(assets.map(async (asset) => {
+    // If asset has file and missing dimensions
+    if (asset.asset.url.startsWith('/storage/') && (!asset.asset.width || !asset.asset.height)) {
+      try {
+        const filename = asset.asset.url.replace('/storage/', '');
+        const assetPath = join(options.storagePath, filename);
+        const buffer = await fs.readFile(assetPath);
+        
+        if (asset.asset.mimetype.startsWith('image/')) {
+            const meta = await sharp(buffer).metadata();
+            // Return a new object with updated metadata (non-mutating original db record, but effective for export)
+            return {
+                ...asset,
+                asset: {
+                    ...asset.asset,
+                    width: meta.width || asset.asset.width,
+                    height: meta.height || asset.asset.height,
+                    size: buffer.length, // Ensure size is correct too
+                }
+            };
+        } else {
+             // For non-images, at least ensure size is correct
+             return {
+                ...asset,
+                asset: {
+                    ...asset.asset,
+                    size: buffer.length,
+                }
+            };
+        }
+      } catch (e) {
+        console.warn(`[CHARX Builder] Failed to calculate metadata for ${asset.name}:`, e);
+      }
+    }
+    return asset;
+  }));
+
   // Transform asset URIs from internal (/storage/...) to embeded:// format
-  const transformedCard = transformAssetUris(card, assets);
+  // Use the processed assets which now contain metadata
+  const transformedCard = transformAssetUris(card, processedAssets);
 
   // Add card.json
   const cardJson = JSON.stringify(transformedCard, null, 2);
@@ -46,7 +87,7 @@ export async function buildCharx(
   let assetCount = 0;
   let totalSize = 0;
 
-  for (const cardAsset of assets) {
+  for (const cardAsset of processedAssets) {
     // Only bundle assets that have files (not remote URLs or ccdefault)
     if (cardAsset.asset.url.startsWith('/storage/')) {
       const filename = cardAsset.asset.url.replace('/storage/', '');
@@ -92,7 +133,7 @@ export async function buildCharx(
     zipfile.outputStream.on('end', () => {
       const buffer = Buffer.concat(chunks);
       console.log(`[CHARX Builder] Build complete: ${buffer.length} bytes total`);
-      console.log(`[CHARX Builder] Assets bundled: ${assetCount}/${assets.length}`);
+      console.log(`[CHARX Builder] Assets bundled: ${assetCount}/${processedAssets.length}`);
 
       resolve({
         buffer,
