@@ -170,7 +170,11 @@ export class CardImportService {
         const assetId = nanoid();
         const ext = assetInfo.descriptor.ext;
         const filename = `${assetId}.${ext}`;
-        const assetPath = join(options.storagePath, filename);
+
+        // Use card-based storage directory
+        const cardStorageDir = join(options.storagePath, card.meta.id);
+        await fs.mkdir(cardStorageDir, { recursive: true });
+        const assetPath = join(cardStorageDir, filename);
 
         // Determine MIME type
         const mimetype = getMimeTypeFromExt(ext);
@@ -195,10 +199,9 @@ export class CardImportService {
 
         // Write file to storage
         await fs.writeFile(assetPath, assetInfo.buffer);
-        console.log(`[Card Import] Wrote asset to disk: ${assetPath}`);
 
-        // Create asset record
-        const assetUrl = `/storage/${filename}`;
+        // Create asset record with card-based path
+        const assetUrl = `/storage/${card.meta.id}/${filename}`;
         const asset = this.assetRepo.create({
           filename,
           mimetype,

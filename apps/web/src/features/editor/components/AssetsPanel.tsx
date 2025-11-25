@@ -375,16 +375,17 @@ export function AssetsPanel() {
                   }`}
                 >
                   <div className="flex items-start gap-3">
-                    {/* Thumbnail */}
+                    {/* Thumbnail - Use thumbnail endpoint for images */}
                     <div className="w-12 h-12 rounded bg-dark-bg overflow-hidden flex-shrink-0">
                       {asset.asset.mimetype.startsWith('image/') ? (
                         <img
-                          src={asset.asset.url}
+                          src={`/api/assets/${asset.asset.id}/thumbnail?size=96`}
                           alt={asset.name}
                           className="w-full h-full object-cover"
+                          loading="lazy"
                           onError={(e) => {
-                            console.error('Failed to load asset thumbnail:', asset.asset.url);
-                            e.currentTarget.style.display = 'none';
+                            // Fallback to full image if thumbnail fails
+                            e.currentTarget.src = asset.asset.url;
                           }}
                         />
                       ) : asset.asset.mimetype.startsWith('video/') ? (
@@ -446,11 +447,15 @@ export function AssetsPanel() {
               <div className="bg-dark-bg rounded-lg p-4 flex items-center justify-center">
                 {selectedAssetData.asset.mimetype.startsWith('image/') ? (
                   <img
-                    src={selectedAssetData.asset.url}
+                    src={`/api/assets/${selectedAssetData.asset.id}/thumbnail?size=512`}
                     alt={selectedAssetData.name}
-                    className="max-w-full max-h-96 rounded"
-                    onError={() => {
-                      console.error('Failed to load asset preview:', selectedAssetData.asset.url);
+                    className="max-w-full max-h-96 rounded cursor-pointer"
+                    loading="lazy"
+                    title="Click to view full size"
+                    onClick={() => window.open(selectedAssetData.asset.url, '_blank')}
+                    onError={(e) => {
+                      // Fallback to full image if thumbnail fails
+                      e.currentTarget.src = selectedAssetData.asset.url;
                     }}
                   />
                 ) : selectedAssetData.asset.mimetype.startsWith('video/') ? (
@@ -458,18 +463,14 @@ export function AssetsPanel() {
                     src={selectedAssetData.asset.url}
                     controls
                     className="max-w-full max-h-96 rounded"
-                    onError={() => {
-                      console.error('Failed to load video preview:', selectedAssetData.asset.url);
-                    }}
+                    preload="metadata"
                   />
                 ) : selectedAssetData.asset.mimetype.startsWith('audio/') ? (
                   <audio
                     src={selectedAssetData.asset.url}
                     controls
                     className="w-full"
-                    onError={() => {
-                      console.error('Failed to load audio preview:', selectedAssetData.asset.url);
-                    }}
+                    preload="metadata"
                   />
                 ) : (
                   <div className="text-center p-8">
@@ -478,6 +479,9 @@ export function AssetsPanel() {
                   </div>
                 )}
               </div>
+              {selectedAssetData.asset.mimetype.startsWith('image/') && (
+                <p className="text-xs text-dark-muted text-center mt-2">Click image to view full size</p>
+              )}
             </div>
 
             {/* Details */}

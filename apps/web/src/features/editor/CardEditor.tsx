@@ -7,9 +7,13 @@ import { AssetsPanel } from './components/AssetsPanel';
 // import { RedundancyPanel } from './components/RedundancyPanel'; // Disabled
 // import { LoreTriggerPanel } from './components/LoreTriggerPanel'; // Disabled
 import { FocusedEditor } from './components/FocusedEditor';
+import { useAutoSnapshot } from '../../hooks/useAutoSnapshot';
 
 export function CardEditor() {
   const activeTab = useUIStore((state) => state.activeTab);
+
+  // Enable auto-snapshot functionality
+  useAutoSnapshot();
 
   return (
     <div className="h-full flex flex-col">

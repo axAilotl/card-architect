@@ -214,6 +214,12 @@ class ApiClient {
     });
   }
 
+  async deleteVersion(cardId: string, versionId: string) {
+    return this.request<void>(`/cards/${cardId}/versions/${versionId}`, {
+      method: 'DELETE',
+    });
+  }
+
   // Tokenization
   async tokenize(req: TokenizeRequest) {
     return this.request<TokenizeResponse>('/tokenize', {

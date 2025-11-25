@@ -85,7 +85,7 @@ export async function assetRoutes(fastify: FastifyInstance) {
     return asset;
   });
 
-  // Get asset
+  // Get asset metadata
   fastify.get<{ Params: { id: string } }>('/assets/:id', async (request, reply) => {
     const asset = assetRepo.get(request.params.id);
     if (!asset) {
@@ -94,6 +94,47 @@ export async function assetRoutes(fastify: FastifyInstance) {
     }
     return asset;
   });
+
+  // Get asset thumbnail (for UI performance)
+  fastify.get<{ Params: { id: string }; Querystring: { size?: string } }>(
+    '/assets/:id/thumbnail',
+    async (request, reply) => {
+      const asset = assetRepo.get(request.params.id);
+      if (!asset) {
+        reply.code(404);
+        return { error: 'Asset not found' };
+      }
+
+      // Only generate thumbnails for images
+      if (!asset.mimetype.startsWith('image/')) {
+        reply.code(400);
+        return { error: 'Thumbnails only available for images' };
+      }
+
+      const size = parseInt(request.query.size || '128', 10);
+      const maxSize = Math.min(size, 512); // Cap at 512px
+
+      const filepath = join(config.storagePath, asset.url.replace('/storage/', ''));
+
+      try {
+        const thumbnail = await sharp(filepath)
+          .resize(maxSize, maxSize, {
+            fit: 'cover',
+            position: 'center',
+          })
+          .png({ quality: 80 })
+          .toBuffer();
+
+        reply.header('Content-Type', 'image/png');
+        reply.header('Cache-Control', 'public, max-age=86400'); // Cache for 24 hours
+        return thumbnail;
+      } catch (err) {
+        fastify.log.error({ error: err, assetId: request.params.id }, 'Failed to generate thumbnail');
+        reply.code(500);
+        return { error: 'Failed to generate thumbnail' };
+      }
+    }
+  );
 
   // Transform asset (crop/resize/convert)
   fastify.post<{ Params: { id: string } }>('/assets/:id/transform', async (request, reply) => {
@@ -256,14 +297,21 @@ export async function assetRoutes(fastify: FastifyInstance) {
       }
     }
 
-    // Save to storage
+    // Save to card's storage directory
     const assetId = nanoid();
     const filename = `${assetId}.${ext}`;
-    const assetPath = join(config.storagePath, filename);
+    const cardStorageDir = join(config.storagePath, request.params.id);
+
+    // Ensure card's storage directory exists
+    if (!existsSync(cardStorageDir)) {
+      await mkdir(cardStorageDir, { recursive: true });
+    }
+
+    const assetPath = join(cardStorageDir, filename);
     await writeFile(assetPath, buffer);
 
-    // Create asset record
-    const assetUrl = `/storage/${filename}`;
+    // Create asset record with card-based path
+    const assetUrl = `/storage/${request.params.id}/${filename}`;
     const asset = assetRepo.create({
       filename,
       mimetype,

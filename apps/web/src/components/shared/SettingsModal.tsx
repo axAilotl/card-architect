@@ -4,6 +4,9 @@
 
 import { useState, useEffect } from 'react';
 import { useLLMStore } from '../../store/llm-store';
+import { useCardStore } from '../../store/card-store';
+import { useSettingsStore } from '../../store/settings-store';
+import { extractCardData } from '../../lib/card-utils';
 import type { ProviderConfig, ProviderKind, OpenAIMode, UserPreset, CreatePresetRequest } from '@card-architect/schemas';
 import { TemplateSnippetPanel } from '../../features/editor/components/TemplateSnippetPanel';
 import { api } from '../../lib/api';
@@ -38,7 +41,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     getCachedModels,
   } = useLLMStore();
 
-  const [activeTab, setActiveTab] = useState<'providers' | 'rag' | 'templates' | 'presets' | 'sillytavern'>('providers');
+  const [activeTab, setActiveTab] = useState<'general' | 'providers' | 'rag' | 'templates' | 'presets' | 'sillytavern'>('general');
+
+  // Auto-snapshot settings from store
+  const { autoSnapshot, setAutoSnapshotEnabled, setAutoSnapshotInterval } = useSettingsStore();
   const [editingProvider, setEditingProvider] = useState<Partial<ProviderConfig> | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { success: boolean; error?: string }>>({});
   const [modelFetchError, setModelFetchError] = useState<string | null>(null);
@@ -407,8 +413,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
 
     // Get current card from card store
-    const cardStore = await import('../../store/card-store');
-    const currentCard = cardStore.useCardStore.getState().currentCard;
+    const currentCard = useCardStore.getState().currentCard;
 
     if (!currentCard) {
       setRagStatus('No card loaded.');
@@ -416,7 +421,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
 
     // Extract card data
-    const extractCardData = (await import('../../lib/card-utils')).extractCardData;
     const cardData = extractCardData(currentCard);
     const lorebook = (cardData as any).character_book;
 
@@ -463,6 +467,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
         {/* Tabs */}
         <div className="flex border-b border-dark-border">
+          <button
+            className={`px-6 py-3 font-medium transition-colors ${
+              activeTab === 'general'
+                ? 'border-b-2 border-blue-500 text-blue-500'
+                : 'text-dark-muted hover:text-dark-text'
+            }`}
+            onClick={() => setActiveTab('general')}
+          >
+            General
+          </button>
           <button
             className={`px-6 py-3 font-medium transition-colors ${
               activeTab === 'providers'
@@ -517,6 +531,69 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
         {/* Content */}
         <div className="flex-1 overflow-auto p-6">
+          {activeTab === 'general' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold mb-2">General Settings</h3>
+                <p className="text-dark-muted">
+                  Configure application-wide settings and behaviors.
+                </p>
+              </div>
+
+              {/* Auto-Snapshot Settings */}
+              <div className="border border-dark-border rounded-lg p-6 space-y-4">
+                <h4 className="font-semibold">Auto-Snapshot</h4>
+                <p className="text-sm text-dark-muted">
+                  Automatically create version snapshots while editing cards.
+                </p>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="autoSnapshotEnabled"
+                    checked={autoSnapshot.enabled}
+                    onChange={(e) => setAutoSnapshotEnabled(e.target.checked)}
+                    className="rounded"
+                  />
+                  <label htmlFor="autoSnapshotEnabled" className="text-sm font-medium">
+                    Enable Auto-Snapshot
+                  </label>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Snapshot Interval
+                  </label>
+                  <select
+                    value={autoSnapshot.intervalMinutes}
+                    onChange={(e) => setAutoSnapshotInterval(parseInt(e.target.value))}
+                    disabled={!autoSnapshot.enabled}
+                    className="w-full bg-dark-card border border-dark-border rounded px-3 py-2 disabled:opacity-50"
+                  >
+                    <option value={1}>Every 1 minute</option>
+                    <option value={5}>Every 5 minutes</option>
+                    <option value={10}>Every 10 minutes</option>
+                    <option value={15}>Every 15 minutes</option>
+                    <option value={30}>Every 30 minutes</option>
+                  </select>
+                  <p className="text-xs text-dark-muted mt-1">
+                    A snapshot will be created automatically at this interval when you have unsaved changes.
+                  </p>
+                </div>
+
+                <div className="p-3 bg-dark-bg rounded border border-dark-border">
+                  <h5 className="font-medium text-sm mb-2">How Auto-Snapshot Works</h5>
+                  <ul className="text-xs text-dark-muted space-y-1 list-disc list-inside">
+                    <li>Snapshots are only created when you have unsaved changes</li>
+                    <li>Auto-snapshots are labeled with "[Auto]" in the version history</li>
+                    <li>You can view and restore auto-snapshots from the Diff tab</li>
+                    <li>Auto-snapshots do not replace manual snapshots</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeTab === 'providers' && (
             <div>
               <div className="mb-4 flex justify-between items-center">

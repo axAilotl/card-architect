@@ -12,6 +12,7 @@ import { buildCharx, validateCharxBuild } from '../utils/charx-builder.js';
 import { validateCharxExport, applyExportFixes } from '../utils/charx-validator.js';
 import { VoxtaImportService } from '../services/voxta-import.service.js';
 import { buildVoxtaPackage } from '../utils/voxta-builder.js';
+import { voxtaToStandard, standardToVoxta, isVoxtaCard, convertCardMacros } from '../utils/macro-converter.js';
 
 /**
  * Normalize card data to fix common issues before validation
@@ -1241,22 +1242,37 @@ export async function importExportRoutes(fastify: FastifyInstance) {
           hasSpec: 'spec' in (card.data as unknown as Record<string, unknown>),
           hasSpecVersion: 'spec_version' in (card.data as unknown as Record<string, unknown>),
           dataKeys: Object.keys(card.data as unknown as Record<string, unknown>),
+          isVoxta: isVoxtaCard(card.data),
         }, 'Exporting card as JSON');
 
         reply.header('Content-Type', 'application/json; charset=utf-8');
         reply.header('Content-Disposition', `attachment; filename="${card.meta.name}.json"`);
 
+        // Convert Voxta macros to standard format if this is a Voxta card
+        let exportData = card.data as Record<string, unknown>;
+        if (isVoxtaCard(card.data)) {
+          exportData = convertCardMacros(exportData, voxtaToStandard);
+          fastify.log.info({ cardId: request.params.id }, 'Converted Voxta macros to standard format for JSON export');
+        }
+
         // Return the card data directly with pretty printing
-        const jsonString = JSON.stringify(card.data, null, 2);
+        const jsonString = JSON.stringify(exportData, null, 2);
         return reply.send(jsonString);
       } else if (format === 'charx') {
         try {
           // CHARX export - get card assets
           let assets = cardAssetRepo.listByCardWithDetails(request.params.id);
 
+          // Convert Voxta macros to standard format if this is a Voxta card
+          let charxData = card.data as CCv3Data;
+          if (isVoxtaCard(card.data)) {
+            charxData = convertCardMacros(card.data as Record<string, unknown>, voxtaToStandard) as CCv3Data;
+            fastify.log.info({ cardId: request.params.id }, 'Converted Voxta macros to standard format for CHARX export');
+          }
+
           // Pre-export validation with auto-fixes
           const exportValidation = await validateCharxExport(
-            card.data as CCv3Data,
+            charxData,
             assets,
             config.storagePath
           );
@@ -1289,14 +1305,14 @@ export async function importExportRoutes(fastify: FastifyInstance) {
           }
 
           // Validate CHARX structure (legacy check)
-          const validation = validateCharxBuild(card.data as CCv3Data, assets);
+          const validation = validateCharxBuild(charxData, assets);
           if (!validation.valid) {
             fastify.log.warn({ errors: validation.errors }, 'CHARX build validation warnings');
             // Continue anyway, just warn
           }
 
           // Build CHARX ZIP
-          const result = await buildCharx(card.data as CCv3Data, assets, {
+          const result = await buildCharx(charxData, assets, {
             storagePath: config.storagePath,
           });
 
@@ -1320,9 +1336,17 @@ export async function importExportRoutes(fastify: FastifyInstance) {
       } else if (format === 'voxta') {
         try {
           const assets = cardAssetRepo.listByCardWithDetails(request.params.id);
-          
+
+          // Convert standard macros to Voxta format (add spaces)
+          // This applies to all cards being exported to Voxta, not just existing Voxta cards
+          const voxtaData = convertCardMacros(
+            card.data as Record<string, unknown>,
+            standardToVoxta
+          ) as import('@card-architect/schemas').CCv3Data;
+          fastify.log.info({ cardId: request.params.id }, 'Converted standard macros to Voxta format for Voxta export');
+
           const result = await buildVoxtaPackage(
-            card.data as import('@card-architect/schemas').CCv3Data,
+            voxtaData,
             assets,
             { storagePath: config.storagePath }
           );
@@ -1363,8 +1387,15 @@ export async function importExportRoutes(fastify: FastifyInstance) {
             fastify.log.info({ cardId: request.params.id, imageSize: baseImage.length }, 'Using original image for export');
           }
 
-          // Embed card data into the PNG
-          const pngBuffer = await createCardPNG(baseImage, card);
+          // Convert Voxta macros to standard format if this is a Voxta card
+          let pngCardData = card.data;
+          if (isVoxtaCard(card.data)) {
+            pngCardData = convertCardMacros(card.data as Record<string, unknown>, voxtaToStandard) as typeof card.data;
+            fastify.log.info({ cardId: request.params.id }, 'Converted Voxta macros to standard format for PNG export');
+          }
+
+          // Embed card data into the PNG (using modified card with converted data)
+          const pngBuffer = await createCardPNG(baseImage, { ...card, data: pngCardData });
 
           // Return the PNG with appropriate headers
           reply.header('Content-Type', 'image/png');

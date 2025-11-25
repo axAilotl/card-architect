@@ -160,7 +160,14 @@ card_doctor/
 - **Create snapshots** with optional messages
 - **Compare versions** in Diff mode
 - **Restore** from any previous version
+- **Delete snapshots** with confirmation dialog
 - **Snapshot button** integrated into editor tabs row (EditorTabs.tsx)
+- **Auto-Snapshot** (2025-11-25):
+  - Configurable automatic snapshots at intervals (1, 5, 10, 15, or 30 minutes)
+  - Settings in General tab of Settings modal
+  - Only creates snapshots when card has unsaved changes
+  - Auto-snapshots labeled with "[Auto]" prefix
+  - Persisted settings via Zustand + localStorage
 
 ### 8. Import/Export
 - **Import**: JSON, PNG, or CHARX character cards
@@ -240,6 +247,7 @@ GET    /api/cards/:id/export          # Export card (json|png)
 GET    /api/cards/:id/versions        # List versions
 POST   /api/cards/:id/versions        # Create snapshot
 POST   /api/cards/:id/versions/:versionId/restore  # Restore version
+DELETE /api/cards/:id/versions/:versionId          # Delete snapshot
 ```
 
 ### Import/Export & Tokenization
@@ -503,10 +511,21 @@ CREATE TABLE llm_presets (
 
 **Shared Components:**
 - `components/shared/Header.tsx` - Top navigation bar
-- `components/shared/SettingsModal.tsx` - Settings UI (Providers + RAG)
+- `components/shared/SettingsModal.tsx` - Settings UI (General, Providers, RAG, etc.)
 - `components/ui/` - Reusable UI elements:
   - `SearchableSelect.tsx`, `SnapshotButton.tsx`
-  - `DiffViewer.tsx`
+  - `DiffViewer.tsx`, `ErrorBoundary.tsx`
+
+**Hooks:**
+- `hooks/useAutoSnapshot.ts` - Auto-snapshot timer hook
+
+**Stores:**
+- `store/card-store.ts` - Card data and CRUD operations
+- `store/ui-store.ts` - UI state (tabs, visibility)
+- `store/settings-store.ts` - App settings (auto-snapshot config)
+- `store/llm-store.ts` - LLM provider settings
+- `store/token-store.ts` - Token counting
+- `store/template-store.ts` - Templates and snippets
 
 **Core:**
 - `App.tsx` - Main application container with Routes
@@ -542,7 +561,9 @@ CREATE TABLE llm_presets (
 - `png.ts` - PNG tEXt chunk extraction and embedding
 
 **Database (apps/api/src/db/):**
-- `repository.ts` - Database operations (cards, versions, presets)
+- `repository.ts` - Database operations (cards, versions, presets, assets)
+- `schema.ts` - SQLite table definitions
+- `migrations.ts` - Versioned database migrations
 
 **Providers (apps/api/src/providers/):**
 - `openai.ts` - OpenAI Responses API and Chat Completions API
@@ -1206,6 +1227,45 @@ Upgraded RAG system from keyword matching to semantic search using vector embedd
 - Semantic understanding vs. exact keyword matching
 - Better context retrieval for LLM operations
 - More relevant results even with different phrasing
+
+## Recent Implementation: Auto-Snapshot & Snapshot Deletion (2025-11-25)
+
+### Overview
+Added ability to delete snapshots and automatic snapshot creation at configurable intervals.
+
+### Snapshot Deletion
+- **Backend**: Added `deleteVersion` method to CardRepository
+- **API**: New `DELETE /cards/:id/versions/:versionId` endpoint
+- **Frontend**: Delete button with confirmation in DiffPanel version list
+- **Files**:
+  - `apps/api/src/db/repository.ts:212-218`
+  - `apps/api/src/routes/cards.ts:228-242`
+  - `apps/web/src/lib/api.ts:217-221`
+  - `apps/web/src/features/editor/components/DiffPanel.tsx:154-165`
+
+### Auto-Snapshot Feature
+- **Settings Store**: New `settings-store.ts` with Zustand + persist middleware
+  - `autoSnapshot.enabled` (boolean, default: false)
+  - `autoSnapshot.intervalMinutes` (1, 5, 10, 15, or 30 minutes, default: 5)
+  - Settings persisted to localStorage as `card-architect-settings`
+
+- **Settings UI**: New "General" tab in SettingsModal
+  - Enable/disable checkbox
+  - Interval dropdown selector
+  - Info panel explaining behavior
+
+- **Auto-Snapshot Hook**: `useAutoSnapshot.ts`
+  - Interval-based timer using `setInterval`
+  - Only triggers when card is dirty (has unsaved changes)
+  - Auto-snapshots labeled with "[Auto] {timestamp}" message
+  - Resets timer on card change
+  - Integrated in CardEditor component
+
+- **Files**:
+  - `apps/web/src/store/settings-store.ts` (new)
+  - `apps/web/src/hooks/useAutoSnapshot.ts` (new)
+  - `apps/web/src/components/shared/SettingsModal.tsx` (General tab)
+  - `apps/web/src/features/editor/CardEditor.tsx` (hook integration)
 
 ## Recent Code Review Findings (2025-11-16)
 

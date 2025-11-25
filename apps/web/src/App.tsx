@@ -4,6 +4,8 @@ import { useCardStore } from './store/card-store';
 import { CardEditor } from './features/editor/CardEditor';
 import { CardGrid } from './features/dashboard/CardGrid';
 import { Header } from './components/shared/Header';
+import { ErrorBoundary, PageErrorBoundary } from './components/ui/ErrorBoundary';
+import { localDB } from './lib/db';
 
 function GridRoute() {
   const navigate = useNavigate();
@@ -50,19 +52,35 @@ function EditorRoute() {
 function App() {
   useEffect(() => {
     // Initialize IndexedDB
-    import('./lib/db').then(({ localDB }) => localDB.init());
+    localDB.init();
   }, []);
 
   return (
-    <BrowserRouter>
-      <div className="h-screen flex flex-col bg-dark-bg">
-        <Routes>
-          <Route path="/" element={<GridRoute />} />
-          <Route path="/cards/:id" element={<EditorRoute />} />
-          <Route path="*" element={<Navigate to="/" />} />
-        </Routes>
-      </div>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <div className="h-screen flex flex-col bg-dark-bg">
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <PageErrorBoundary>
+                  <GridRoute />
+                </PageErrorBoundary>
+              }
+            />
+            <Route
+              path="/cards/:id"
+              element={
+                <PageErrorBoundary>
+                  <EditorRoute />
+                </PageErrorBoundary>
+              }
+            />
+            <Route path="*" element={<Navigate to="/" />} />
+          </Routes>
+        </div>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 

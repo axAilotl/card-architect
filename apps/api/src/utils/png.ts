@@ -37,7 +37,6 @@ function parseTextChunks(buffer: Buffer): Array<{keyword: string, text: string}>
   // Verify PNG signature
   const signature = buffer.slice(0, 8);
   if (signature.toString('hex') !== '89504e470d0a1a0a') {
-    console.error('[PNG Extract] Invalid PNG signature');
     return textChunks;
   }
 
@@ -70,7 +69,6 @@ function parseTextChunks(buffer: Buffer): Array<{keyword: string, text: string}>
         const keyword = data.slice(0, nullIndex).toString('latin1');
         const text = data.slice(nullIndex + 1).toString('utf8');
         textChunks.push({keyword, text});
-        console.log(`[PNG Extract] Found tEXt chunk: "${keyword}" (${text.length} chars)`);
       }
     }
 
@@ -80,15 +78,14 @@ function parseTextChunks(buffer: Buffer): Array<{keyword: string, text: string}>
       if (nullIndex !== -1) {
         const keyword = data.slice(0, nullIndex).toString('latin1');
         const compressionMethod = data[nullIndex + 1];
-        
+
         if (compressionMethod === 0) { // 0 = deflate/inflate
           try {
             const compressedData = data.slice(nullIndex + 2);
             const text = inflateSync(compressedData).toString('utf8');
             textChunks.push({keyword, text});
-            console.log(`[PNG Extract] Found zTXt chunk: "${keyword}" (${text.length} chars decompressed)`);
-          } catch (e) {
-            console.warn(`[PNG Extract] Failed to decompress zTXt chunk "${keyword}":`, e);
+          } catch {
+            // Failed to decompress zTXt chunk, skip it
           }
         }
       }
@@ -122,12 +119,8 @@ export async function extractFromPNG(buffer: Buffer): Promise<{
 
       // Manually parse text chunks (pngjs doesn't read them reliably)
       const textChunks = parseTextChunks(buffer);
-      const availableKeys = [...new Set(textChunks.map(c => c.keyword))];
-
-      console.log('[PNG Extract] Available text chunks:', availableKeys);
 
       if (textChunks.length === 0) {
-        console.error('[PNG Extract] PNG has no text chunks at all - this PNG was not exported with embedded character data');
         resolve(null);
         return;
       }
@@ -170,18 +163,16 @@ export async function extractFromPNG(buffer: Buffer): Promise<{
           try {
             const json = tryParseChunk(chunk.text);
             const spec = detectSpec(json);
-            console.log(`[PNG Extract] Found data in chunk '${key}' (${chunk.text.length} chars), detected spec: ${spec}, has lorebook: ${hasLorebook(json)}`);
 
             if (spec === 'v3' || spec === 'v2') {
-              const result = { 
-                data: json, 
-                spec, 
+              const result = {
+                data: json,
+                spec,
                 extraChunks: textChunks.filter(c => c.keyword !== key) // Return all other chunks
               };
 
               // Prefer chunks with lorebooks
               if (hasLorebook(json)) {
-                console.log(`[PNG Extract] Using chunk with lorebook`);
                 resolve(result);
                 return;
               }
@@ -194,28 +185,20 @@ export async function extractFromPNG(buffer: Buffer): Promise<{
 
             // If detectSpec failed but we have JSON that looks like a card, try to infer
             if (!spec && json && typeof json === 'object') {
-              // ... (inference logic unchanged) ...
-              // For simplicity, omitting full inference block update here as the main logic is the `extraChunks` return.
-              // But I should preserve it if I'm overwriting.
-              // Re-adding inference logic:
-              
               let result: { data: CCv2Data | CCv3Data; spec: 'v2' | 'v3' } | null = null;
 
               if (json.spec === 'chara_card_v3' && json.data && json.data.name) {
-                console.log(`[PNG Extract] Inferred v3 from structure in chunk '${key}'`);
                 result = { data: json, spec: 'v3' };
               } else if (json.spec === 'chara_card_v2' && json.data && json.data.name) {
-                console.log(`[PNG Extract] Inferred v2 from structure in chunk '${key}'`);
                 result = { data: json, spec: 'v2' };
               } else if (json.name && (json.description || json.personality || json.scenario)) {
-                console.log(`[PNG Extract] Inferred legacy v2 from structure in chunk '${key}'`);
                 result = { data: json, spec: 'v2' };
               }
 
               if (result) {
-                 const fullResult = { 
-                   ...result, 
-                   extraChunks: textChunks.filter(c => c.keyword !== key) 
+                 const fullResult = {
+                   ...result,
+                   extraChunks: textChunks.filter(c => c.keyword !== key)
                  };
                  if (hasLorebook(json)) {
                    resolve(fullResult);
@@ -224,8 +207,7 @@ export async function extractFromPNG(buffer: Buffer): Promise<{
                  if (!fallbackResult) fallbackResult = fullResult;
               }
             }
-          } catch (e) {
-            console.error(`[PNG Extract] Failed to parse data in chunk '${key}':`, e);
+          } catch {
             // Continue to next chunk
           }
         }
@@ -233,14 +215,10 @@ export async function extractFromPNG(buffer: Buffer): Promise<{
 
       // If we found a valid card but no lorebook, use the fallback
       if (fallbackResult) {
-        console.log(`[PNG Extract] Using fallback result (no lorebook found in any chunk)`);
         resolve(fallbackResult);
         return;
       }
 
-      console.error('[PNG Extract] No valid character card data found in any known text chunk.');
-      console.error('[PNG Extract] Available chunks:', availableKeys);
-      console.error('[PNG Extract] Expected one of:', TEXT_CHUNK_KEYS.all);
       resolve(null);
     });
   });
@@ -308,7 +286,6 @@ function removeAllTextChunks(pngBuffer: Buffer): Buffer {
 
     // Skip tEXt chunks (don't add them to output)
     if (type === 'tEXt') {
-      console.log('[PNG] Removing tEXt chunk during cleanup');
       continue;
     }
 
@@ -383,8 +360,7 @@ function injectTextChunk(pngBuffer: Buffer, keyword: string, text: string): Buff
  * Embed character card JSON into PNG tEXt chunk
  */
 export async function embedIntoPNG(imageBuffer: Buffer, cardData: CCv2Data | CCv3Data): Promise<Buffer> {
-  // CRITICAL: Remove all existing tEXt chunks first to prevent duplicate/stale data
-  console.log('[PNG] Removing old tEXt chunks before embedding new data');
+  // Remove all existing tEXt chunks first to prevent duplicate/stale data
   const cleanPng = removeAllTextChunks(imageBuffer);
 
   // Use 'chara' key for both V2 and V3 (SillyTavern standard)
@@ -394,7 +370,6 @@ export async function embedIntoPNG(imageBuffer: Buffer, cardData: CCv2Data | CCv
   // Base64 encode the JSON (standard for SillyTavern and other tools)
   const base64 = Buffer.from(json, 'utf-8').toString('base64');
 
-  console.log('[PNG] Embedding new card data into PNG');
   // Manually inject the text chunk into the cleaned PNG
   return injectTextChunk(cleanPng, key, base64);
 }

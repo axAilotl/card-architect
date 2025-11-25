@@ -151,6 +151,18 @@ export function DiffPanel() {
                   >
                     Restore
                   </button>
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (confirm('Delete this snapshot? This cannot be undone.')) {
+                        await api.deleteVersion(currentCard.meta.id, version.id);
+                        loadVersions();
+                      }
+                    }}
+                    className="btn-secondary text-red-400 hover:text-red-300 hover:border-red-400"
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
             ))}

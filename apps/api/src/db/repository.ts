@@ -209,6 +209,15 @@ export class CardRepository {
   }
 
   /**
+   * Delete a version
+   */
+  deleteVersion(cardId: string, versionId: string): boolean {
+    const stmt = this.db.prepare('DELETE FROM versions WHERE id = ? AND card_id = ?');
+    const result = stmt.run(versionId, cardId);
+    return result.changes > 0;
+  }
+
+  /**
    * Convert database row to Card
    */
   private rowToCard(row: unknown): Card {

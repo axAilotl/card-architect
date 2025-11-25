@@ -263,28 +263,12 @@ export const useCardStore = create<CardStore>((set, get) => ({
 
   // Import card
   importCard: async (file) => {
-    console.log(`[Import] Starting import of ${file.name}...`);
     const { data, error } = await api.importCard(file);
     if (error) {
-      console.error('[Import] Failed to import card:', error);
       return null;
     }
 
     if (data && data.card) {
-      const cardData = extractCardData(data.card);
-      const cardName = cardData?.name || 'Untitled Card';
-
-      console.log(`[Import] Successfully imported card: ${cardName}`);
-      console.log(`[Import] Format: ${data.card.meta.spec.toUpperCase()}`);
-
-      if (data.assetsImported !== undefined) {
-        console.log(`[Import] Assets imported: ${data.assetsImported}`);
-      }
-
-      if (data.warnings && data.warnings.length > 0) {
-        console.warn('[Import] Warnings:', data.warnings);
-      }
-
       set({ currentCard: data.card, isDirty: false });
       useTokenStore.getState().updateTokenCounts(data.card);
       return data.card.meta.id;
@@ -294,22 +278,19 @@ export const useCardStore = create<CardStore>((set, get) => ({
 
   // Import Voxta package
   importVoxtaPackage: async (file) => {
-    console.log(`[Import] Starting Voxta import of ${file.name}...`);
     const { data, error } = await api.importVoxtaPackage(file);
     if (error) {
-      console.error('[Import] Failed to import Voxta package:', error);
       alert(`Failed to import Voxta package: ${error}`);
       return null;
     }
 
     if (data && data.cards && data.cards.length > 0) {
       const firstCard = data.cards[0];
-      console.log(`[Import] Successfully imported ${data.cards.length} cards from Voxta package.`);
-      
+
       // Set the first card as active
       set({ currentCard: firstCard, isDirty: false });
       useTokenStore.getState().updateTokenCounts(firstCard);
-      
+
       if (data.cards.length > 1) {
         alert(`Imported ${data.cards.length} characters from Voxta package. "${firstCard.meta.name}" is now active.`);
       }
@@ -321,26 +302,13 @@ export const useCardStore = create<CardStore>((set, get) => ({
   },
 
   importCardFromURL: async (url) => {
-    console.log(`[Import] Starting import from URL: ${url}...`);
     const { data, error } = await api.importCardFromURL(url);
     if (error) {
-      console.error('[Import] Failed to import card from URL:', error);
       alert(`Failed to import card: ${error}`);
       return null;
     }
 
     if (data && data.card) {
-      const cardData = extractCardData(data.card);
-      const cardName = cardData?.name || 'Untitled Card';
-
-      console.log(`[Import] Successfully imported card from URL: ${cardName}`);
-      console.log(`[Import] Source: ${data.source}`);
-      console.log(`[Import] Format: ${data.card.meta.spec.toUpperCase()}`);
-
-      if (data.warnings && data.warnings.length > 0) {
-        console.warn('[Import] Warnings:', data.warnings);
-      }
-
       set({ currentCard: data.card, isDirty: false });
       useTokenStore.getState().updateTokenCounts(data.card);
       return data.card.meta.id;
@@ -353,22 +321,18 @@ export const useCardStore = create<CardStore>((set, get) => ({
     const { currentCard } = get();
     if (!currentCard || !currentCard.meta.id) return;
 
-    // CRITICAL: ALWAYS save before exporting to ensure DB has latest data
-    console.log('[exportCard] FORCE SAVING before export, format:', format);
+    // Save before exporting to ensure DB has latest data
     try {
       await get().saveCard();
       // Small delay to ensure database write completes
       await new Promise(resolve => setTimeout(resolve, 150));
-      console.log('[exportCard] Save completed, proceeding with export');
     } catch (err) {
-      console.error('[exportCard] FAILED to save before export:', err);
       alert(`Failed to save card before export: ${err}`);
       return;
     }
 
     const { data, error } = await api.exportCard(currentCard.meta.id, format);
     if (error) {
-      console.error('Failed to export card:', error);
       return;
     }
 

@@ -9,6 +9,7 @@ interface CardGridProps {
 }
 
 type SortOption = 'added' | 'newest' | 'oldest' | 'name';
+type FilterOption = 'all' | 'voxta' | 'charx' | 'v3' | 'v2';
 
 export function CardGrid({ onCardClick }: CardGridProps) {
   const [cards, setCards] = useState<Card[]>([]);
@@ -18,6 +19,7 @@ export function CardGrid({ onCardClick }: CardGridProps) {
   const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<SortOption>('added');
+  const [filterBy, setFilterBy] = useState<FilterOption>('all');
   const [showImportMenu, setShowImportMenu] = useState(false);
   const { importCard, importCardFromURL, createNewCard } = useCardStore();
 
@@ -78,10 +80,20 @@ export function CardGrid({ onCardClick }: CardGridProps) {
   };
 
   const toggleSelectAll = () => {
-    if (selectedCards.size === cards.length) {
-      setSelectedCards(new Set());
+    const filteredCards = getFilteredCards();
+    const filteredIds = new Set(filteredCards.map(c => c.meta.id));
+    const allFilteredSelected = filteredCards.every(c => selectedCards.has(c.meta.id));
+
+    if (allFilteredSelected) {
+      // Deselect all filtered cards
+      setSelectedCards(prev => {
+        const next = new Set(prev);
+        filteredIds.forEach(id => next.delete(id));
+        return next;
+      });
     } else {
-      setSelectedCards(new Set(cards.map(c => c.meta.id)));
+      // Select all filtered cards
+      setSelectedCards(prev => new Set([...prev, ...filteredIds]));
     }
   };
 
@@ -301,8 +313,43 @@ export function CardGrid({ onCardClick }: CardGridProps) {
     return date.toLocaleDateString();
   };
 
+  const getCardType = (card: Card): 'voxta' | 'charx' | 'v3' | 'v2' => {
+    // Check for Voxta first (has voxta tag or voxta extension)
+    if (card.meta.tags?.includes('voxta')) {
+      return 'voxta';
+    }
+    const data = extractCardData(card);
+    if ((data as any).extensions?.voxta) {
+      return 'voxta';
+    }
+
+    // Check for CharX (has charx tag or has assets without being voxta)
+    if (card.meta.tags?.includes('charx') || hasAssets(card)) {
+      return 'charx';
+    }
+
+    // Otherwise, return spec version
+    return card.meta.spec === 'v3' ? 'v3' : 'v2';
+  };
+
+  const getFilteredCards = () => {
+    if (filterBy === 'all') return cards;
+
+    return cards.filter(card => {
+      const cardType = getCardType(card);
+
+      if (filterBy === 'voxta') return cardType === 'voxta';
+      if (filterBy === 'charx') return cardType === 'charx';
+      if (filterBy === 'v3') return cardType === 'v3'; // V3 without charx/voxta
+      if (filterBy === 'v2') return cardType === 'v2'; // V2 without charx/voxta
+
+      return true;
+    });
+  };
+
   const getSortedCards = () => {
-    const sorted = [...cards];
+    const filtered = getFilteredCards();
+    const sorted = [...filtered];
     switch (sortBy) {
       case 'newest':
         return sorted.sort((a, b) => new Date(b.meta.createdAt).getTime() - new Date(a.meta.createdAt).getTime());
@@ -410,7 +457,24 @@ export function CardGrid({ onCardClick }: CardGridProps) {
             <div className="h-4 w-px bg-dark-border" />
 
             <div className="flex items-center gap-2">
-              <span className="text-sm text-dark-muted">Sort by:</span>
+              <span className="text-sm text-dark-muted">Filter:</span>
+              <select
+                value={filterBy}
+                onChange={(e) => setFilterBy(e.target.value as FilterOption)}
+                className="px-2 py-1 bg-dark-bg border border-dark-border rounded text-sm text-dark-text hover:bg-dark-surface transition-colors cursor-pointer"
+              >
+                <option value="all">All Types</option>
+                <option value="voxta">Voxta</option>
+                <option value="charx">CharX</option>
+                <option value="v3">V3 (Standard)</option>
+                <option value="v2">V2 (Legacy)</option>
+              </select>
+            </div>
+
+            <div className="h-4 w-px bg-dark-border" />
+
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-dark-muted">Sort:</span>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as SortOption)}
@@ -429,11 +493,11 @@ export function CardGrid({ onCardClick }: CardGridProps) {
                 <label className="flex items-center gap-2 text-sm text-dark-muted cursor-pointer hover:text-dark-text">
                   <input
                     type="checkbox"
-                    checked={selectedCards.size === cards.length && cards.length > 0}
+                    checked={getFilteredCards().length > 0 && getFilteredCards().every(c => selectedCards.has(c.meta.id))}
                     onChange={toggleSelectAll}
                     className="w-4 h-4 rounded border-dark-border"
                   />
-                  Select All ({cards.length})
+                  Select All ({getFilteredCards().length}{filterBy !== 'all' ? ` ${filterBy}` : ''})
                 </label>
                 {selectedCards.size > 0 && (
                   <>
@@ -462,6 +526,19 @@ export function CardGrid({ onCardClick }: CardGridProps) {
             <div className="text-center text-dark-muted">
               <h2 className="text-xl font-semibold mb-2">No cards yet</h2>
               <p>Create a new card or import one to get started</p>
+            </div>
+          </div>
+        ) : getSortedCards().length === 0 ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center text-dark-muted">
+              <h2 className="text-xl font-semibold mb-2">No matching cards</h2>
+              <p>No cards match the current filter. Try selecting a different type.</p>
+              <button
+                onClick={() => setFilterBy('all')}
+                className="mt-4 btn-secondary"
+              >
+                Show All Cards
+              </button>
             </div>
           </div>
         ) : (
@@ -503,9 +580,10 @@ export function CardGrid({ onCardClick }: CardGridProps) {
                     <div className="text-dark-muted text-sm">No Image</div>
                   ) : (
                     <img
-                      src={`/api/cards/${card.meta.id}/image`}
+                      src={`/api/cards/${card.meta.id}/thumbnail?size=400`}
                       alt={getCardName(card)}
                       className="w-full h-full object-cover"
+                      loading="lazy"
                       onError={() => {
                         setImageErrors(prev => new Set(prev).add(card.meta.id));
                       }}

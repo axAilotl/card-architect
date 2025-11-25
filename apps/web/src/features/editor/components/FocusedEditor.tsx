@@ -18,19 +18,27 @@ import { EditorView } from '@codemirror/view';
 import { TemplateSnippetPanel } from './TemplateSnippetPanel';
 import { LLMAssistSidebar } from './LLMAssistSidebar';
 
-const focusableFields = [
+// Base fields available to all cards (first part, before potential voxta field)
+const baseFieldsStart = [
   { id: 'description', label: 'Description' },
   { id: 'personality', label: 'Personality' },
   { id: 'scenario', label: 'Scenario' },
   { id: 'first_mes', label: 'First Message' },
+  { id: 'alternate_greetings', label: 'Alt Greetings' },
+] as const;
+
+// Voxta-specific field (inserted after alt greetings)
+const voxtaField = { id: 'appearance', label: 'Appearance' } as const;
+
+// Base fields (after potential voxta field)
+const baseFieldsEnd = [
   { id: 'mes_example', label: 'Example Dialogue' },
   { id: 'system_prompt', label: 'System Prompt' },
   { id: 'post_history_instructions', label: 'Post History' },
   { id: 'creator_notes', label: 'Creator Notes' },
-  { id: 'alternate_greetings', label: 'Alt Greetings' },
 ] as const;
 
-type LocalFocusField = (typeof focusableFields)[number]['id'];
+type LocalFocusField = (typeof baseFieldsStart)[number]['id'] | (typeof baseFieldsEnd)[number]['id'] | 'appearance';
 
 interface CrepeEditorProps {
   value: string;
@@ -143,11 +151,12 @@ function FocusedEditorInner() {
     personality: '',
     scenario: '',
     first_mes: '',
+    alternate_greetings: '',
     mes_example: '',
     system_prompt: '',
     post_history_instructions: '',
     creator_notes: '',
-    alternate_greetings: '',
+    appearance: '',
   });
   const [alternateGreetingIndex, setAlternateGreetingIndex] = useState(0);
   const [editorKey, setEditorKey] = useState(0);
@@ -165,17 +174,37 @@ function FocusedEditorInner() {
     return extractCardData(currentCard);
   }, [currentCard]);
 
+  // Check if this is a Voxta card (has voxta extension data)
+  const isVoxtaCard = useMemo(() => {
+    if (!cardData) return false;
+    return !!(cardData as any).extensions?.voxta;
+  }, [cardData]);
+
+  // Build the list of focusable fields based on card type
+  const focusableFields = useMemo(() => {
+    if (isVoxtaCard) {
+      // Insert appearance after alt greetings
+      return [...baseFieldsStart, voxtaField, ...baseFieldsEnd] as Array<{ id: LocalFocusField; label: string }>;
+    }
+    return [...baseFieldsStart, ...baseFieldsEnd] as Array<{ id: LocalFocusField; label: string }>;
+  }, [isVoxtaCard]);
+
   const getFieldValue = useCallback(
     (field: LocalFocusField) => {
       if (!cardData) return '';
 
       // Handle alternate_greetings specially - get the selected greeting
-      if (field === 'alternate_greetings' as LocalFocusField) {
+      if (field === 'alternate_greetings') {
         const greetings = cardData.alternate_greetings;
         if (Array.isArray(greetings) && greetings.length > 0) {
           return greetings[alternateGreetingIndex] || '';
         }
         return '';
+      }
+
+      // Handle appearance specially - stored in extensions.voxta.appearance
+      if (field === 'appearance') {
+        return (cardData as any).extensions?.voxta?.appearance || '';
       }
 
       const raw = (cardData as Record<string, unknown>)[field];
@@ -191,11 +220,12 @@ function FocusedEditorInner() {
       personality: getFieldValue('personality'),
       scenario: getFieldValue('scenario'),
       first_mes: getFieldValue('first_mes'),
+      alternate_greetings: getFieldValue('alternate_greetings'),
       mes_example: getFieldValue('mes_example'),
       system_prompt: getFieldValue('system_prompt'),
       post_history_instructions: getFieldValue('post_history_instructions'),
       creator_notes: getFieldValue('creator_notes'),
-      alternate_greetings: getFieldValue('alternate_greetings'),
+      appearance: getFieldValue('appearance'),
     };
     setDrafts(next);
     setSelectedField((prev) => prev ?? 'description');
@@ -297,6 +327,19 @@ function FocusedEditorInner() {
         } as Partial<CCv3Data>);
       } else {
         updateCardData({ alternate_greetings: greetings } as Partial<CCv2Data>);
+      }
+    } else if (selectedField === 'appearance') {
+      // Handle appearance specially - stored in extensions.voxta.appearance
+      if (isV3) {
+        const currentData = (currentCard.data as CCv3Data).data;
+        const extensions = { ...(currentData.extensions || {}) };
+        extensions.voxta = { ...((extensions.voxta as any) || {}), appearance: value };
+        updateCardData({
+          data: {
+            ...currentData,
+            extensions,
+          },
+        } as Partial<CCv3Data>);
       }
     } else {
       if (isV3) {
@@ -549,18 +592,23 @@ function FocusedEditorInner() {
               <button
                 key={field.id}
                 onClick={() => {
-                  setSelectedField(field.id);
+                  setSelectedField(field.id as LocalFocusField);
                   if (field.id === 'alternate_greetings' && alternateGreetingIndex >= alternateGreetings.length) {
                     setAlternateGreetingIndex(Math.max(0, alternateGreetings.length - 1));
                   }
                 }}
-                className={`px-4 py-2 rounded transition-colors text-sm font-medium ${
+                className={`px-4 py-2 rounded transition-colors text-sm font-medium flex items-center gap-1.5 ${
                   selectedField === field.id
-                    ? 'bg-blue-600 text-white border border-blue-400'
+                    ? field.id === 'appearance'
+                      ? 'bg-orange-600 text-white border border-orange-400'
+                      : 'bg-blue-600 text-white border border-blue-400'
                     : 'bg-dark-bg text-dark-text border border-dark-border hover:bg-dark-surface'
                 }`}
               >
                 {field.label}
+                {field.id === 'appearance' && (
+                  <span className="text-[10px] px-1 py-0.5 rounded bg-orange-800 text-orange-200">VOXTA</span>
+                )}
               </button>
             ))}
           </div>

@@ -552,6 +552,30 @@ export function EditPanel() {
               specMarker="both"
             />
 
+            {/* Voxta Appearance - only shown for cards imported from Voxta */}
+            {(cardData as any).extensions?.voxta && (
+              <div className="input-group">
+                <div className="flex items-center gap-2 mb-2">
+                  <label className="label">Appearance (Voxta Description)</label>
+                  <span className="text-xs px-2 py-0.5 rounded bg-orange-600 text-white">VOXTA</span>
+                </div>
+                <p className="text-sm text-dark-muted mb-2">
+                  Physical description imported from Voxta. This is stored in extensions and used when exporting back to Voxta format.
+                </p>
+                <textarea
+                  value={(cardData as any).extensions?.voxta?.appearance || ''}
+                  onChange={(e) => {
+                    const extensions = { ...(cardData as any).extensions };
+                    extensions.voxta = { ...extensions.voxta, appearance: e.target.value };
+                    handleFieldChange('extensions', extensions);
+                  }}
+                  rows={8}
+                  className="w-full bg-dark-card border border-dark-border rounded px-3 py-2"
+                  placeholder="Character's physical appearance..."
+                />
+              </div>
+            )}
+
             {/* V3-specific advanced fields */}
             {showV3Fields && (
               <>

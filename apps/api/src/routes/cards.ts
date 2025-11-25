@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { CardRepository, CardAssetRepository } from '../db/repository.js';
-import { validateV2, validateV3, type CCv2Data, type CCv3Data } from '@card-architect/schemas';
+import { validateV2, validateV3, type CCv2Data, type CCv3Data, type CardMeta } from '@card-architect/schemas';
 
 export async function cardRoutes(fastify: FastifyInstance) {
   const cardRepo = new CardRepository(fastify.db);
@@ -122,7 +122,6 @@ export async function cardRoutes(fastify: FastifyInstance) {
 
   // Update card
   fastify.patch<{ Params: { id: string } }>('/cards/:id', async (request, reply) => {
-    fastify.log.info({ cardId: request.params.id }, '[PATCH] Starting card update');
     const body = request.body as { data?: unknown; meta?: unknown };
 
     const existing = cardRepo.get(request.params.id);
@@ -130,14 +129,6 @@ export async function cardRoutes(fastify: FastifyInstance) {
       reply.code(404);
       return { error: 'Card not found' };
     }
-
-    // Log what we're receiving
-    fastify.log.info({
-      cardId: request.params.id,
-      hasData: !!body.data,
-      hasMeta: !!body.meta,
-      dataKeys: body.data ? Object.keys(body.data as object) : [],
-    }, '[PATCH] Received update payload');
 
     // Validate if data is being updated
     if (body.data) {
@@ -150,11 +141,12 @@ export async function cardRoutes(fastify: FastifyInstance) {
       }
     }
 
-    const updateData: Partial<{ data: CCv2Data | CCv3Data; meta: unknown }> = {};
+    // Using object with optional partial properties for the update
+    const updateData: { data?: CCv2Data | CCv3Data; meta?: Partial<CardMeta> } = {};
 
     // Start with any meta updates from the request
-    if (body.meta) {
-      updateData.meta = body.meta;
+    if (body.meta && typeof body.meta === 'object') {
+      updateData.meta = body.meta as Partial<CardMeta>;
     }
 
     if (body.data) {
@@ -162,11 +154,13 @@ export async function cardRoutes(fastify: FastifyInstance) {
 
       // Extract name from data and sync to meta.name
       let name: string | undefined;
-      if (typeof body.data === 'object' && body.data) {
-        if ('name' in body.data && typeof body.data.name === 'string') {
-          name = body.data.name;
-        } else if ('data' in body.data && typeof body.data.data === 'object' && body.data.data && 'name' in body.data.data) {
-          name = (body.data.data as { name: string }).name;
+      const dataObj = body.data as Record<string, unknown>;
+      if ('name' in dataObj && typeof dataObj.name === 'string') {
+        name = dataObj.name;
+      } else if ('data' in dataObj && typeof dataObj.data === 'object' && dataObj.data) {
+        const innerData = dataObj.data as Record<string, unknown>;
+        if ('name' in innerData && typeof innerData.name === 'string') {
+          name = innerData.name;
         }
       }
 
@@ -176,19 +170,13 @@ export async function cardRoutes(fastify: FastifyInstance) {
       }
     }
 
-    fastify.log.info({
-      cardId: request.params.id,
-      updateHasData: !!updateData.data,
-      updateHasMeta: !!updateData.meta,
-    }, '[PATCH] Calling cardRepo.update');
-
+    // Cast is safe because repository.update merges with existing card
     const card = cardRepo.update(request.params.id, updateData as any);
     if (!card) {
       reply.code(404);
       return { error: 'Card not found' };
     }
 
-    fastify.log.info({ cardId: request.params.id }, '[PATCH] Card updated successfully');
     return card;
   });
 
@@ -236,6 +224,22 @@ export async function cardRoutes(fastify: FastifyInstance) {
       }
 
       return card;
+    }
+  );
+
+  // Delete version
+  fastify.delete<{ Params: { id: string; versionId: string } }>(
+    '/cards/:id/versions/:versionId',
+    async (request, reply) => {
+      const deleted = cardRepo.deleteVersion(request.params.id, request.params.versionId);
+
+      if (!deleted) {
+        reply.code(404);
+        return { error: 'Card or version not found' };
+      }
+
+      reply.code(204);
+      return;
     }
   );
 }

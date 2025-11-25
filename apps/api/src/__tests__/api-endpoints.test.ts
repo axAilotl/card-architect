@@ -235,6 +235,20 @@ describe('API Endpoints', () => {
   describe('Import/Export', () => {
     let importedCardId: string;
 
+    // Helper to extract name from card data (handles both wrapped and unwrapped V2)
+    function getCardName(cardData: unknown): string | undefined {
+      if (!cardData || typeof cardData !== 'object') return undefined;
+      const data = cardData as Record<string, unknown>;
+      // Try direct name (unwrapped V2 or legacy)
+      if ('name' in data && typeof data.name === 'string') return data.name;
+      // Try wrapped format (V3 or wrapped V2)
+      if ('data' in data && typeof data.data === 'object' && data.data) {
+        const inner = data.data as Record<string, unknown>;
+        if ('name' in inner && typeof inner.name === 'string') return inner.name;
+      }
+      return undefined;
+    }
+
     it('should import a JSON v2 card', async () => {
       const card: CCv2Data = {
         name: 'Imported Character',
@@ -263,7 +277,7 @@ describe('API Endpoints', () => {
       expect(response.statusCode).toBe(201);
       const body = JSON.parse(response.body);
       expect(body.card).toBeDefined();
-      expect(body.card.data.name).toBe('Imported Character');
+      expect(getCardName(body.card.data)).toBe('Imported Character');
       importedCardId = body.card.meta.id;
     });
 
@@ -276,7 +290,7 @@ describe('API Endpoints', () => {
       expect(response.statusCode).toBe(200);
       expect(response.headers['content-type']).toContain('application/json');
       const card = JSON.parse(response.body);
-      expect(card.name).toBe('Imported Character');
+      expect(getCardName(card)).toBe('Imported Character');
     });
 
     it('should export card as PNG', async () => {
