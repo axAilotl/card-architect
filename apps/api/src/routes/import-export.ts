@@ -13,6 +13,7 @@ import { validateCharxExport, applyExportFixes } from '../utils/charx-validator.
 import { VoxtaImportService } from '../services/voxta-import.service.js';
 import { buildVoxtaPackage } from '../utils/voxta-builder.js';
 import { voxtaToStandard, standardToVoxta, isVoxtaCard, convertCardMacros } from '../utils/macro-converter.js';
+import { isZipBuffer, findZipStart } from '../utils/zip-utils.js';
 
 /**
  * Normalize card data to fix common issues before validation
@@ -306,15 +307,15 @@ export async function importExportRoutes(fastify: FastifyInstance) {
     const { buffer, mimetype, filename } = downloadedFile;
     const warnings: string[] = [];
 
-    // Check for CHARX format (ZIP magic bytes: PK\x03\x04 or .charx extension)
-    const isZip = buffer[0] === 0x50 && buffer[1] === 0x4B && buffer[2] === 0x03 && buffer[3] === 0x04;
+    // Check for CHARX format (ZIP magic bytes anywhere - supports SFX archives)
+    const isZip = isZipBuffer(buffer);
     const isCharxExt = filename.endsWith('.charx');
     const isVoxPkg = filename.endsWith('.voxpkg');
 
     if (isVoxPkg) {
-      // Handle Voxta Import
+      // Handle Voxta Import - use findZipStart for SFX archive support
       const tempPath = join(tmpdir(), `voxta-${Date.now()}-${filename}`);
-      await fs.writeFile(tempPath, buffer);
+      await fs.writeFile(tempPath, findZipStart(buffer));
 
       try {
         const cardIds = await voxtaImportService.importPackage(tempPath);
@@ -347,8 +348,9 @@ export async function importExportRoutes(fastify: FastifyInstance) {
       // Handle CHARX import
       try {
         // Write buffer to temp file (yauzl requires file path)
+        // Use findZipStart to handle SFX (self-extracting) archives
         const tempPath = join(tmpdir(), `charx-${Date.now()}-${filename}`);
-        await fs.writeFile(tempPath, buffer);
+        await fs.writeFile(tempPath, findZipStart(buffer));
 
         try {
           // Import CHARX
@@ -591,18 +593,18 @@ export async function importExportRoutes(fastify: FastifyInstance) {
     const warnings: string[] = [];
     let extraChunks: Array<{keyword: string, text: string}> | undefined;
 
-    // Check for CHARX format (ZIP magic bytes: PK\x03\x04)
-    // We strictly enforce ZIP signature to prevent crashing on renamed PNGs
-    const isZip = buffer[0] === 0x50 && buffer[1] === 0x4B && buffer[2] === 0x03 && buffer[3] === 0x04;
+    // Check for CHARX format (ZIP magic bytes anywhere - supports SFX archives)
+    const isZip = isZipBuffer(buffer);
     const isCharxExt = data.filename?.endsWith('.charx');
     const isVoxPkg = data.filename?.endsWith('.voxpkg');
-    
+
     if (isZip || isCharxExt || isVoxPkg) {
       // Handle CHARX/Voxta import
       try {
         // Write buffer to temp file (yauzl requires file path)
+        // Use findZipStart to handle SFX (self-extracting) archives
         const tempPath = join(tmpdir(), `import-${Date.now()}-${data.filename || 'upload.zip'}`);
-        await fs.writeFile(tempPath, buffer);
+        await fs.writeFile(tempPath, findZipStart(buffer));
 
         try {
           // TODO: Add Voxta support here if needed, similar to import-multiple
@@ -966,15 +968,16 @@ export async function importExportRoutes(fastify: FastifyInstance) {
         const buffer = await file.toBuffer();
         const warnings: string[] = [];
 
-        // Check for ZIP format (CharX or Voxta)
-        const isZip = buffer[0] === 0x50 && buffer[1] === 0x4B && buffer[2] === 0x03 && buffer[3] === 0x04;
+        // Check for ZIP format (CharX or Voxta) - supports SFX archives
+        const isZip = isZipBuffer(buffer);
         const isVoxPkg = filename.endsWith('.voxpkg');
         const isCharxExt = filename.endsWith('.charx');
 
         if (isZip || isVoxPkg || isCharxExt) {
           let archiveSuccess = false;
+          // Use findZipStart to handle SFX (self-extracting) archives
           const tempPath = join(tmpdir(), `upload-${Date.now()}-${filename}`);
-          await fs.writeFile(tempPath, buffer);
+          await fs.writeFile(tempPath, findZipStart(buffer));
 
           try {
             if (isVoxPkg) {
