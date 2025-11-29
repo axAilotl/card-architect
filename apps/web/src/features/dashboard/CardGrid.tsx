@@ -194,7 +194,17 @@ export function CardGrid({ onCardClick }: CardGridProps) {
       if (failCount > 0) {
         message += `, ${failCount} failed`;
         const failures = results.filter((r: any) => !r.success);
-        console.error('Failed imports:', failures);
+
+        // Log each failure with details to console
+        console.group('Failed card imports');
+        for (const failure of failures) {
+          console.error(`${failure.filename}: ${failure.error}`);
+        }
+        console.groupEnd();
+
+        // Add failed filenames to the alert message
+        const failedNames = failures.map((f: any) => f.filename).join(', ');
+        message += `\n\nFailed files: ${failedNames}\n\nCheck browser console for error details.`;
       }
 
       alert(message);

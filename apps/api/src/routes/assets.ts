@@ -9,7 +9,7 @@ import { nanoid } from 'nanoid';
 import { config } from '../config.js';
 import type { AssetTransformOptions } from '@card-architect/schemas';
 import { detectAnimatedAsset, type AssetTag } from '@card-architect/schemas';
-import { getMimeTypeFromExt } from '../utils/uri-utils.js';
+import { getMimeTypeFromExt } from '../utils/file-handlers.js';
 
 export async function assetRoutes(fastify: FastifyInstance) {
   const assetRepo = new AssetRepository(fastify.db);

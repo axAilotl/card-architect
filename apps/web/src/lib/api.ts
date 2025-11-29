@@ -464,6 +464,23 @@ class ApiClient {
     });
   }
 
+  async togglePresetHidden(id: string) {
+    return this.request<{ preset: UserPreset }>(`/presets/${id}/toggle-hidden`, {
+      method: 'POST',
+    });
+  }
+
+  async copyPreset(id: string, name?: string) {
+    return this.request<{ preset: UserPreset }>(`/presets/${id}/copy`, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  }
+
+  async getVisiblePresets() {
+    return this.request<{ presets: UserPreset[] }>('/presets/visible');
+  }
+
   // SillyTavern integration
   async pushToSillyTavern(cardId: string) {
     return this.request<{ success: boolean; status?: number; imported?: any; fileName?: string; error?: string }>(

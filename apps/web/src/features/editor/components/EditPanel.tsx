@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useCardStore, extractCardData } from '../../../store/card-store';
-import { useUIStore } from '../../../store/ui-store';
+import { useSettingsStore } from '../../../store/settings-store';
 import { useTokenStore } from '../../../store/token-store';
 import type { CCFieldName, FocusField, Template, Snippet } from '@card-architect/schemas';
 import { FieldEditor } from './FieldEditor';
@@ -9,11 +9,11 @@ import { LLMAssistSidebar } from './LLMAssistSidebar';
 import { TagInput } from './TagInput';
 import { TemplateSnippetPanel } from './TemplateSnippetPanel';
 
-type EditTab = 'basic' | 'greetings' | 'advanced' | 'lorebook';
+type EditTab = 'basic' | 'character' | 'greetings' | 'advanced' | 'lorebook' | 'extensions';
 
 export function EditPanel() {
-  const { currentCard, updateCardData, updateCardMeta, convertSpec } = useCardStore();
-  const { specMode, showV3Fields, setSpecMode, toggleV3Fields } = useUIStore();
+  const { currentCard, updateCardData, updateCardMeta } = useCardStore();
+  const { editor } = useSettingsStore();
   const tokenCounts = useTokenStore((state) => state.tokenCounts);
 
   const [activeTab, setActiveTab] = useState<EditTab>('basic');
@@ -30,12 +30,9 @@ export function EditPanel() {
 
   const isV3 = currentCard.meta.spec === 'v3';
   const cardData = extractCardData(currentCard);
+  const showV3Fields = editor.showV3Fields;
 
-  // Debug: Log tags
-  console.log('[EditPanel] currentCard.meta.tags:', currentCard.meta.tags);
-  console.log('[EditPanel] cardData.tags:', cardData.tags);
-
-  const handleFieldChange = (field: string, value: string | string[] | Record<string, string>) => {
+  const handleFieldChange = (field: string, value: string | string[] | Record<string, string> | any) => {
     // For wrapped cards (V3 and wrapped V2), update nested data object
     // For unwrapped V2, update directly
     const v2Data = currentCard.data as any;
@@ -120,6 +117,76 @@ export function EditPanel() {
     handleFieldChange(templatesField, newValue);
   };
 
+  // Get depth_prompt extension data
+  const depthPrompt = (cardData as any).extensions?.depth_prompt;
+  const characterNoteValue = depthPrompt?.prompt || '';
+  const characterNoteDepth = depthPrompt?.depth ?? 4;
+
+  // Get appearance from voxta or visual_description extension
+  const getAppearance = () => {
+    const extensions = (cardData as any).extensions || {};
+    if (extensions.voxta?.appearance) return extensions.voxta.appearance;
+    if (extensions.visual_description) return extensions.visual_description;
+    return '';
+  };
+
+  const setAppearance = (value: string) => {
+    const existingExtensions = (cardData as any).extensions || {};
+    const extensions = { ...existingExtensions };
+    // Prefer voxta extension if it exists, otherwise use visual_description
+    if (extensions.voxta) {
+      extensions.voxta = { ...extensions.voxta, appearance: value };
+    } else {
+      extensions.visual_description = value;
+    }
+    handleFieldChange('extensions', extensions);
+  };
+
+  const handleCharacterNoteChange = (value: string) => {
+    const existingExtensions = (cardData as any).extensions || {};
+    const extensions = { ...existingExtensions };
+    extensions.depth_prompt = {
+      ...(extensions.depth_prompt || {}),
+      prompt: value,
+      depth: characterNoteDepth,
+      role: 'system',
+    };
+    handleFieldChange('extensions', extensions);
+  };
+
+  const handleCharacterNoteDepthChange = (depth: number) => {
+    const existingExtensions = (cardData as any).extensions || {};
+    const extensions = { ...existingExtensions };
+    extensions.depth_prompt = {
+      ...(extensions.depth_prompt || {}),
+      prompt: characterNoteValue,
+      depth,
+      role: 'system',
+    };
+    handleFieldChange('extensions', extensions);
+  };
+
+  // Get extensions for display (filtered)
+  const getFilteredExtensions = () => {
+    const existingExtensions = (cardData as any).extensions || {};
+    const extensions = { ...existingExtensions };
+    // Remove handled extensions
+    const filtered = { ...extensions };
+    delete filtered.depth_prompt;
+    delete filtered.visual_description;
+    // Keep voxta but remove appearance if showing separately
+    if (filtered.voxta) {
+      const voxtaCopy = { ...filtered.voxta };
+      delete voxtaCopy.appearance;
+      if (Object.keys(voxtaCopy).length === 0) {
+        delete filtered.voxta;
+      } else {
+        filtered.voxta = voxtaCopy;
+      }
+    }
+    return filtered;
+  };
+
   const ASSIST_WIDTH_PX = 500;
   const ASSIST_GAP_PX = 24;
   const contentStyle = llmAssistOpen
@@ -131,9 +198,11 @@ export function EditPanel() {
 
   const tabs = [
     { id: 'basic' as EditTab, label: 'Basic Info' },
+    { id: 'character' as EditTab, label: 'Character' },
     { id: 'greetings' as EditTab, label: 'Greetings' },
     { id: 'advanced' as EditTab, label: 'Advanced' },
     { id: 'lorebook' as EditTab, label: 'Lorebook' },
+    ...(editor.showExtensionsTab ? [{ id: 'extensions' as EditTab, label: 'Extensions' }] : []),
   ];
 
   return (
@@ -156,47 +225,6 @@ export function EditPanel() {
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-4 px-6">
-            {/* V3 Fields Toggle */}
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={showV3Fields}
-                onChange={toggleV3Fields}
-                className="w-4 h-4 rounded border-dark-border bg-dark-bg checked:bg-blue-600"
-              />
-              <span className="text-dark-muted">Show V3 Fields</span>
-            </label>
-            {/* Spec Mode Switcher */}
-            <div className="flex items-center gap-2 bg-dark-bg rounded-lg p-1">
-              <button
-                onClick={() => {
-                  setSpecMode('v2');
-                  convertSpec('v2');
-                }}
-                className={`px-3 py-1 text-sm font-medium rounded transition-colors ${
-                  specMode === 'v2'
-                    ? 'bg-blue-600 text-white'
-                    : 'text-dark-muted hover:text-dark-text'
-                }`}
-              >
-                V2
-              </button>
-              <button
-                onClick={() => {
-                  setSpecMode('v3');
-                  convertSpec('v3');
-                }}
-                className={`px-3 py-1 text-sm font-medium rounded transition-colors ${
-                  specMode === 'v3'
-                    ? 'bg-blue-600 text-white'
-                    : 'text-dark-muted hover:text-dark-text'
-                }`}
-              >
-                V3
-              </button>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -211,70 +239,23 @@ export function EditPanel() {
         {/* Basic Info Tab */}
         {activeTab === 'basic' && (
           <div className="space-y-6">
-            <FieldEditor
-              label="Name"
-              value={cardData.name}
-              onChange={(v) => handleFieldChange('name', v)}
-              tokenCount={tokenCounts.name}
-              fieldName="description"
-              onOpenLLMAssist={handleOpenLLMAssist}
-              specMarker="both"
-            />
-
-            <FieldEditor
-              label="Description"
-              value={cardData.description}
-              onChange={(v) => handleFieldChange('description', v)}
-              tokenCount={tokenCounts.description}
-              multiline
-              rows={20}
-              fieldName="description"
-              onOpenLLMAssist={handleOpenLLMAssist}
-              onOpenTemplates={handleOpenTemplates}
-              specMarker="both"
-            />
-
-            <FieldEditor
-              label="Personality"
-              value={cardData.personality}
-              onChange={(v) => handleFieldChange('personality', v)}
-              tokenCount={tokenCounts.personality}
-              multiline
-              rows={12}
-              fieldName="personality"
-              onOpenLLMAssist={handleOpenLLMAssist}
-              onOpenTemplates={handleOpenTemplates}
-              specMarker="both"
-            />
-
-            <FieldEditor
-              label="Scenario"
-              value={cardData.scenario}
-              onChange={(v) => handleFieldChange('scenario', v)}
-              tokenCount={tokenCounts.scenario}
-              multiline
-              rows={12}
-              fieldName="scenario"
-              onOpenLLMAssist={handleOpenLLMAssist}
-              onOpenTemplates={handleOpenTemplates}
-              specMarker="both"
-            />
-
-            {/* Character Avatar */}
+            {/* Character Avatar - First, larger */}
             <div className="input-group">
               <label className="label">Character Avatar</label>
-              <div className="flex gap-4 items-start">
-                {/* Image Preview */}
-                <div className="w-48 h-48 bg-dark-bg border border-dark-border rounded overflow-hidden flex-shrink-0">
+              <div className="flex gap-6 items-start">
+                {/* Image Preview - larger with proper aspect ratio */}
+                <div className="w-64 bg-dark-bg border border-dark-border rounded overflow-hidden flex-shrink-0">
                   <img
                     src={`/api/cards/${currentCard.meta.id}/image?t=${Date.now()}`}
                     alt="Character Avatar"
-                    className="w-full h-full object-cover"
+                    className="w-full h-auto object-contain"
+                    style={{ minHeight: '256px', maxHeight: '384px' }}
                     onError={(e) => {
                       e.currentTarget.style.display = 'none';
                       const parent = e.currentTarget.parentElement;
                       if (parent) {
                         parent.classList.add('flex', 'items-center', 'justify-center');
+                        parent.style.height = '256px';
                         parent.innerHTML = '<div class="text-dark-muted text-sm">No Image</div>';
                       }
                     }}
@@ -330,15 +311,28 @@ export function EditPanel() {
               </div>
             </div>
 
-            {/* Tags - Show for both V2 and V3 */}
+            <FieldEditor
+              label="Name"
+              value={cardData.name}
+              onChange={(v) => handleFieldChange('name', v)}
+              tokenCount={tokenCounts.name}
+              fieldName="description"
+              onOpenLLMAssist={handleOpenLLMAssist}
+            />
+
+            {/* Nickname - always visible, no V3 tag */}
+            <FieldEditor
+              label="Nickname"
+              value={(cardData as any).nickname || ''}
+              onChange={(v) => handleFieldChange('nickname', v)}
+              placeholder="Short nickname (used for {{char}} replacement)"
+              helpText="If set, {{char}}, <char>, and <bot> will be replaced with this instead of the name"
+            />
+
+            {/* Tags */}
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <label className="label">Tags</label>
-                {isV3 ? (
-                  <span className="text-xs px-2 py-0.5 rounded bg-blue-600 text-white">V3 Required</span>
-                ) : (
-                  <span className="text-xs px-2 py-0.5 rounded bg-gray-600 text-white">V2</span>
-                )}
               </div>
               <TagInput
                 tags={currentCard.meta.tags || []}
@@ -347,35 +341,162 @@ export function EditPanel() {
               />
             </div>
 
-            {/* V3-specific fields */}
+            {/* Creator - no V3 tag */}
+            <FieldEditor
+              label="Creator"
+              value={cardData.creator || ''}
+              onChange={(v) => handleFieldChange('creator', v)}
+              placeholder="Creator name"
+            />
+
+            {/* Character Version - no V3 tag */}
+            <FieldEditor
+              label="Character Version"
+              value={cardData.character_version || ''}
+              onChange={(v) => handleFieldChange('character_version', v)}
+              placeholder="1.0"
+            />
+
+            {/* Tagline / Short Description - Extension field */}
+            <div className="input-group">
+              <div className="flex items-center gap-2 mb-2">
+                <label className="label">Tagline / Short Description</label>
+                <span className="text-xs px-2 py-0.5 rounded bg-green-600 text-white">Extension</span>
+              </div>
+              <p className="text-sm text-dark-muted mb-2">
+                A short tagline for display on card hosting sites. Max 500 characters.
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={((cardData as any).extensions?.tagline) || ''}
+                  onChange={(e) => {
+                    const value = e.target.value.slice(0, 500);
+                    const existingExtensions = (cardData as any).extensions || {};
+                    const extensions = { ...existingExtensions, tagline: value };
+                    handleFieldChange('extensions', extensions);
+                  }}
+                  placeholder="A brief, catchy description of this character..."
+                  maxLength={500}
+                  className="flex-1"
+                />
+                <span className="text-xs text-dark-muted whitespace-nowrap">
+                  {((cardData as any).extensions?.tagline || '').length}/500
+                </span>
+              </div>
+            </div>
+
+            {/* Metadata Timestamps - V3 Only, read-only */}
             {showV3Fields && (
-              <>
-                <FieldEditor
-                  label="Creator"
-                  value={cardData.creator || ''}
-                  onChange={(v) => handleFieldChange('creator', v)}
-                  placeholder="Creator name"
-                  specMarker="v3"
-                />
-
-                <FieldEditor
-                  label="Character Version"
-                  value={cardData.character_version || ''}
-                  onChange={(v) => handleFieldChange('character_version', v)}
-                  placeholder="1.0"
-                  specMarker="v3"
-                />
-
-                <FieldEditor
-                  label="Nickname"
-                  value={(cardData as any).nickname || ''}
-                  onChange={(v) => handleFieldChange('nickname', v)}
-                  placeholder="Short nickname (used for {{char}} replacement)"
-                  specMarker="v3"
-                  helpText="If set, {{char}}, <char>, and <bot> will be replaced with this instead of the name"
-                />
-              </>
+              <div className="input-group">
+                <div className="flex items-center gap-2 mb-2">
+                  <label className="label">Metadata Timestamps</label>
+                  <span className="text-xs px-2 py-0.5 rounded bg-purple-600 text-white">V3 Only</span>
+                </div>
+                <div className="space-y-2 bg-dark-surface p-4 rounded border border-dark-border">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-dark-muted">Creation Date:</span>
+                    <span className="text-dark-text">
+                      {(cardData as any).creation_date
+                        ? new Date((cardData as any).creation_date * 1000).toLocaleString()
+                        : 'Not set'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-dark-muted">Modification Date:</span>
+                    <span className="text-dark-text">
+                      {(cardData as any).modification_date
+                        ? new Date((cardData as any).modification_date * 1000).toLocaleString()
+                        : 'Not set'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-dark-muted mt-2">
+                    These timestamps are automatically managed.
+                  </p>
+                </div>
+              </div>
             )}
+          </div>
+        )}
+
+        {/* Character Tab */}
+        {activeTab === 'character' && (
+          <div className="space-y-6">
+            <FieldEditor
+              label="Description"
+              value={cardData.description}
+              onChange={(v) => handleFieldChange('description', v)}
+              tokenCount={tokenCounts.description}
+              multiline
+              rows={16}
+              fieldName="description"
+              onOpenLLMAssist={handleOpenLLMAssist}
+              onOpenTemplates={handleOpenTemplates}
+            />
+
+            <FieldEditor
+              label="Scenario"
+              value={cardData.scenario}
+              onChange={(v) => handleFieldChange('scenario', v)}
+              tokenCount={tokenCounts.scenario}
+              multiline
+              rows={10}
+              fieldName="scenario"
+              onOpenLLMAssist={handleOpenLLMAssist}
+              onOpenTemplates={handleOpenTemplates}
+            />
+
+            <FieldEditor
+              label="Personality"
+              value={cardData.personality}
+              onChange={(v) => handleFieldChange('personality', v)}
+              tokenCount={tokenCounts.personality}
+              multiline
+              rows={10}
+              fieldName="personality"
+              onOpenLLMAssist={handleOpenLLMAssist}
+              onOpenTemplates={handleOpenTemplates}
+            />
+
+            {/* Appearance - always visible, used by Voxta/Wyvern */}
+            <div className="input-group">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <label className="label">Appearance</label>
+                  <span className="text-xs px-2 py-0.5 rounded bg-green-600 text-white">Extension</span>
+                  <span className="text-xs px-2 py-0.5 rounded bg-orange-600 text-white">VOXTA</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  {tokenCounts.appearance !== undefined && (
+                    <span className="chip chip-token">{tokenCounts.appearance} tokens</span>
+                  )}
+                  <button
+                    onClick={() => handleOpenTemplates('description', getAppearance())}
+                    className="text-sm px-1.5 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                    title="Templates & Snippets"
+                  >
+                    📄
+                  </button>
+                  <button
+                    onClick={() => handleOpenLLMAssist('description', getAppearance())}
+                    className="text-sm px-1.5 py-0.5 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
+                    title="AI Assist"
+                  >
+                    ✨
+                  </button>
+                </div>
+              </div>
+              <p className="text-sm text-dark-muted mb-2">
+                Physical description used by Voxta and Wyvern as a prompt for Image Diffusion models. Stored in extensions.
+              </p>
+              <textarea
+                value={getAppearance()}
+                onChange={(e) => setAppearance(e.target.value)}
+                rows={8}
+                className="w-full bg-dark-card border border-dark-border rounded px-3 py-2"
+                placeholder="Character's physical appearance..."
+              />
+            </div>
           </div>
         )}
 
@@ -392,14 +513,12 @@ export function EditPanel() {
               fieldName="first_mes"
               onOpenLLMAssist={handleOpenLLMAssist}
               onOpenTemplates={handleOpenTemplates}
-              specMarker="both"
             />
 
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <label className="label">Alternate Greetings</label>
-                  <span className="text-xs px-2 py-0.5 rounded bg-gray-600 text-white">Both</span>
                 </div>
                 <button
                   onClick={() => {
@@ -418,17 +537,40 @@ export function EditPanel() {
               {(cardData.alternate_greetings || []).map((greeting, index) => (
                 <div key={index} className="card bg-dark-bg border border-dark-border p-4 space-y-2">
                   <div className="flex items-center justify-between">
-                    <h4 className="font-semibold text-sm text-dark-muted">Greeting {index + 1}</h4>
-                    <button
-                      onClick={() => {
-                        const updated = [...(cardData.alternate_greetings || [])];
-                        updated.splice(index, 1);
-                        handleFieldChange('alternate_greetings', updated as any);
-                      }}
-                      className="text-xs text-red-300 hover:text-red-200"
-                    >
-                      Remove
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-semibold text-sm text-dark-muted">Greeting {index + 1}</h4>
+                      {tokenCounts[`alternate_greeting_${index}` as keyof typeof tokenCounts] !== undefined && (
+                        <span className="chip chip-token">{tokenCounts[`alternate_greeting_${index}` as keyof typeof tokenCounts]} tokens</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleOpenTemplates('first_mes', greeting)}
+                        className="text-sm px-1.5 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                        title="Templates & Snippets"
+                      >
+                        📄
+                      </button>
+                      <button
+                        onClick={() => handleOpenLLMAssist('first_mes', greeting)}
+                        className="text-sm px-1.5 py-0.5 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
+                        title="AI Assist"
+                      >
+                        ✨
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (!confirm('Delete this alternate greeting?')) return;
+                          const updated = [...(cardData.alternate_greetings || [])];
+                          updated.splice(index, 1);
+                          handleFieldChange('alternate_greetings', updated as any);
+                        }}
+                        className="text-sm px-1.5 py-0.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors ml-1"
+                        title="Delete greeting"
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </div>
                   <textarea
                     value={greeting}
@@ -507,11 +649,10 @@ export function EditPanel() {
               onChange={(v) => handleFieldChange('system_prompt', v)}
               tokenCount={tokenCounts.system_prompt}
               multiline
-              rows={6}
+              rows={8}
               fieldName="system_prompt"
               onOpenLLMAssist={handleOpenLLMAssist}
               onOpenTemplates={handleOpenTemplates}
-              specMarker="both"
             />
 
             <FieldEditor
@@ -520,11 +661,10 @@ export function EditPanel() {
               onChange={(v) => handleFieldChange('post_history_instructions', v)}
               tokenCount={tokenCounts.post_history_instructions}
               multiline
-              rows={6}
+              rows={8}
               fieldName="post_history_instructions"
               onOpenLLMAssist={handleOpenLLMAssist}
               onOpenTemplates={handleOpenTemplates}
-              specMarker="both"
             />
 
             <FieldEditor
@@ -533,48 +673,74 @@ export function EditPanel() {
               onChange={(v) => handleFieldChange('mes_example', v)}
               tokenCount={tokenCounts.mes_example}
               multiline
-              rows={8}
+              rows={10}
               fieldName="mes_example"
               onOpenLLMAssist={handleOpenLLMAssist}
               onOpenTemplates={handleOpenTemplates}
-              specMarker="both"
             />
 
             <FieldEditor
-              label="Creator Notes (Not rendered in preview)"
+              label="Creator Notes"
               value={cardData.creator_notes || ''}
               onChange={(v) => handleFieldChange('creator_notes', v)}
+              tokenCount={tokenCounts.creator_notes}
               multiline
-              rows={4}
+              rows={8}
               fieldName="creator_notes"
               onOpenLLMAssist={handleOpenLLMAssist}
               onOpenTemplates={handleOpenTemplates}
-              specMarker="both"
+              helpText="Not rendered in preview. Used for notes to other users/creators."
             />
 
-            {/* Voxta Appearance - only shown for cards imported from Voxta */}
-            {(cardData as any).extensions?.voxta && (
-              <div className="input-group">
-                <div className="flex items-center gap-2 mb-2">
-                  <label className="label">Appearance (Voxta Description)</label>
-                  <span className="text-xs px-2 py-0.5 rounded bg-orange-600 text-white">VOXTA</span>
+            {/* Character Note (depth_prompt extension) */}
+            <div className="input-group">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <label className="label">Character Note</label>
+                  <span className="text-xs px-2 py-0.5 rounded bg-green-600 text-white">Extension</span>
+                  <div className="flex items-center gap-1 ml-2">
+                    <span className="text-xs text-dark-muted">Depth:</span>
+                    <input
+                      type="number"
+                      value={characterNoteDepth}
+                      onChange={(e) => handleCharacterNoteDepthChange(parseInt(e.target.value) || 4)}
+                      min={0}
+                      max={100}
+                      className="w-16 bg-dark-card border border-dark-border rounded px-2 py-1 text-sm"
+                    />
+                  </div>
                 </div>
-                <p className="text-sm text-dark-muted mb-2">
-                  Physical description imported from Voxta. This is stored in extensions and used when exporting back to Voxta format.
-                </p>
-                <textarea
-                  value={(cardData as any).extensions?.voxta?.appearance || ''}
-                  onChange={(e) => {
-                    const extensions = { ...(cardData as any).extensions };
-                    extensions.voxta = { ...extensions.voxta, appearance: e.target.value };
-                    handleFieldChange('extensions', extensions);
-                  }}
-                  rows={8}
-                  className="w-full bg-dark-card border border-dark-border rounded px-3 py-2"
-                  placeholder="Character's physical appearance..."
-                />
+                <div className="flex items-center gap-1">
+                  {tokenCounts.character_note !== undefined && (
+                    <span className="chip chip-token">{tokenCounts.character_note} tokens</span>
+                  )}
+                  <button
+                    onClick={() => handleOpenTemplates('description', characterNoteValue)}
+                    className="text-sm px-1.5 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                    title="Templates & Snippets"
+                  >
+                    📄
+                  </button>
+                  <button
+                    onClick={() => handleOpenLLMAssist('description', characterNoteValue)}
+                    className="text-sm px-1.5 py-0.5 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
+                    title="AI Assist"
+                  >
+                    ✨
+                  </button>
+                </div>
               </div>
-            )}
+              <p className="text-sm text-dark-muted mb-2">
+                SillyTavern Character Note. Injected at the specified depth in conversation.
+              </p>
+              <textarea
+                value={characterNoteValue}
+                onChange={(e) => handleCharacterNoteChange(e.target.value)}
+                rows={6}
+                className="w-full bg-dark-card border border-dark-border rounded px-3 py-2"
+                placeholder="Character note content..."
+              />
+            </div>
 
             {/* V3-specific advanced fields */}
             {showV3Fields && (
@@ -586,7 +752,7 @@ export function EditPanel() {
                     <span className="text-xs px-2 py-0.5 rounded bg-purple-600 text-white">V3 Only</span>
                   </div>
                   <p className="text-sm text-dark-muted mb-3">
-                    URLs or IDs pointing to the source of this character card. These should generally not be edited manually.
+                    URLs or IDs pointing to the source of this character card.
                   </p>
                   <div className="space-y-2">
                     {((cardData as any).source || []).map((url: string, index: number) => (
@@ -697,36 +863,6 @@ export function EditPanel() {
                     </button>
                   </div>
                 </div>
-
-                {/* Timestamps (Read-only) */}
-                <div className="input-group">
-                  <div className="flex items-center gap-2 mb-2">
-                    <label className="label">Metadata Timestamps</label>
-                    <span className="text-xs px-2 py-0.5 rounded bg-purple-600 text-white">V3 Only</span>
-                  </div>
-                  <div className="space-y-2 bg-dark-surface p-4 rounded border border-dark-border">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-dark-muted">Creation Date:</span>
-                      <span className="text-dark-text">
-                        {(cardData as any).creation_date
-                          ? new Date((cardData as any).creation_date * 1000).toLocaleString()
-                          : 'Not set'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-dark-muted">Modification Date:</span>
-                      <span className="text-dark-text">
-                        {(cardData as any).modification_date
-                          ? new Date((cardData as any).modification_date * 1000).toLocaleString()
-                          : 'Not set'}
-                      </span>
-                    </div>
-                    <p className="text-xs text-dark-muted mt-2">
-                      These timestamps are automatically managed and cannot be edited manually.
-                    </p>
-                  </div>
-                </div>
-
               </>
             )}
           </div>
@@ -735,6 +871,30 @@ export function EditPanel() {
         {/* Lorebook Tab */}
         {activeTab === 'lorebook' && (
           <LorebookEditor />
+        )}
+
+        {/* Extensions Tab */}
+        {activeTab === 'extensions' && (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Extensions Data</h3>
+              <p className="text-dark-muted">
+                Read-only view of extension data. Character Note and Appearance are edited in the Advanced and Character tabs.
+              </p>
+            </div>
+
+            <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
+              <pre className="text-sm text-dark-text whitespace-pre-wrap overflow-auto max-h-[60vh] font-mono">
+                {JSON.stringify(getFilteredExtensions(), null, 2) || '{}'}
+              </pre>
+            </div>
+
+            {Object.keys(getFilteredExtensions()).length === 0 && (
+              <p className="text-dark-muted text-center py-4">
+                No additional extension data present.
+              </p>
+            )}
+          </div>
         )}
         </div>
 

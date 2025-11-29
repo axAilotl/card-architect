@@ -1,7 +1,7 @@
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { useCardStore, extractCardData } from '../../../store/card-store';
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 
 // Custom marked extension to support image sizing syntax: ![alt](url =widthxheight)
 // This handles syntax like: ![image](url =100%x100%) or ![image](url =400x300)
@@ -62,75 +62,13 @@ if (!markedConfigured) {
 
 export function PreviewPanel() {
   const currentCard = useCardStore((state) => state.currentCard);
-  const [showPngPreview, setShowPngPreview] = useState(false);
-  const [pngUrl, setPngUrl] = useState<string | null>(null);
-  const [pngLoading, setPngLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'preview' | 'raw'>('preview');
   const [copied, setCopied] = useState(false);
-  const objectUrlRef = useRef<string | null>(null);
 
   if (!currentCard) return null;
   const cardId = currentCard.meta.id;
 
-  useEffect(() => {
-    if (objectUrlRef.current) {
-      URL.revokeObjectURL(objectUrlRef.current);
-      objectUrlRef.current = null;
-    }
-    setPngUrl(null);
-  }, [cardId]);
-
   const cardData = extractCardData(currentCard);
-
-  // Load PNG preview when shown
-  useEffect(() => {
-    if (showPngPreview && cardId) {
-      setPngLoading(true);
-      const controller = new AbortController();
-
-      fetch(`/api/cards/${cardId}/export?format=png`, {
-        signal: controller.signal,
-      })
-        .then((res) => {
-          if (!res.ok) {
-            throw new Error(`HTTP ${res.status}`);
-          }
-          return res.blob();
-        })
-        .then((blob) => {
-          if (objectUrlRef.current) {
-            URL.revokeObjectURL(objectUrlRef.current);
-          }
-          const url = URL.createObjectURL(blob);
-          objectUrlRef.current = url;
-          setPngUrl(url);
-        })
-        .catch((err) => {
-          if (err.name !== 'AbortError') {
-            console.error('Failed to load PNG preview:', err);
-          }
-          setPngUrl(null);
-        })
-        .finally(() => {
-          setPngLoading(false);
-        });
-
-      return () => {
-        controller.abort();
-      };
-    } else if (showPngPreview && !cardId) {
-      setPngUrl(null);
-    }
-  }, [showPngPreview, cardId]);
-
-  useEffect(() => {
-    return () => {
-      if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current);
-        objectUrlRef.current = null;
-      }
-    };
-  }, []);
 
   const renderMarkdown = (text: string) => {
     const html = marked.parse(text) as string;
@@ -153,48 +91,6 @@ export function PreviewPanel() {
 
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-6">
-      {/* PNG Preview Card */}
-      <div className="card bg-gradient-to-br from-slate-700 to-slate-800">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">PNG Export Preview</h2>
-          <button
-            onClick={() => setShowPngPreview(!showPngPreview)}
-            className="btn-secondary text-sm"
-          >
-            {showPngPreview ? 'Hide' : 'Show'} PNG Preview
-          </button>
-        </div>
-
-        {showPngPreview && (
-          <div className="flex justify-center">
-            {!cardId ? (
-              <div className="flex items-center justify-center h-48">
-                <p className="text-dark-muted">Save the card first to generate a PNG preview.</p>
-              </div>
-            ) : pngLoading ? (
-              <div className="flex items-center justify-center h-48">
-                <p className="text-dark-muted">Loading PNG preview...</p>
-              </div>
-            ) : pngUrl ? (
-              <img
-                src={pngUrl}
-                alt="PNG Export Preview"
-                className="max-w-full h-auto rounded-lg shadow-2xl"
-                style={{ maxHeight: '600px' }}
-              />
-            ) : (
-              <div className="flex items-center justify-center h-48">
-                <p className="text-red-400">Failed to load PNG preview</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        <p className="text-sm text-dark-muted mt-4">
-          This is the actual PNG export with embedded character card data.
-        </p>
-      </div>
-
       {/* Preview/Raw Content Card */}
       <div className="card">
         <div className="flex items-center justify-between mb-4">
@@ -227,10 +123,31 @@ export function PreviewPanel() {
           </pre>
         ) : (
           <>
-            <h1 className="text-3xl font-bold mb-4">{cardData.name}</h1>
+            {/* Large centered thumbnail */}
+            <div className="flex justify-center mb-6">
+              <div className="w-64 bg-dark-bg border border-dark-border rounded-lg overflow-hidden shadow-lg">
+                <img
+                  src={`/api/cards/${cardId}/image?t=${Date.now()}`}
+                  alt="Character Avatar"
+                  className="w-full h-auto object-contain"
+                  style={{ minHeight: '256px', maxHeight: '384px' }}
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    const parent = e.currentTarget.parentElement;
+                    if (parent) {
+                      parent.classList.add('flex', 'items-center', 'justify-center');
+                      parent.style.height = '256px';
+                      parent.innerHTML = '<div class="text-dark-muted text-sm">No Image</div>';
+                    }
+                  }}
+                />
+              </div>
+            </div>
+
+            <h1 className="text-3xl font-bold mb-4 text-center">{cardData.name}</h1>
 
             {cardData.tags && cardData.tags.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-4">
+              <div className="flex flex-wrap gap-2 mb-4 justify-center">
                 {cardData.tags.map((tag, i) => (
                   <span key={i} className="chip bg-slate-700 text-slate-200">
                     {tag}

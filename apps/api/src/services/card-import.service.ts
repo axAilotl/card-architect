@@ -10,7 +10,7 @@ import sharp from 'sharp';
 import type { CharxData, Card, CardMeta, AssetTag, CCv3Data } from '@card-architect/schemas';
 import { detectAnimatedAsset } from '@card-architect/schemas';
 import { AssetRepository, CardAssetRepository, CardRepository } from '../db/repository.js';
-import { getMimeTypeFromExt } from '../utils/uri-utils.js';
+import { getMimeTypeFromExt, extractCharx } from '../utils/file-handlers.js';
 
 export interface ImportOptions {
   storagePath: string; // Base path for asset storage
@@ -128,14 +128,19 @@ export class CardImportService {
       );
 
       if (mainIconAsset?.buffer) {
-        originalImageBuffer = mainIconAsset.buffer;
+        // Convert Uint8Array to Buffer if needed
+        originalImageBuffer = Buffer.isBuffer(mainIconAsset.buffer)
+          ? mainIconAsset.buffer
+          : Buffer.from(mainIconAsset.buffer);
       } else {
         // Fallback to first icon
         const firstIcon = data.assets.find(
           (a) => a.descriptor.type === 'icon' && a.buffer
         );
         if (firstIcon?.buffer) {
-          originalImageBuffer = firstIcon.buffer;
+          originalImageBuffer = Buffer.isBuffer(firstIcon.buffer)
+            ? firstIcon.buffer
+            : Buffer.from(firstIcon.buffer);
           warnings.push('Main icon not found, using first available icon');
         } else {
           warnings.push('No icon assets found for original_image');
@@ -179,13 +184,18 @@ export class CardImportService {
         // Determine MIME type
         const mimetype = getMimeTypeFromExt(ext);
 
+        // Convert buffer if needed for processing
+        const assetBuffer = Buffer.isBuffer(assetInfo.buffer)
+          ? assetInfo.buffer
+          : Buffer.from(assetInfo.buffer);
+
         // Get image dimensions if it's an image
         let width: number | undefined;
         let height: number | undefined;
 
         if (mimetype.startsWith('image/')) {
           try {
-            const metadata = await sharp(assetInfo.buffer).metadata();
+            const metadata = await sharp(assetBuffer).metadata();
             width = metadata.width;
             height = metadata.height;
           } catch (err) {
@@ -194,7 +204,7 @@ export class CardImportService {
         }
 
         // Extract tags from descriptor and buffer
-        const tags = this.extractTags(assetInfo.descriptor, assetInfo.buffer, mimetype);
+        const tags = this.extractTags(assetInfo.descriptor, assetBuffer, mimetype);
         console.log(`[Card Import] Extracted tags for ${assetInfo.descriptor.name}: ${tags.join(', ')}`);
 
         // Write file to storage
@@ -278,7 +288,6 @@ export class CardImportService {
    * Import CHARX from file path
    */
   async importCharxFromFile(filePath: string, options: ImportOptions): Promise<ImportResult> {
-    const { extractCharx } = await import('../utils/charx-handler.js');
     const data = await extractCharx(filePath);
     return this.importCharx(data, options);
   }

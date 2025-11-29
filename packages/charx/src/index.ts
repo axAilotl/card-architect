@@ -1,52 +1,40 @@
-import type { Card } from '@card-architect/schemas';
-
 /**
- * CHARX format support (stub for future implementation)
- * CHARX is a ZIP-based format for character cards with assets
+ * @card-architect/charx
+ *
+ * CHARX format reading and writing for character cards.
+ * Works in both Node.js and browser environments.
  */
 
-export interface CharxPackOptions {
-  includeAssets?: boolean;
-  compression?: 'none' | 'deflate' | 'brotli';
-}
+// Reader exports
+export {
+  type CharxExtractionOptions,
+  type AssetFetcher,
+  extractCharx,
+  extractCardJsonOnly,
+  extractCharxAsync,
+} from './reader.js';
 
-export interface CharxUnpackResult {
-  card: Card;
-  assets: Array<{
-    filename: string;
-    data: Buffer;
-    mimetype: string;
-  }>;
-}
+// Writer exports
+export {
+  type CharxWriteAsset,
+  type CharxBuildOptions,
+  type CharxBuildResult,
+  buildCharx,
+  buildCharxAsync,
+} from './writer.js';
 
-/**
- * Pack a card into CHARX format
- */
-export async function pack(_card: Card, _options?: CharxPackOptions): Promise<Buffer> {
-  // TODO: Implement CHARX packing
-  // 1. Create ZIP archive
-  // 2. Add card.json
-  // 3. Add assets/ directory with images
-  // 4. Add metadata.json with CHARX spec info
-  throw new Error('CHARX packing not yet implemented');
-}
+// Validator exports
+export {
+  validateCharx,
+  validateCharxBuild,
+  normalizeAssetOrder,
+  deduplicateAssetNames,
+} from './validator.js';
 
-/**
- * Unpack a CHARX file
- */
-export async function unpack(_buffer: Buffer): Promise<CharxUnpackResult> {
-  // TODO: Implement CHARX unpacking
-  // 1. Unzip archive
-  // 2. Parse card.json
-  // 3. Extract assets
-  // 4. Validate structure
-  throw new Error('CHARX unpacking not yet implemented');
-}
-
-/**
- * Validate CHARX structure
- */
-export function validate(_buffer: Buffer): { valid: boolean; errors: string[] } {
-  // TODO: Implement CHARX validation
-  return { valid: false, errors: ['Not implemented'] };
-}
+// Re-export types from schemas for convenience
+export type {
+  CharxData,
+  CharxAssetInfo,
+  CharxMetadata,
+  CharxValidationResult,
+} from '@card-architect/schemas';

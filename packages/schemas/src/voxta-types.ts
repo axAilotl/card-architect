@@ -159,6 +159,40 @@ export interface VoxtaBookItem {
 }
 
 /**
+ * Known V2/V3 Extensions
+ * These are non-standard but commonly used extensions from various tools
+ */
+
+/**
+ * SillyTavern depth_prompt extension
+ * Used as "Character's Note" - injected at a specific depth in chat history
+ */
+export interface DepthPromptExtension {
+  prompt: string;
+  depth: number; // Default is 4
+}
+
+/**
+ * Wyvern AI visual_description extension
+ * Physical/visual description of the character
+ */
+export type VisualDescriptionExtension = string;
+
+/**
+ * Known extensions interface for type-safe access
+ * Note: extensions is Record<string, unknown> so these are optional type hints
+ */
+export interface KnownExtensions {
+  depth_prompt?: DepthPromptExtension;
+  visual_description?: VisualDescriptionExtension;
+  voxta?: VoxtaExtensionData;
+  // Chub/other hosting metadata (preserved but not edited)
+  chub?: Record<string, unknown>;
+  risuai?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+/**
  * Structure for data stored in CCv3 `extensions.voxta`
  */
 export interface VoxtaExtensionData {

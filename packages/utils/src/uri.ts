@@ -1,9 +1,9 @@
 /**
  * URI utilities for handling different asset URI schemes
- * Supports: embeded://, ccdefault:, https://, http://, data:, file://
+ * Supports: embeded://, ccdefault:, https://, http://, data:, file://, __asset:, asset:
  */
 
-export type URIScheme = 'embeded' | 'ccdefault' | 'https' | 'http' | 'data' | 'file' | 'internal' | 'unknown';
+export type URIScheme = 'embeded' | 'ccdefault' | 'https' | 'http' | 'data' | 'file' | 'internal' | 'pngchunk' | 'unknown';
 
 export interface ParsedURI {
   scheme: URIScheme;
@@ -13,6 +13,8 @@ export interface ParsedURI {
   data?: string; // For data: URIs
   mimeType?: string; // For data: URIs
   encoding?: string; // For data: URIs (e.g., base64)
+  chunkKey?: string; // For pngchunk (__asset:, asset:) - the key/index to look up
+  chunkCandidates?: string[]; // For pngchunk - all possible chunk keys to search
 }
 
 /**
@@ -20,6 +22,31 @@ export interface ParsedURI {
  */
 export function parseURI(uri: string): ParsedURI {
   const trimmed = uri.trim();
+
+  // __asset: or asset: - PNG chunk reference (CharX-in-PNG format)
+  if (trimmed.startsWith('__asset:') || trimmed.startsWith('asset:')) {
+    const assetId = trimmed.startsWith('__asset:')
+      ? trimmed.substring('__asset:'.length)
+      : trimmed.substring('asset:'.length);
+
+    // Generate all possible chunk key variations for lookup
+    const candidates = [
+      assetId,                        // "0" or "filename.png"
+      trimmed,                        // "__asset:0" or "asset:0"
+      `asset:${assetId}`,             // "asset:0"
+      `__asset:${assetId}`,           // "__asset:0"
+      `__asset_${assetId}`,           // "__asset_0"
+      `chara-ext-asset_${assetId}`,   // "chara-ext-asset_0"
+      `chara-ext-asset_:${assetId}`,  // "chara-ext-asset_:0"
+    ];
+
+    return {
+      scheme: 'pngchunk',
+      originalUri: uri,
+      chunkKey: assetId,
+      chunkCandidates: candidates,
+    };
+  }
 
   // ccdefault: - use default asset
   if (trimmed === 'ccdefault:' || trimmed.startsWith('ccdefault:')) {
@@ -156,7 +183,7 @@ export function internalToEmbed(_assetId: string, type: string, ext: string, ind
 /**
  * Check if extension is an image format
  */
-function isImageExt(ext: string): boolean {
+export function isImageExt(ext: string): boolean {
   const imageExts = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif', 'bmp', 'svg'];
   return imageExts.includes(ext.toLowerCase());
 }
@@ -164,7 +191,7 @@ function isImageExt(ext: string): boolean {
 /**
  * Check if extension is an audio format
  */
-function isAudioExt(ext: string): boolean {
+export function isAudioExt(ext: string): boolean {
   const audioExts = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac'];
   return audioExts.includes(ext.toLowerCase());
 }
@@ -172,7 +199,7 @@ function isAudioExt(ext: string): boolean {
 /**
  * Check if extension is a video format
  */
-function isVideoExt(ext: string): boolean {
+export function isVideoExt(ext: string): boolean {
   const videoExts = ['mp4', 'webm', 'avi', 'mov', 'mkv'];
   return videoExts.includes(ext.toLowerCase());
 }
@@ -189,6 +216,7 @@ export function isURISafe(uri: string, options: { allowHttp?: boolean; allowFile
     case 'internal':
     case 'data':
     case 'https':
+    case 'pngchunk':
       return true;
 
     case 'http':
@@ -225,15 +253,7 @@ export function getExtensionFromURI(uri: string): string {
 
   if (parsed.mimeType) {
     // Convert MIME type to extension
-    const mimeToExt: Record<string, string> = {
-      'image/png': 'png',
-      'image/jpeg': 'jpg',
-      'image/webp': 'webp',
-      'image/gif': 'gif',
-      'image/avif': 'avif',
-      'image/svg+xml': 'svg',
-    };
-    return mimeToExt[parsed.mimeType] || 'bin';
+    return getExtFromMimeType(parsed.mimeType);
   }
 
   return 'unknown';
@@ -254,7 +274,7 @@ export function getMimeTypeFromExt(ext: string): string {
     'svg': 'image/svg+xml',
     'bmp': 'image/bmp',
     'ico': 'image/x-icon',
-    
+
     // Audio
     'mp3': 'audio/mpeg',
     'wav': 'audio/wav',
@@ -262,14 +282,109 @@ export function getMimeTypeFromExt(ext: string): string {
     'flac': 'audio/flac',
     'm4a': 'audio/mp4',
     'aac': 'audio/aac',
-    
+
     // Video
     'mp4': 'video/mp4',
     'webm': 'video/webm',
     'avi': 'video/x-msvideo',
     'mov': 'video/quicktime',
     'mkv': 'video/x-matroska',
+
+    // Text
+    'json': 'application/json',
+    'txt': 'text/plain',
+    'html': 'text/html',
+    'css': 'text/css',
+    'js': 'application/javascript',
   };
 
   return extToMime[ext.toLowerCase()] || 'application/octet-stream';
+}
+
+/**
+ * Get file extension from MIME type
+ */
+export function getExtFromMimeType(mimeType: string): string {
+  const mimeToExt: Record<string, string> = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+    'image/avif': 'avif',
+    'image/svg+xml': 'svg',
+    'image/bmp': 'bmp',
+    'image/x-icon': 'ico',
+    'audio/mpeg': 'mp3',
+    'audio/wav': 'wav',
+    'audio/ogg': 'ogg',
+    'audio/flac': 'flac',
+    'audio/mp4': 'm4a',
+    'audio/aac': 'aac',
+    'video/mp4': 'mp4',
+    'video/webm': 'webm',
+    'video/x-msvideo': 'avi',
+    'video/quicktime': 'mov',
+    'video/x-matroska': 'mkv',
+    'application/json': 'json',
+    'text/plain': 'txt',
+    'text/html': 'html',
+    'text/css': 'css',
+    'application/javascript': 'js',
+  };
+
+  return mimeToExt[mimeType] || 'bin';
+}
+
+/**
+ * Build a data URI from binary data and MIME type
+ */
+export function buildDataURI(data: string, mimeType: string, isBase64: boolean = true): string {
+  if (isBase64) {
+    return `data:${mimeType};base64,${data}`;
+  }
+  return `data:${mimeType},${encodeURIComponent(data)}`;
+}
+
+/**
+ * PNG chunk reference for asset lookup
+ */
+export interface PNGChunkRef {
+  keyword: string;
+  text: string;
+}
+
+/**
+ * Find a PNG chunk by trying multiple candidate keys
+ * Used for __asset: and asset: URI resolution
+ */
+export function findPNGChunkByURI(
+  uri: string,
+  chunks: PNGChunkRef[]
+): PNGChunkRef | undefined {
+  const parsed = parseURI(uri);
+
+  if (parsed.scheme !== 'pngchunk' || !parsed.chunkCandidates) {
+    return undefined;
+  }
+
+  // Try exact matches first
+  for (const candidate of parsed.chunkCandidates) {
+    const found = chunks.find((c) => c.keyword === candidate);
+    if (found) return found;
+  }
+
+  // Fallback: check for chara-ext-asset_ prefix matching
+  const assetId = parsed.chunkKey;
+  if (assetId) {
+    const found = chunks.find((c) => {
+      if (c.keyword.startsWith('chara-ext-asset_')) {
+        const suffix = c.keyword.replace('chara-ext-asset_', '');
+        return suffix === assetId || suffix === `:${assetId}` || suffix === uri;
+      }
+      return false;
+    });
+    if (found) return found;
+  }
+
+  return undefined;
 }

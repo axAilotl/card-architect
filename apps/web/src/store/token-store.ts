@@ -40,9 +40,26 @@ export const useTokenStore = create<TokenStore>((set, get) => ({
     payload.mes_example = cardData.mes_example || '';
     payload.system_prompt = cardData.system_prompt || '';
     payload.post_history_instructions = cardData.post_history_instructions || '';
+    payload.creator_notes = cardData.creator_notes || '';
 
-    if (cardData.alternate_greetings) {
-      payload.alternate_greetings = cardData.alternate_greetings.join('\n');
+    // Extensions: appearance (voxta or visual_description)
+    const extensions = (cardData as any).extensions || {};
+    const appearance = extensions.voxta?.appearance || extensions.visual_description || '';
+    if (appearance) {
+      payload.appearance = appearance;
+    }
+
+    // Extensions: character_note (depth_prompt.prompt)
+    const characterNote = extensions.depth_prompt?.prompt || '';
+    if (characterNote) {
+      payload.character_note = characterNote;
+    }
+
+    // Alternate greetings - tokenize each separately
+    if (cardData.alternate_greetings && cardData.alternate_greetings.length > 0) {
+      cardData.alternate_greetings.forEach((greeting, index) => {
+        payload[`alternate_greeting_${index}`] = greeting || '';
+      });
     }
 
     if (cardData.character_book?.entries) {

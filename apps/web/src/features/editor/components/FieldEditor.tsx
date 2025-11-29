@@ -11,7 +11,7 @@ interface FieldEditorProps {
   fieldName?: CCFieldName;
   onOpenLLMAssist?: (fieldName: CCFieldName, value: string) => void;
   onOpenTemplates?: (fieldName: FocusField, value: string) => void;
-  specMarker?: 'v2' | 'v3' | 'v3-only' | 'both';
+  specMarker?: 'v2' | 'v3' | 'v3only' | 'both';
   helpText?: string;
 }
 
@@ -35,16 +35,16 @@ export function FieldEditor({
   const getSpecMarkerBadge = () => {
     if (!specMarker || specMarker === 'both') return null;
 
-    const colors = {
+    const colors: Record<string, string> = {
       'v2': 'bg-gray-600 text-white',
       'v3': 'bg-blue-600 text-white',
-      'v3-only': 'bg-purple-600 text-white',
+      'v3only': 'bg-purple-600 text-white',
     };
 
-    const text = {
+    const text: Record<string, string> = {
       'v2': 'V2',
       'v3': 'V3',
-      'v3-only': 'V3 Only',
+      'v3only': 'V3 Only',
     };
 
     return (
@@ -61,26 +61,26 @@ export function FieldEditor({
           <label className="label">{label}</label>
           {getSpecMarkerBadge()}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           {tokenCount !== undefined && (
             <span className="chip chip-token">{tokenCount} tokens</span>
           )}
           {isFocusField && onOpenTemplates && (
             <button
               onClick={() => onOpenTemplates(fieldName as FocusField, value)}
-              className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+              className="text-sm px-1.5 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
               title="Templates & Snippets"
             >
-              📄 Templates
+              📄
             </button>
           )}
           {fieldName && onOpenLLMAssist && (
             <button
               onClick={() => onOpenLLMAssist(fieldName, value)}
-              className="text-xs px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
-              title="Open LLM Assist"
+              className="text-sm px-1.5 py-0.5 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
+              title="AI Assist"
             >
-              ✨ AI
+              ✨
             </button>
           )}
         </div>

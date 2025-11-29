@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@card-architect/schemas": "*",
+    "@codemirror/lang-html": "^6.4.11",
     "@codemirror/lang-markdown": "^6.2.4",
     "@milkdown/core": "^7.17.1",
     "@milkdown/crepe": "^7.17.1",

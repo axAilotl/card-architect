@@ -2,19 +2,144 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Theme CSS Variables */
+:root {
+  --color-bg: #0f172a;
+  --color-surface: #1e293b;
+  --color-border: #334155;
+  --color-text: #e2e8f0;
+  --color-muted: #94a3b8;
+  --color-accent: #3b82f6;
+  --color-accent-hover: #2563eb;
+}
+
+/* Theme application */
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+
+/* Background overlay for card-as-background feature */
+.card-bg-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-size: cover;
+  background-position: center;
+  filter: blur(20px);
+  opacity: 0.4;
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Custom background image - applied to editor content area */
+.editor-content-area {
+  position: relative;
+}
+
+/* Theme background image (uploaded by user) */
+.editor-content-area::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: var(--theme-bg-image, none);
+  background-size: cover;
+  background-position: center;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.15;
+}
+
+/* Card background image (character card avatar) */
+.editor-content-area::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: var(--card-bg-image, none);
+  background-size: cover;
+  background-position: center;
+  filter: blur(20px);
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.3;
+}
+
+/* Ensure content is above background */
+.editor-content-area > * {
+  position: relative;
+  z-index: 1;
+}
+
 @layer base {
   * {
-    @apply border-dark-border;
+    border-color: var(--color-border);
   }
 
   body {
     @apply antialiased;
   }
 
+  /* Override Tailwind dark- classes with theme variables */
+  .bg-dark-bg {
+    background-color: var(--color-bg) !important;
+  }
+
+  .bg-dark-surface {
+    background-color: var(--color-surface) !important;
+  }
+
+  .border-dark-border {
+    border-color: var(--color-border) !important;
+  }
+
+  .text-dark-text {
+    color: var(--color-text) !important;
+  }
+
+  .text-dark-muted {
+    color: var(--color-muted) !important;
+  }
+
+  /* Header and navigation */
+  header, nav, .header, .nav {
+    background-color: var(--color-surface);
+    border-color: var(--color-border);
+  }
+
+  /* All text should inherit theme colors */
+  h1, h2, h3, h4, h5, h6 {
+    color: var(--color-text);
+  }
+
+  p {
+    color: var(--color-text);
+  }
+
+  span {
+    color: inherit;
+  }
+
+  /* Form elements */
   input,
   textarea,
   select {
-    @apply bg-dark-surface border border-dark-border rounded px-3 py-2 text-dark-text focus:outline-none focus:ring-2 focus:ring-blue-500;
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+    @apply rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-muted);
   }
 
   button {
@@ -22,11 +147,20 @@
   }
 
   .btn-primary {
-    @apply bg-blue-600 hover:bg-blue-700 text-white;
+    background-color: var(--color-accent);
+    @apply text-white;
+  }
+  .btn-primary:hover {
+    background-color: var(--color-accent-hover);
   }
 
   .btn-secondary {
-    @apply bg-dark-surface hover:bg-slate-700 text-dark-text border border-dark-border;
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+  }
+  .btn-secondary:hover {
+    background-color: var(--color-border);
   }
 
   .btn-danger {
@@ -34,7 +168,9 @@
   }
 
   .card {
-    @apply bg-dark-surface rounded-lg border border-dark-border p-4;
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    @apply rounded-lg p-4;
   }
 
   .input-group {
@@ -42,7 +178,8 @@
   }
 
   .label {
-    @apply text-sm font-medium text-dark-text;
+    color: var(--color-text);
+    @apply text-sm font-medium;
   }
 
   .chip {
@@ -56,4 +193,58 @@
   .chip-warning {
     @apply bg-yellow-900 text-yellow-200;
   }
+
+  /* Theme-aware surfaces */
+  .theme-bg {
+    background-color: var(--color-bg);
+  }
+
+  .theme-surface {
+    background-color: var(--color-surface);
+  }
+
+  .theme-border {
+    border-color: var(--color-border);
+  }
+
+  .theme-text {
+    color: var(--color-text);
+  }
+
+  .theme-muted {
+    color: var(--color-muted);
+  }
+
+  /* Tabs */
+  .tab-active {
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    border-color: var(--color-accent);
+  }
+
+  .tab-inactive {
+    color: var(--color-muted);
+  }
+
+  .tab-inactive:hover {
+    color: var(--color-text);
+  }
+
+  /* Slate color overrides for theme compatibility */
+  .bg-slate-800 {
+    background-color: var(--color-surface) !important;
+  }
+
+  .bg-slate-900 {
+    background-color: var(--color-bg) !important;
+  }
+
+  .hover\:bg-slate-700:hover {
+    background-color: var(--color-border) !important;
+  }
+}
+
+/* Custom CSS injection point - styles injected here will override defaults */
+#custom-theme-styles {
+  /* Placeholder for dynamically injected custom CSS */
 }

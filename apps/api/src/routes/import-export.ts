@@ -1,6 +1,20 @@
 import type { FastifyInstance } from 'fastify';
 import { CardRepository, AssetRepository, CardAssetRepository } from '../db/repository.js';
-import { extractFromPNG, validatePNGSize, createCardPNG } from '../utils/png.js';
+import {
+  extractFromPNG,
+  validatePNGSize,
+  createCardPNG,
+  buildCharx,
+  validateCharxBuild,
+  buildVoxtaPackage,
+  voxtaToStandard,
+  standardToVoxta,
+  isVoxtaCard,
+  convertCardMacros,
+  isZipBuffer,
+  findZipStart,
+} from '../utils/file-handlers.js';
+import { validateCharxExport, applyExportFixes } from '../utils/charx-validator.js';
 import { detectSpec, validateV2, validateV3, type CCv2Data, type CCv3Data } from '@card-architect/schemas';
 import { config } from '../config.js';
 import sharp from 'sharp';
@@ -8,12 +22,7 @@ import { promises as fs } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { CardImportService } from '../services/card-import.service.js';
-import { buildCharx, validateCharxBuild } from '../utils/charx-builder.js';
-import { validateCharxExport, applyExportFixes } from '../utils/charx-validator.js';
 import { VoxtaImportService } from '../services/voxta-import.service.js';
-import { buildVoxtaPackage } from '../utils/voxta-builder.js';
-import { voxtaToStandard, standardToVoxta, isVoxtaCard, convertCardMacros } from '../utils/macro-converter.js';
-import { isZipBuffer, findZipStart } from '../utils/zip-utils.js';
 
 /**
  * Normalize card data to fix common issues before validation
@@ -23,6 +32,35 @@ function normalizeCardData(cardData: unknown, spec: 'v2' | 'v3'): void {
   if (!cardData || typeof cardData !== 'object') return;
 
   const obj = cardData as Record<string, unknown>;
+
+  // Handle hybrid v2 formats from various exports
+  const cardFields = ['name', 'description', 'personality', 'scenario', 'first_mes', 'mes_example',
+    'creator_notes', 'system_prompt', 'post_history_instructions', 'alternate_greetings',
+    'character_book', 'tags', 'creator', 'character_version', 'extensions'];
+
+  if (spec === 'v2' && 'spec' in obj) {
+    // Case 1: Has spec/spec_version AND data object, but also has root fields (duplicated)
+    // Just strip the root duplicates and use data object
+    if ('data' in obj && typeof obj.data === 'object' && obj.data && 'name' in obj) {
+      for (const field of cardFields) {
+        if (field in obj) {
+          delete obj[field];
+        }
+      }
+    }
+    // Case 2: Has spec/spec_version but fields at root (no data object)
+    // Common from ChubAI exports: { spec: "chara_card_v2", spec_version: "2.0", name: "...", description: "..." }
+    else if ('name' in obj && !('data' in obj)) {
+      const dataObj: Record<string, unknown> = {};
+      for (const field of cardFields) {
+        if (field in obj) {
+          dataObj[field] = obj[field];
+          delete obj[field];
+        }
+      }
+      obj.data = dataObj;
+    }
+  }
 
   // Fix wrapped v2 cards with non-standard spec values
   if (spec === 'v2' && 'spec' in obj && obj.spec !== 'chara_card_v2') {
@@ -62,6 +100,16 @@ function normalizeCardData(cardData: unknown, spec: 'v2' | 'v3'): void {
       }
       if (!('tags' in dataObj) || !Array.isArray(dataObj.tags)) {
         dataObj.tags = [];
+      }
+
+      // Fix CharacterTavern timestamp format (milliseconds -> seconds)
+      // CCv3 spec requires Unix timestamp in seconds, but CharacterTavern exports milliseconds
+      const TIMESTAMP_THRESHOLD = 10000000000; // 10-digit = seconds, 13-digit = milliseconds
+      if (typeof dataObj.creation_date === 'number' && dataObj.creation_date > TIMESTAMP_THRESHOLD) {
+        dataObj.creation_date = Math.floor(dataObj.creation_date / 1000);
+      }
+      if (typeof dataObj.modification_date === 'number' && dataObj.modification_date > TIMESTAMP_THRESHOLD) {
+        dataObj.modification_date = Math.floor(dataObj.modification_date / 1000);
       }
     }
   } else if ('character_book' in obj && obj.character_book === null) {
@@ -1212,8 +1260,22 @@ export async function importExportRoutes(fastify: FastifyInstance) {
 
     const successCount = results.filter(r => r.success).length;
     const failCount = results.filter(r => !r.success).length;
+    const failures = results.filter(r => !r.success);
 
-    fastify.log.info({ successCount, failCount, total: results.length }, 'Multiple card import completed');
+    // Log each failure individually for debugging
+    for (const failure of failures) {
+      fastify.log.error({
+        filename: failure.filename,
+        error: failure.error
+      }, 'Card import failed');
+    }
+
+    fastify.log.info({
+      successCount,
+      failCount,
+      total: results.length,
+      failedFiles: failures.map(f => f.filename),
+    }, 'Multiple card import completed');
 
     reply.code(201);
     return {
@@ -1252,7 +1314,7 @@ export async function importExportRoutes(fastify: FastifyInstance) {
         reply.header('Content-Disposition', `attachment; filename="${card.meta.name}.json"`);
 
         // Convert Voxta macros to standard format if this is a Voxta card
-        let exportData = card.data as Record<string, unknown>;
+        let exportData = card.data as unknown as Record<string, unknown>;
         if (isVoxtaCard(card.data)) {
           exportData = convertCardMacros(exportData, voxtaToStandard);
           fastify.log.info({ cardId: request.params.id }, 'Converted Voxta macros to standard format for JSON export');
@@ -1269,7 +1331,7 @@ export async function importExportRoutes(fastify: FastifyInstance) {
           // Convert Voxta macros to standard format if this is a Voxta card
           let charxData = card.data as CCv3Data;
           if (isVoxtaCard(card.data)) {
-            charxData = convertCardMacros(card.data as Record<string, unknown>, voxtaToStandard) as CCv3Data;
+            charxData = convertCardMacros(card.data as unknown as Record<string, unknown>, voxtaToStandard) as unknown as CCv3Data;
             fastify.log.info({ cardId: request.params.id }, 'Converted Voxta macros to standard format for CHARX export');
           }
 
@@ -1343,9 +1405,9 @@ export async function importExportRoutes(fastify: FastifyInstance) {
           // Convert standard macros to Voxta format (add spaces)
           // This applies to all cards being exported to Voxta, not just existing Voxta cards
           const voxtaData = convertCardMacros(
-            card.data as Record<string, unknown>,
+            card.data as unknown as Record<string, unknown>,
             standardToVoxta
-          ) as import('@card-architect/schemas').CCv3Data;
+          ) as unknown as import('@card-architect/schemas').CCv3Data;
           fastify.log.info({ cardId: request.params.id }, 'Converted standard macros to Voxta format for Voxta export');
 
           const result = await buildVoxtaPackage(
@@ -1393,7 +1455,7 @@ export async function importExportRoutes(fastify: FastifyInstance) {
           // Convert Voxta macros to standard format if this is a Voxta card
           let pngCardData = card.data;
           if (isVoxtaCard(card.data)) {
-            pngCardData = convertCardMacros(card.data as Record<string, unknown>, voxtaToStandard) as typeof card.data;
+            pngCardData = convertCardMacros(card.data as unknown as Record<string, unknown>, voxtaToStandard) as unknown as typeof card.data;
             fastify.log.info({ cardId: request.params.id }, 'Converted Voxta macros to standard format for PNG export');
           }
 

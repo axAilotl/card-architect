@@ -110,6 +110,48 @@ export async function presetRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // Toggle hidden state for a preset
+  fastify.post<{ Params: { id: string } }>('/presets/:id/toggle-hidden', async (request, reply) => {
+    try {
+      const preset = presetRepo.toggleHidden(request.params.id);
+      if (!preset) {
+        reply.code(404);
+        return { error: 'Preset not found' };
+      }
+      return { preset };
+    } catch (err: any) {
+      fastify.log.error(err);
+      reply.code(500);
+      return { error: 'Failed to toggle hidden state' };
+    }
+  });
+
+  // Copy a preset (creates a new user preset from any preset including built-in)
+  fastify.post<{ Params: { id: string }; Body: { name?: string } }>(
+    '/presets/:id/copy',
+    async (request, reply) => {
+      try {
+        const preset = presetRepo.copy(request.params.id, request.body?.name);
+        if (!preset) {
+          reply.code(404);
+          return { error: 'Preset not found' };
+        }
+        reply.code(201);
+        return { preset };
+      } catch (err: any) {
+        fastify.log.error(err);
+        reply.code(500);
+        return { error: 'Failed to copy preset' };
+      }
+    }
+  );
+
+  // Get only visible presets (for LLM assist UI)
+  fastify.get('/presets/visible', async () => {
+    const presets = presetRepo.getVisible();
+    return { presets };
+  });
+
   // Export all user presets as JSON
   fastify.get('/presets/export/all', async (_request, reply) => {
     const allPresets = presetRepo.getAll();

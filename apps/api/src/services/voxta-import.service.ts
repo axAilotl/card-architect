@@ -1,17 +1,18 @@
-import { 
-  CardRepository, 
-  CardAssetRepository, 
-  AssetRepository 
+import {
+  CardRepository,
+  CardAssetRepository,
+  AssetRepository
 } from '../db/repository.js';
-import { 
-  extractVoxtaPackage, 
-  type ExtractedVoxtaCharacter, 
+import {
+  extractVoxtaPackage,
+  getMimeTypeFromExt,
+  type ExtractedVoxtaCharacter,
   type ExtractedVoxtaAsset,
-  type VoxtaData 
-} from '../utils/voxta-handler.js';
-import type { 
-  CCv3Data, 
-  VoxtaExtensionData, 
+  type VoxtaData,
+} from '../utils/file-handlers.js';
+import type {
+  CCv3Data,
+  VoxtaExtensionData,
   VoxtaCharacter,
   AssetTag,
   AssetType
@@ -21,7 +22,6 @@ import { join } from 'path';
 import { writeFile } from 'fs/promises';
 import { config } from '../config.js';
 import { detectAnimatedAsset } from '@card-architect/schemas';
-import { getMimeTypeFromExt } from '../utils/uri-utils.js';
 import sharp from 'sharp';
 
 export class VoxtaImportService {

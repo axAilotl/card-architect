@@ -211,14 +211,14 @@ export interface CharxMetadata {
 export interface CharxAssetInfo {
   path: string; // Path within ZIP (e.g., 'assets/icon/image/1.png')
   descriptor: AssetDescriptor; // Corresponding asset descriptor from card.json
-  buffer?: Buffer; // Binary data (for export)
+  buffer?: Uint8Array; // Binary data (for export) - universal browser/Node.js type
 }
 
 export interface CharxData {
   card: CCv3Data; // card.json content
   assets: CharxAssetInfo[]; // All assets extracted from ZIP
   metadata?: Map<number, CharxMetadata>; // x_meta/*.json files
-  moduleRisum?: Buffer; // module.risum binary data (preserved but not parsed)
+  moduleRisum?: Uint8Array; // module.risum binary data (preserved but not parsed)
 }
 
 export interface CharxValidationResult extends ValidationResult {
@@ -534,6 +534,7 @@ export interface UserPreset {
   instruction: string; // The actual instruction/prompt template
   category?: 'rewrite' | 'format' | 'generate' | 'custom'; // For UI grouping
   isBuiltIn: boolean; // True for system presets, false for user-created
+  isHidden?: boolean; // If true, don't show in LLM assist UI
   createdAt: ISO8601;
   updatedAt: ISO8601;
 }
@@ -617,7 +618,7 @@ export type FocusField = 'description' | 'personality' | 'scenario' | 'first_mes
 export type TemplateCategory = 'character' | 'scenario' | 'dialogue' | 'custom';
 
 // Snippet categories
-export type SnippetCategory = 'instruction' | 'format' | 'custom';
+export type SnippetCategory = 'instruction' | 'format' | 'custom' | 'jed';
 
 // Template structure
 export interface Template {

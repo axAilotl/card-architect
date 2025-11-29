@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTemplateStore } from '../../../store/template-store';
 import type { Template, Snippet, TemplateCategory, SnippetCategory, FocusField } from '@card-architect/schemas';
 import { TemplateEditor } from './TemplateEditor';
@@ -29,13 +29,42 @@ export function TemplateSnippetPanel({
   const [selectedSnippet, setSelectedSnippet] = useState<Snippet | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<TemplateCategory | SnippetCategory | 'all'>('all');
+  const [importStatus, setImportStatus] = useState<string | null>(null);
 
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | undefined>(undefined);
   const [showSnippetEditor, setShowSnippetEditor] = useState(false);
   const [editingSnippet, setEditingSnippet] = useState<Snippet | undefined>(undefined);
 
-  const { templates, snippets, deleteTemplate, deleteSnippet, createTemplate, updateTemplate, createSnippet, updateSnippet } = useTemplateStore();
+  const templateImportRef = useRef<HTMLInputElement>(null);
+  const snippetImportRef = useRef<HTMLInputElement>(null);
+
+  const {
+    templates,
+    snippets,
+    loadTemplates,
+    loadSnippets,
+    deleteTemplate,
+    deleteSnippet,
+    createTemplate,
+    updateTemplate,
+    createSnippet,
+    updateSnippet,
+    exportTemplates,
+    exportSnippets,
+    importTemplates,
+    importSnippets,
+    resetTemplates,
+    resetSnippets,
+  } = useTemplateStore();
+
+  // Load templates and snippets on mount
+  useEffect(() => {
+    if (isOpen || embedded) {
+      loadTemplates();
+      loadSnippets();
+    }
+  }, [isOpen, embedded, loadTemplates, loadSnippets]);
 
   if (!isOpen && !embedded) return null;
 
@@ -69,14 +98,14 @@ export function TemplateSnippetPanel({
     }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (activeTab === 'templates' && selectedTemplate) {
       if (selectedTemplate.isDefault) {
         alert('Cannot delete default templates');
         return;
       }
       if (confirm(`Delete template "${selectedTemplate.name}"?`)) {
-        deleteTemplate(selectedTemplate.id);
+        await deleteTemplate(selectedTemplate.id);
         setSelectedTemplate(null);
       }
     } else if (activeTab === 'snippets' && selectedSnippet) {
@@ -85,7 +114,7 @@ export function TemplateSnippetPanel({
         return;
       }
       if (confirm(`Delete snippet "${selectedSnippet.name}"?`)) {
-        deleteSnippet(selectedSnippet.id);
+        await deleteSnippet(selectedSnippet.id);
         setSelectedSnippet(null);
       }
     }
@@ -116,13 +145,13 @@ export function TemplateSnippetPanel({
     }
   };
 
-  const handleSaveTemplate = (templateData: Omit<Template, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const handleSaveTemplate = async (templateData: Omit<Template, 'id' | 'createdAt' | 'updatedAt'>) => {
     if (editingTemplate && editingTemplate.id) {
       // Editing existing template
-      updateTemplate(editingTemplate.id, templateData);
+      await updateTemplate(editingTemplate.id, templateData);
     } else {
       // Creating new template (either from scratch or copy of default)
-      createTemplate(templateData);
+      await createTemplate(templateData);
     }
     setShowTemplateEditor(false);
     setEditingTemplate(undefined);
@@ -153,16 +182,64 @@ export function TemplateSnippetPanel({
     }
   };
 
-  const handleSaveSnippet = (snippetData: Omit<Snippet, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const handleSaveSnippet = async (snippetData: Omit<Snippet, 'id' | 'createdAt' | 'updatedAt'>) => {
     if (editingSnippet && editingSnippet.id) {
       // Editing existing snippet
-      updateSnippet(editingSnippet.id, snippetData);
+      await updateSnippet(editingSnippet.id, snippetData);
     } else {
       // Creating new snippet (either from scratch or copy of default)
-      createSnippet(snippetData);
+      await createSnippet(snippetData);
     }
     setShowSnippetEditor(false);
     setEditingSnippet(undefined);
+  };
+
+  // Import/Export handlers
+  const handleExport = async () => {
+    if (activeTab === 'templates') {
+      await exportTemplates();
+    } else {
+      await exportSnippets();
+    }
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImportStatus('Importing...');
+    try {
+      const result = activeTab === 'templates'
+        ? await importTemplates(file)
+        : await importSnippets(file);
+
+      if (result.success) {
+        setImportStatus(`Imported ${result.imported} ${activeTab}`);
+        setTimeout(() => setImportStatus(null), 3000);
+      } else {
+        setImportStatus(`Import failed: ${result.error}`);
+        setTimeout(() => setImportStatus(null), 5000);
+      }
+    } catch (err: any) {
+      setImportStatus(`Import error: ${err.message}`);
+      setTimeout(() => setImportStatus(null), 5000);
+    }
+
+    // Reset file input
+    e.target.value = '';
+  };
+
+  const handleReset = async () => {
+    const type = activeTab === 'templates' ? 'templates' : 'snippets';
+    if (confirm(`Reset all ${type} to defaults? This will remove user ${type} and restore built-in ones.`)) {
+      if (activeTab === 'templates') {
+        await resetTemplates();
+        setSelectedTemplate(null);
+      } else {
+        await resetSnippets();
+        setSelectedSnippet(null);
+      }
+    }
   };
 
   const renderTemplateContent = (template: Template) => {
@@ -231,41 +308,84 @@ export function TemplateSnippetPanel({
         </div>
 
         {/* Search and Filter */}
-        <div className="p-4 border-b border-dark-border flex gap-3">
-          <input
-            type="text"
-            placeholder="Search..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="flex-1 px-3 py-2 bg-dark-bg border border-dark-border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value as any)}
-            className="px-3 py-2 bg-dark-bg border border-dark-border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All Categories</option>
-            {activeTab === 'templates' ? (
-              <>
-                <option value="character">Character</option>
-                <option value="scenario">Scenario</option>
-                <option value="dialogue">Dialogue</option>
-                <option value="custom">Custom</option>
-              </>
-            ) : (
-              <>
-                <option value="instruction">Instruction</option>
-                <option value="format">Format</option>
-                <option value="custom">Custom</option>
-              </>
+        <div className="p-4 border-b border-dark-border flex flex-col gap-3">
+          <div className="flex gap-3">
+            <input
+              type="text"
+              placeholder="Search..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="flex-1 px-3 py-2 bg-dark-bg border border-dark-border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value as any)}
+              className="px-3 py-2 bg-dark-bg border border-dark-border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Categories</option>
+              {activeTab === 'templates' ? (
+                <>
+                  <option value="character">Character</option>
+                  <option value="scenario">Scenario</option>
+                  <option value="dialogue">Dialogue</option>
+                  <option value="custom">Custom</option>
+                </>
+              ) : (
+                <>
+                  <option value="jed">JED Format</option>
+                  <option value="instruction">Instruction</option>
+                  <option value="format">Format</option>
+                  <option value="custom">Custom</option>
+                </>
+              )}
+            </select>
+          </div>
+          <div className="flex gap-2 items-center">
+            <button
+              onClick={activeTab === 'templates' ? handleCreateTemplate : handleCreateSnippet}
+              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors whitespace-nowrap"
+            >
+              + Create
+            </button>
+            <button
+              onClick={handleExport}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors whitespace-nowrap"
+            >
+              Export
+            </button>
+            <button
+              onClick={() => activeTab === 'templates' ? templateImportRef.current?.click() : snippetImportRef.current?.click()}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors whitespace-nowrap"
+            >
+              Import
+            </button>
+            <button
+              onClick={handleReset}
+              className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 transition-colors whitespace-nowrap"
+            >
+              Reset
+            </button>
+            {importStatus && (
+              <span className={`ml-2 text-sm ${importStatus.includes('failed') || importStatus.includes('error') ? 'text-red-400' : 'text-green-400'}`}>
+                {importStatus}
+              </span>
             )}
-          </select>
-          <button
-            onClick={activeTab === 'templates' ? handleCreateTemplate : handleCreateSnippet}
-            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors whitespace-nowrap"
-          >
-            + Create
-          </button>
+            {/* Hidden file inputs */}
+            <input
+              type="file"
+              ref={templateImportRef}
+              onChange={handleImportFile}
+              accept=".json"
+              className="hidden"
+            />
+            <input
+              type="file"
+              ref={snippetImportRef}
+              onChange={handleImportFile}
+              accept=".json"
+              className="hidden"
+            />
+          </div>
         </div>
 
         {/* Content Area */}

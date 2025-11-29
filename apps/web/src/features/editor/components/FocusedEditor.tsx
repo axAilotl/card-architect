@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useCardStore, extractCardData } from '../../../store/card-store';
+import { useSettingsStore } from '../../../store/settings-store';
 import type { CCv2Data, CCv3Data, Template, Snippet, CCFieldName, FocusField } from '@card-architect/schemas';
 import { MilkdownProvider } from '@milkdown/react';
 import { Crepe } from '@milkdown/crepe';
@@ -13,32 +14,49 @@ import { eclipse } from '@uiw/codemirror-theme-eclipse';
 import throttle from 'lodash.throttle';
 import CodeMirror from '@uiw/react-codemirror';
 import { markdown as codemirrorMarkdown } from '@codemirror/lang-markdown';
+import { html as codemirrorHtml } from '@codemirror/lang-html';
 import { githubDark } from '@uiw/codemirror-theme-github';
 import { EditorView } from '@codemirror/view';
 import { TemplateSnippetPanel } from './TemplateSnippetPanel';
 import { LLMAssistSidebar } from './LLMAssistSidebar';
+import DOMPurify from 'dompurify';
 
-// Base fields available to all cards (first part, before potential voxta field)
-const baseFieldsStart = [
-  { id: 'description', label: 'Description' },
-  { id: 'personality', label: 'Personality' },
-  { id: 'scenario', label: 'Scenario' },
-  { id: 'first_mes', label: 'First Message' },
-  { id: 'alternate_greetings', label: 'Alt Greetings' },
-] as const;
+// Field definitions with settings keys for extended fields
+type LocalFocusField =
+  | 'description'
+  | 'scenario'
+  | 'personality'
+  | 'appearance'
+  | 'character_note'
+  | 'first_mes'
+  | 'alternate_greetings'
+  | 'mes_example'
+  | 'system_prompt'
+  | 'post_history_instructions'
+  | 'creator_notes';
 
-// Voxta-specific field (inserted after alt greetings)
-const voxtaField = { id: 'appearance', label: 'Appearance' } as const;
+interface FieldDef {
+  id: LocalFocusField;
+  label: string;
+  tag?: string;
+  settingKey?: 'personality' | 'appearance' | 'characterNote' | 'exampleDialogue' | 'systemPrompt' | 'postHistory';
+  alwaysShow?: boolean;
+}
 
-// Base fields (after potential voxta field)
-const baseFieldsEnd = [
-  { id: 'mes_example', label: 'Example Dialogue' },
-  { id: 'system_prompt', label: 'System Prompt' },
-  { id: 'post_history_instructions', label: 'Post History' },
-  { id: 'creator_notes', label: 'Creator Notes' },
-] as const;
-
-type LocalFocusField = (typeof baseFieldsStart)[number]['id'] | (typeof baseFieldsEnd)[number]['id'] | 'appearance';
+// All possible fields in the new order
+const ALL_FIELDS: FieldDef[] = [
+  { id: 'description', label: 'Description', alwaysShow: true },
+  { id: 'scenario', label: 'Scenario', alwaysShow: true },
+  { id: 'personality', label: 'Personality', settingKey: 'personality' },
+  { id: 'appearance', label: 'Appearance', tag: 'VOXTA', settingKey: 'appearance' },
+  { id: 'character_note', label: 'Character Note', tag: 'Extension', settingKey: 'characterNote' },
+  { id: 'first_mes', label: 'First Message', alwaysShow: true },
+  { id: 'alternate_greetings', label: 'Alt Greetings', alwaysShow: true },
+  { id: 'mes_example', label: 'Example Dialogue', settingKey: 'exampleDialogue' },
+  { id: 'system_prompt', label: 'System Prompt', settingKey: 'systemPrompt' },
+  { id: 'post_history_instructions', label: 'Post History', settingKey: 'postHistory' },
+  { id: 'creator_notes', label: 'Creator Notes', alwaysShow: true },
+];
 
 interface CrepeEditorProps {
   value: string;
@@ -145,6 +163,7 @@ type FocusType = 'wysiwyg' | 'raw' | null;
 
 function FocusedEditorInner() {
   const { currentCard, updateCardData } = useCardStore();
+  const { creatorNotes, editor } = useSettingsStore();
   const [selectedField, setSelectedField] = useState<LocalFocusField>('description');
   const [drafts, setDrafts] = useState<Record<LocalFocusField, string>>({
     description: '',
@@ -157,6 +176,7 @@ function FocusedEditorInner() {
     post_history_instructions: '',
     creator_notes: '',
     appearance: '',
+    character_note: '',
   });
   const [alternateGreetingIndex, setAlternateGreetingIndex] = useState(0);
   const [editorKey, setEditorKey] = useState(0);
@@ -174,20 +194,18 @@ function FocusedEditorInner() {
     return extractCardData(currentCard);
   }, [currentCard]);
 
-  // Check if this is a Voxta card (has voxta extension data)
-  const isVoxtaCard = useMemo(() => {
-    if (!cardData) return false;
-    return !!(cardData as any).extensions?.voxta;
-  }, [cardData]);
-
-  // Build the list of focusable fields based on card type
+  // Build the list of focusable fields based on settings
   const focusableFields = useMemo(() => {
-    if (isVoxtaCard) {
-      // Insert appearance after alt greetings
-      return [...baseFieldsStart, voxtaField, ...baseFieldsEnd] as Array<{ id: LocalFocusField; label: string }>;
-    }
-    return [...baseFieldsStart, ...baseFieldsEnd] as Array<{ id: LocalFocusField; label: string }>;
-  }, [isVoxtaCard]);
+    return ALL_FIELDS.filter((field) => {
+      // Always show fields without settingKey
+      if (field.alwaysShow) return true;
+      // Check settings for extended fields
+      if (field.settingKey) {
+        return editor.extendedFocusedFields[field.settingKey];
+      }
+      return true;
+    });
+  }, [editor.extendedFocusedFields]);
 
   const getFieldValue = useCallback(
     (field: LocalFocusField) => {
@@ -202,9 +220,17 @@ function FocusedEditorInner() {
         return '';
       }
 
-      // Handle appearance specially - stored in extensions.voxta.appearance
+      // Handle appearance specially - stored in extensions.voxta.appearance or extensions.visual_description
       if (field === 'appearance') {
-        return (cardData as any).extensions?.voxta?.appearance || '';
+        const extensions = (cardData as any).extensions || {};
+        if (extensions.voxta?.appearance) return extensions.voxta.appearance;
+        if (extensions.visual_description) return extensions.visual_description;
+        return '';
+      }
+
+      // Handle character_note specially - stored in extensions.depth_prompt.prompt
+      if (field === 'character_note') {
+        return (cardData as any).extensions?.depth_prompt?.prompt || '';
       }
 
       const raw = (cardData as Record<string, unknown>)[field];
@@ -226,6 +252,7 @@ function FocusedEditorInner() {
       post_history_instructions: getFieldValue('post_history_instructions'),
       creator_notes: getFieldValue('creator_notes'),
       appearance: getFieldValue('appearance'),
+      character_note: getFieldValue('character_note'),
     };
     setDrafts(next);
     setSelectedField((prev) => prev ?? 'description');
@@ -329,17 +356,59 @@ function FocusedEditorInner() {
         updateCardData({ alternate_greetings: greetings } as Partial<CCv2Data>);
       }
     } else if (selectedField === 'appearance') {
-      // Handle appearance specially - stored in extensions.voxta.appearance
-      if (isV3) {
-        const currentData = (currentCard.data as CCv3Data).data;
+      // Handle appearance specially - stored in extensions.voxta.appearance or visual_description
+      const v2Data = currentCard.data as any;
+      const isWrappedV2 = !isV3 && v2Data?.spec === 'chara_card_v2' && 'data' in v2Data;
+
+      if (isV3 || isWrappedV2) {
+        const currentData = isV3 ? (currentCard.data as CCv3Data).data : v2Data.data;
         const extensions = { ...(currentData.extensions || {}) };
-        extensions.voxta = { ...((extensions.voxta as any) || {}), appearance: value };
+        // Use voxta extension if it exists, otherwise visual_description
+        if (extensions.voxta) {
+          extensions.voxta = { ...((extensions.voxta as any) || {}), appearance: value };
+        } else {
+          extensions.visual_description = value;
+        }
         updateCardData({
           data: {
             ...currentData,
             extensions,
           },
-        } as Partial<CCv3Data>);
+        } as any);
+      } else {
+        const extensions = { ...(v2Data.extensions || {}) };
+        extensions.visual_description = value;
+        updateCardData({ extensions } as any);
+      }
+    } else if (selectedField === 'character_note') {
+      // Handle character_note specially - stored in extensions.depth_prompt.prompt
+      const v2Data = currentCard.data as any;
+      const isWrappedV2 = !isV3 && v2Data?.spec === 'chara_card_v2' && 'data' in v2Data;
+
+      if (isV3 || isWrappedV2) {
+        const currentData = isV3 ? (currentCard.data as CCv3Data).data : v2Data.data;
+        const extensions = { ...(currentData.extensions || {}) };
+        extensions.depth_prompt = {
+          ...(extensions.depth_prompt || {}),
+          prompt: value,
+          depth: extensions.depth_prompt?.depth ?? 4,
+          role: 'system',
+        };
+        updateCardData({
+          data: {
+            ...currentData,
+            extensions,
+          },
+        } as any);
+      } else {
+        const extensions = { ...(v2Data.extensions || {}) };
+        extensions.depth_prompt = {
+          ...(extensions.depth_prompt || {}),
+          prompt: value,
+          depth: extensions.depth_prompt?.depth ?? 4,
+          role: 'system',
+        };
+        updateCardData({ extensions } as any);
       }
     } else {
       if (isV3) {
@@ -507,6 +576,17 @@ function FocusedEditorInner() {
     rawMarkdownRef.current = newValue;
   };
 
+  // Check if we should use HTML mode for current field
+  const isHtmlMode = selectedField === 'creator_notes' && creatorNotes.htmlMode;
+
+  // Sanitize HTML for preview
+  const sanitizeHtml = (html: string) => {
+    return DOMPurify.sanitize(html, {
+      ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'a', 'img', 'ul', 'ol', 'li', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'div', 'span', 'hr', 'b', 'i', 's', 'sub', 'sup', 'details', 'summary'],
+      ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'width', 'height', 'style', 'class', 'id', 'target', 'rel'],
+    });
+  };
+
   const renderWysiwyg = (suffix = '') => (
     <div className="flex-1 bg-slate-900/60 border border-dark-border rounded-lg p-3 overflow-auto min-h-[50vh]">
       <CrepeMarkdownEditor
@@ -519,6 +599,51 @@ function FocusedEditorInner() {
           rawMarkdownRef.current = currentValue;
         }}
       />
+    </div>
+  );
+
+  // Render HTML editor (CodeMirror with HTML syntax) for HTML mode
+  const renderHtmlEditor = () => (
+    <div
+      className="flex-1 bg-slate-900/60 border border-dark-border rounded-lg overflow-hidden min-h-[50vh]"
+      onFocus={() => setEditorFocus('wysiwyg')}
+      onBlur={() => setEditorFocus(null)}
+    >
+      <CodeMirror
+        value={currentValue}
+        height="100%"
+        theme={githubDark}
+        extensions={[codemirrorHtml(), EditorView.lineWrapping]}
+        onChange={(value) => {
+          handleDraftChange(value);
+          rawMarkdownRef.current = value;
+        }}
+        basicSetup={{
+          lineNumbers: true,
+          highlightActiveLineGutter: true,
+          foldGutter: true,
+        }}
+        style={{ fontSize: '14px', height: '100%' }}
+      />
+    </div>
+  );
+
+  // Render HTML preview panel for HTML mode
+  const renderHtmlPreview = () => (
+    <div className="flex-1 flex flex-col border-l border-dark-border bg-dark-surface">
+      {/* Preview Header */}
+      <div className="flex h-10 items-center justify-between border-b border-dark-border bg-dark-bg px-4 py-2">
+        <span className="text-sm font-medium">HTML Preview</span>
+        <span className="text-xs text-dark-muted px-2 py-1 bg-green-900/30 rounded">Live</span>
+      </div>
+
+      {/* HTML Preview Content */}
+      <div className="flex-1 overflow-auto p-4">
+        <div
+          className="prose prose-invert max-w-none"
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(currentValue) }}
+        />
+      </div>
     </div>
   );
 
@@ -586,8 +711,7 @@ function FocusedEditorInner() {
       {/* Field Selector Header */}
       <div className="bg-dark-surface border-b border-dark-border px-6 py-3">
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-semibold text-dark-muted mr-2">Field:</span>
+          <div className="flex items-center gap-1.5 flex-wrap">
             {focusableFields.map((field) => (
               <button
                 key={field.id}
@@ -597,40 +721,49 @@ function FocusedEditorInner() {
                     setAlternateGreetingIndex(Math.max(0, alternateGreetings.length - 1));
                   }
                 }}
-                className={`px-4 py-2 rounded transition-colors text-sm font-medium flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded transition-colors text-sm font-medium flex items-center gap-1 ${
                   selectedField === field.id
-                    ? field.id === 'appearance'
+                    ? field.tag === 'VOXTA'
                       ? 'bg-orange-600 text-white border border-orange-400'
-                      : 'bg-blue-600 text-white border border-blue-400'
+                      : field.tag === 'Extension'
+                        ? 'bg-green-600 text-white border border-green-400'
+                        : field.id === 'creator_notes' && creatorNotes.htmlMode
+                          ? 'bg-green-600 text-white border border-green-400'
+                          : 'bg-blue-600 text-white border border-blue-400'
                     : 'bg-dark-bg text-dark-text border border-dark-border hover:bg-dark-surface'
                 }`}
               >
                 {field.label}
-                {field.id === 'appearance' && (
-                  <span className="text-[10px] px-1 py-0.5 rounded bg-orange-800 text-orange-200">VOXTA</span>
+                {field.tag && (
+                  <span className={`text-[10px] px-1 py-0.5 rounded ${
+                    field.tag === 'VOXTA' ? 'bg-orange-800 text-orange-200' : 'bg-green-800 text-green-200'
+                  }`}>{field.tag}</span>
+                )}
+                {field.id === 'creator_notes' && creatorNotes.htmlMode && !field.tag && (
+                  <span className="text-[10px] px-1 py-0.5 rounded bg-green-800 text-green-200">HTML</span>
                 )}
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setLLMAssistOpen(true)}
-              className="px-3 py-1.5 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors text-sm"
-              title="AI Assist"
-            >
-              ✨ AI
-            </button>
+          <div className="flex items-center gap-1">
             <button
               onClick={() => setShowTemplatePanel(true)}
-              className="btn-secondary"
+              className="text-base px-1.5 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
               title="Templates & Snippets"
             >
-              Templates
+              📄
             </button>
-            <button onClick={resetCurrentField} className="btn-secondary">
+            <button
+              onClick={() => setLLMAssistOpen(true)}
+              className="text-base px-1.5 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
+              title="AI Assist"
+            >
+              ✨
+            </button>
+            <button onClick={resetCurrentField} className="btn-secondary px-3 py-1.5 text-sm">
               Reset
             </button>
-            <button onClick={applyChanges} className="btn-primary">
+            <button onClick={applyChanges} className="btn-primary px-3 py-1.5 text-sm">
               Apply
             </button>
           </div>
@@ -678,16 +811,27 @@ function FocusedEditorInner() {
       <div className="flex-1 flex flex-col p-6 space-y-4 relative">
         {/* Editor Container with relative positioning for chevron */}
         <div className="flex-1 flex gap-4 min-h-0 relative">
-          <div
-            className="flex-1 flex"
-            onFocus={() => setEditorFocus('wysiwyg')}
-            onBlur={() => setEditorFocus(null)}
-          >
-            {renderWysiwyg('single')}
-          </div>
+          {isHtmlMode ? (
+            <>
+              {/* HTML Mode: Code editor on left, preview on right */}
+              {renderHtmlEditor()}
+              {renderHtmlPreview()}
+            </>
+          ) : (
+            <>
+              {/* Markdown Mode: WYSIWYG editor with collapsible raw panel */}
+              <div
+                className="flex-1 flex"
+                onFocus={() => setEditorFocus('wysiwyg')}
+                onBlur={() => setEditorFocus(null)}
+              >
+                {renderWysiwyg('single')}
+              </div>
 
-          {/* Collapsible Control Panel */}
-          {renderControlPanel()}
+              {/* Collapsible Control Panel */}
+              {renderControlPanel()}
+            </>
+          )}
 
           {/* LLM Assist Sidebar - positioned within editor area */}
           {llmAssistOpen && (
@@ -703,7 +847,15 @@ function FocusedEditorInner() {
         </div>
 
         <div className="text-xs text-dark-muted">
-          <span className="font-semibold">Tip:</span> WYSIWYG editor - Press Shift+Enter for line breaks, Enter for paragraph breaks. Use the ‹ button to toggle raw markdown view.
+          {isHtmlMode ? (
+            <>
+              <span className="font-semibold">HTML Mode:</span> Edit HTML source code on the left, see live preview on the right. HTML is sanitized for safety.
+            </>
+          ) : (
+            <>
+              <span className="font-semibold">Tip:</span> WYSIWYG editor - Press Shift+Enter for line breaks, Enter for paragraph breaks. Use the ‹ button to toggle raw markdown view.
+            </>
+          )}
         </div>
       </div>
 

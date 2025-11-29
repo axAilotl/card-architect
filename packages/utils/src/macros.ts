@@ -7,24 +7,6 @@
  * Standard (SillyTavern, etc.) uses: {{user}}, {{char}}, {{User}}, {{Char}}
  */
 
-// Patterns for Voxta-style macros (with spaces)
-const VOXTA_MACROS = [
-  /\{\{\s*user\s*\}\}/gi,
-  /\{\{\s*char\s*\}\}/gi,
-];
-
-// Standard replacement values
-const STANDARD_MACROS: Record<string, string> = {
-  'user': '{{user}}',
-  'char': '{{char}}',
-};
-
-// Voxta replacement values
-const VOXTA_MACRO_VALUES: Record<string, string> = {
-  'user': '{{ user }}',
-  'char': '{{ char }}',
-};
-
 /**
  * Convert Voxta-style macros to standard format (no spaces)
  * {{ user }} -> {{user}}

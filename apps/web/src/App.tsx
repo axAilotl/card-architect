@@ -4,6 +4,7 @@ import { useCardStore } from './store/card-store';
 import { CardEditor } from './features/editor/CardEditor';
 import { CardGrid } from './features/dashboard/CardGrid';
 import { Header } from './components/shared/Header';
+import { ThemeProvider } from './components/shared/ThemeProvider';
 import { ErrorBoundary, PageErrorBoundary } from './components/ui/ErrorBoundary';
 import { localDB } from './lib/db';
 
@@ -42,7 +43,7 @@ function EditorRoute() {
   return (
     <div className="h-full flex flex-col">
       <Header onBack={() => navigate('/')} />
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden editor-content-area">
         <CardEditor />
       </div>
     </div>
@@ -57,29 +58,31 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <BrowserRouter>
-        <div className="h-screen flex flex-col bg-dark-bg">
-          <Routes>
-            <Route
-              path="/"
-              element={
-                <PageErrorBoundary>
-                  <GridRoute />
-                </PageErrorBoundary>
-              }
-            />
-            <Route
-              path="/cards/:id"
-              element={
-                <PageErrorBoundary>
-                  <EditorRoute />
-                </PageErrorBoundary>
-              }
-            />
-            <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
-        </div>
-      </BrowserRouter>
+      <ThemeProvider>
+        <BrowserRouter>
+          <div className="h-screen flex flex-col theme-bg">
+            <Routes>
+              <Route
+                path="/"
+                element={
+                  <PageErrorBoundary>
+                    <GridRoute />
+                  </PageErrorBoundary>
+                }
+              />
+              <Route
+                path="/cards/:id"
+                element={
+                  <PageErrorBoundary>
+                    <EditorRoute />
+                  </PageErrorBoundary>
+                }
+              />
+              <Route path="*" element={<Navigate to="/" />} />
+            </Routes>
+          </div>
+        </BrowserRouter>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }

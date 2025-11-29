@@ -1,0 +1,27 @@
+{
+  "name": "@card-architect/voxta",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Voxta package format reading and writing for character cards",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@card-architect/schemas": "*",
+    "@card-architect/utils": "*",
+    "fflate": "^0.8.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}

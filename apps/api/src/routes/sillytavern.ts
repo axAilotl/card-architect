@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from 'fs';
 import FormData from 'form-data';
 import axios from 'axios';
 import { fileURLToPath } from 'url';
-import { createCardPNG } from '../utils/png.js';
+import { createCardPNG } from '../utils/file-handlers.js';
 import sharp from 'sharp';
 
 const __filename = fileURLToPath(import.meta.url);

@@ -1,7 +1,8 @@
 {
   "name": "@card-architect/charx",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
+  "description": "CHARX format reading and writing for character cards",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -16,7 +17,9 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@card-architect/schemas": "*"
+    "@card-architect/schemas": "*",
+    "@card-architect/utils": "*",
+    "fflate": "^0.8.2"
   },
   "devDependencies": {
     "typescript": "^5.3.3"

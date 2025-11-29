@@ -1,11 +1,11 @@
 /**
- * Settings Modal for LLM Provider Configuration
+ * Settings Modal for Application Configuration
  */
 
 import { useState, useEffect } from 'react';
 import { useLLMStore } from '../../store/llm-store';
 import { useCardStore } from '../../store/card-store';
-import { useSettingsStore } from '../../store/settings-store';
+import { useSettingsStore, THEMES } from '../../store/settings-store';
 import { extractCardData } from '../../lib/card-utils';
 import type { ProviderConfig, ProviderKind, OpenAIMode, UserPreset, CreatePresetRequest } from '@card-architect/schemas';
 import { TemplateSnippetPanel } from '../../features/editor/components/TemplateSnippetPanel';
@@ -41,10 +41,26 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     getCachedModels,
   } = useLLMStore();
 
-  const [activeTab, setActiveTab] = useState<'general' | 'providers' | 'rag' | 'templates' | 'presets' | 'sillytavern'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'editor' | 'themes' | 'providers' | 'rag' | 'templates' | 'presets' | 'sillytavern'>('general');
 
-  // Auto-snapshot settings from store
-  const { autoSnapshot, setAutoSnapshotEnabled, setAutoSnapshotInterval } = useSettingsStore();
+  // Settings from store
+  const {
+    autoSnapshot,
+    setAutoSnapshotEnabled,
+    setAutoSnapshotInterval,
+    creatorNotes,
+    setCreatorNotesHtmlMode,
+    theme,
+    setTheme,
+    setCustomCss,
+    setBackgroundImage,
+    setUseCardAsBackground,
+    editor,
+    setShowV3Fields,
+    setExportSpec,
+    setShowExtensionsTab,
+    setExtendedFocusedField,
+  } = useSettingsStore();
   const [editingProvider, setEditingProvider] = useState<Partial<ProviderConfig> | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { success: boolean; error?: string }>>({});
   const [modelFetchError, setModelFetchError] = useState<string | null>(null);
@@ -456,7 +472,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       <div className="bg-slate-800 rounded-lg shadow-xl w-full max-w-4xl h-[67vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="p-4 border-b border-dark-border flex justify-between items-center">
-          <h2 className="text-xl font-bold">LLM Settings</h2>
+          <h2 className="text-xl font-bold">Settings</h2>
           <button
             onClick={onClose}
             className="text-dark-muted hover:text-dark-text transition-colors"
@@ -466,9 +482,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-dark-border">
+        <div className="flex border-b border-dark-border overflow-x-auto">
           <button
-            className={`px-6 py-3 font-medium transition-colors ${
+            className={`px-4 py-3 font-medium transition-colors whitespace-nowrap ${
               activeTab === 'general'
                 ? 'border-b-2 border-blue-500 text-blue-500'
                 : 'text-dark-muted hover:text-dark-text'
@@ -478,7 +494,27 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             General
           </button>
           <button
-            className={`px-6 py-3 font-medium transition-colors ${
+            className={`px-4 py-3 font-medium transition-colors whitespace-nowrap ${
+              activeTab === 'editor'
+                ? 'border-b-2 border-blue-500 text-blue-500'
+                : 'text-dark-muted hover:text-dark-text'
+            }`}
+            onClick={() => setActiveTab('editor')}
+          >
+            Editor
+          </button>
+          <button
+            className={`px-4 py-3 font-medium transition-colors whitespace-nowrap ${
+              activeTab === 'themes'
+                ? 'border-b-2 border-blue-500 text-blue-500'
+                : 'text-dark-muted hover:text-dark-text'
+            }`}
+            onClick={() => setActiveTab('themes')}
+          >
+            Themes
+          </button>
+          <button
+            className={`px-4 py-3 font-medium transition-colors whitespace-nowrap ${
               activeTab === 'providers'
                 ? 'border-b-2 border-blue-500 text-blue-500'
                 : 'text-dark-muted hover:text-dark-text'
@@ -488,27 +524,27 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             AI Providers
           </button>
           <button
-            className={`px-6 py-3 font-medium transition-colors ${
+            className={`px-4 py-3 font-medium transition-colors whitespace-nowrap ${
               activeTab === 'rag'
                 ? 'border-b-2 border-blue-500 text-blue-500'
                 : 'text-dark-muted hover:text-dark-text'
             }`}
             onClick={() => setActiveTab('rag')}
           >
-            Knowledge (RAG)
+            RAG
           </button>
           <button
-            className={`px-6 py-3 font-medium transition-colors ${
+            className={`px-4 py-3 font-medium transition-colors whitespace-nowrap ${
               activeTab === 'templates'
                 ? 'border-b-2 border-blue-500 text-blue-500'
                 : 'text-dark-muted hover:text-dark-text'
             }`}
             onClick={() => setActiveTab('templates')}
           >
-            Templates & Snippets
+            Templates
           </button>
           <button
-            className={`px-6 py-3 font-medium transition-colors ${
+            className={`px-4 py-3 font-medium transition-colors whitespace-nowrap ${
               activeTab === 'presets'
                 ? 'border-b-2 border-blue-500 text-blue-500'
                 : 'text-dark-muted hover:text-dark-text'
@@ -518,7 +554,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             LLM Presets
           </button>
           <button
-            className={`px-6 py-3 font-medium transition-colors ${
+            className={`px-4 py-3 font-medium transition-colors whitespace-nowrap ${
               activeTab === 'sillytavern'
                 ? 'border-b-2 border-blue-500 text-blue-500'
                 : 'text-dark-muted hover:text-dark-text'
@@ -590,6 +626,384 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <li>Auto-snapshots do not replace manual snapshots</li>
                   </ul>
                 </div>
+              </div>
+
+              {/* Creator's Notes Settings */}
+              <div className="border border-dark-border rounded-lg p-6 space-y-4">
+                <h4 className="font-semibold">Creator's Notes</h4>
+                <p className="text-sm text-dark-muted">
+                  Configure how the Creator's Notes field is edited in Focused Mode.
+                </p>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="creatorNotesHtmlMode"
+                    checked={creatorNotes.htmlMode}
+                    onChange={(e) => setCreatorNotesHtmlMode(e.target.checked)}
+                    className="rounded"
+                  />
+                  <label htmlFor="creatorNotesHtmlMode" className="text-sm font-medium">
+                    HTML Mode
+                  </label>
+                </div>
+
+                <div className="p-3 bg-dark-bg rounded border border-dark-border">
+                  <h5 className="font-medium text-sm mb-2">HTML Mode Behavior</h5>
+                  <ul className="text-xs text-dark-muted space-y-1 list-disc list-inside">
+                    <li>When enabled, the Focused Editor for Creator's Notes uses an HTML code editor</li>
+                    <li>Left panel: HTML source code with syntax highlighting</li>
+                    <li>Right panel: Live HTML preview (sanitized for safety)</li>
+                    <li>When disabled, uses the standard Markdown WYSIWYG editor</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'editor' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold mb-2">Editor Settings</h3>
+                <p className="text-dark-muted">
+                  Configure how the character card editor behaves.
+                </p>
+              </div>
+
+              {/* Export Spec */}
+              <div className="border border-dark-border rounded-lg p-6 space-y-4">
+                <h4 className="font-semibold">Export Format</h4>
+                <p className="text-sm text-dark-muted">
+                  Choose the default spec version for PNG and JSON exports. CHARX is always V3, Voxta uses its own format.
+                </p>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">Export Spec</label>
+                  <select
+                    value={editor.exportSpec}
+                    onChange={(e) => setExportSpec(e.target.value as 'v2' | 'v3')}
+                    className="w-full bg-dark-card border border-dark-border rounded px-3 py-2"
+                  >
+                    <option value="v3">CCv3 (Character Card v3)</option>
+                    <option value="v2">CCv2 (Character Card v2)</option>
+                  </select>
+                  <p className="text-xs text-dark-muted mt-1">
+                    V3 includes additional fields like timestamps, group greetings, and multilingual notes.
+                  </p>
+                </div>
+              </div>
+
+              {/* V3 Fields Toggle */}
+              <div className="border border-dark-border rounded-lg p-6 space-y-4">
+                <h4 className="font-semibold">V3 Field Visibility</h4>
+                <p className="text-sm text-dark-muted">
+                  Control visibility of CCv3-only fields in the editor.
+                </p>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="showV3Fields"
+                    checked={editor.showV3Fields}
+                    onChange={(e) => setShowV3Fields(e.target.checked)}
+                    className="rounded"
+                  />
+                  <label htmlFor="showV3Fields" className="text-sm font-medium">
+                    Show V3-Only Fields
+                  </label>
+                </div>
+
+                <div className="p-3 bg-dark-bg rounded border border-dark-border">
+                  <h5 className="font-medium text-sm mb-2">V3-Only Fields</h5>
+                  <ul className="text-xs text-dark-muted space-y-1 list-disc list-inside">
+                    <li>Group Only Greetings</li>
+                    <li>Source URLs</li>
+                    <li>Multilingual Creator Notes</li>
+                    <li>Metadata Timestamps</li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* Extensions Tab Toggle */}
+              <div className="border border-dark-border rounded-lg p-6 space-y-4">
+                <h4 className="font-semibold">Extensions Tab</h4>
+                <p className="text-sm text-dark-muted">
+                  Show or hide the Extensions tab in the editor.
+                </p>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="showExtensionsTab"
+                    checked={editor.showExtensionsTab}
+                    onChange={(e) => setShowExtensionsTab(e.target.checked)}
+                    className="rounded"
+                  />
+                  <label htmlFor="showExtensionsTab" className="text-sm font-medium">
+                    Show Extensions Tab
+                  </label>
+                </div>
+              </div>
+
+              {/* Extended Focused Editor Fields */}
+              <div className="border border-dark-border rounded-lg p-6 space-y-4">
+                <h4 className="font-semibold">Focused Editor Fields</h4>
+                <p className="text-sm text-dark-muted">
+                  Choose which fields to show in the Focused Mode editor.
+                </p>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="focusedPersonality"
+                      checked={editor.extendedFocusedFields.personality}
+                      onChange={(e) => setExtendedFocusedField('personality', e.target.checked)}
+                      className="rounded"
+                    />
+                    <label htmlFor="focusedPersonality" className="text-sm">Personality</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="focusedAppearance"
+                      checked={editor.extendedFocusedFields.appearance}
+                      onChange={(e) => setExtendedFocusedField('appearance', e.target.checked)}
+                      className="rounded"
+                    />
+                    <label htmlFor="focusedAppearance" className="text-sm">Appearance</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="focusedCharacterNote"
+                      checked={editor.extendedFocusedFields.characterNote}
+                      onChange={(e) => setExtendedFocusedField('characterNote', e.target.checked)}
+                      className="rounded"
+                    />
+                    <label htmlFor="focusedCharacterNote" className="text-sm">Character Note</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="focusedExampleDialogue"
+                      checked={editor.extendedFocusedFields.exampleDialogue}
+                      onChange={(e) => setExtendedFocusedField('exampleDialogue', e.target.checked)}
+                      className="rounded"
+                    />
+                    <label htmlFor="focusedExampleDialogue" className="text-sm">Example Dialogue</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="focusedSystemPrompt"
+                      checked={editor.extendedFocusedFields.systemPrompt}
+                      onChange={(e) => setExtendedFocusedField('systemPrompt', e.target.checked)}
+                      className="rounded"
+                    />
+                    <label htmlFor="focusedSystemPrompt" className="text-sm">System Prompt</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="focusedPostHistory"
+                      checked={editor.extendedFocusedFields.postHistory}
+                      onChange={(e) => setExtendedFocusedField('postHistory', e.target.checked)}
+                      className="rounded"
+                    />
+                    <label htmlFor="focusedPostHistory" className="text-sm">Post History</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'themes' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold mb-2">Theme Settings</h3>
+                <p className="text-dark-muted">
+                  Customize the look and feel of the application.
+                </p>
+              </div>
+
+              {/* Theme Selector */}
+              <div className="border border-dark-border rounded-lg p-6 space-y-4">
+                <h4 className="font-semibold">Color Theme</h4>
+                <p className="text-sm text-dark-muted">
+                  Choose from built-in color schemes.
+                </p>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {THEMES.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => setTheme(t.id)}
+                      className={`p-3 rounded-lg border transition-all text-left ${
+                        theme.themeId === t.id
+                          ? 'border-blue-500 ring-2 ring-blue-500/30'
+                          : 'border-dark-border hover:border-blue-400'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        {/* Color preview */}
+                        <div className="flex gap-1">
+                          <div
+                            className="w-4 h-4 rounded"
+                            style={{ backgroundColor: t.colors.bg }}
+                            title="Background"
+                          />
+                          <div
+                            className="w-4 h-4 rounded"
+                            style={{ backgroundColor: t.colors.surface }}
+                            title="Surface"
+                          />
+                          <div
+                            className="w-4 h-4 rounded"
+                            style={{ backgroundColor: t.colors.accent }}
+                            title="Accent"
+                          />
+                        </div>
+                        <div>
+                          <div className="font-medium text-sm">{t.name}</div>
+                          <div className="text-xs text-dark-muted">
+                            {t.isDark ? 'Dark' : 'Light'}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Background Image */}
+              <div className="border border-dark-border rounded-lg p-6 space-y-4">
+                <h4 className="font-semibold">Background Image</h4>
+                <p className="text-sm text-dark-muted">
+                  Upload a custom background image for the editor area.
+                </p>
+
+                <div className="space-y-3">
+                  {/* Preview current background */}
+                  {theme.backgroundImage && (
+                    <div className="relative">
+                      <img
+                        src={theme.backgroundImage}
+                        alt="Background preview"
+                        className="w-full h-32 object-cover rounded border border-dark-border"
+                      />
+                      <button
+                        onClick={async () => {
+                          // If it's a server URL, try to delete the file
+                          if (theme.backgroundImage.startsWith('/api/settings/theme/images/')) {
+                            const filename = theme.backgroundImage.split('/').pop();
+                            if (filename) {
+                              await fetch(`/api/settings/theme/images/${filename}`, { method: 'DELETE' });
+                            }
+                          }
+                          setBackgroundImage('');
+                        }}
+                        className="absolute top-2 right-2 px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+
+                  <label className="block">
+                    <span className="text-sm font-medium mb-1 block">Upload Image</span>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+
+                        // Upload to server
+                        const formData = new FormData();
+                        formData.append('file', file);
+
+                        try {
+                          const response = await fetch('/api/settings/theme/background', {
+                            method: 'POST',
+                            body: formData,
+                          });
+
+                          if (response.ok) {
+                            const result = await response.json();
+                            setBackgroundImage(result.url);
+                          } else {
+                            const err = await response.json();
+                            alert(err.error || 'Failed to upload image');
+                          }
+                        } catch (err) {
+                          alert('Failed to upload image');
+                        }
+
+                        e.target.value = ''; // Reset for re-upload
+                      }}
+                      className="w-full text-sm text-dark-text file:mr-3 file:rounded file:border-0 file:px-3 file:py-2 file:bg-blue-600 file:text-white file:cursor-pointer"
+                    />
+                  </label>
+                  <p className="text-xs text-dark-muted">
+                    Supports PNG, JPG, WebP, GIF. Image is stored on the server.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="useCardAsBackground"
+                    checked={theme.useCardAsBackground}
+                    onChange={(e) => setUseCardAsBackground(e.target.checked)}
+                    className="rounded"
+                  />
+                  <label htmlFor="useCardAsBackground" className="text-sm font-medium">
+                    Use character card as background
+                  </label>
+                </div>
+                <p className="text-xs text-dark-muted">
+                  When editing a card, use its avatar as a blurred background overlay at 40% opacity.
+                </p>
+              </div>
+
+              {/* Custom CSS */}
+              <div className="border border-dark-border rounded-lg p-6 space-y-4">
+                <h4 className="font-semibold">Custom CSS</h4>
+                <p className="text-sm text-dark-muted">
+                  Add custom CSS to further customize the appearance.
+                </p>
+
+                <details className="text-sm">
+                  <summary className="cursor-pointer text-blue-400 hover:text-blue-300">
+                    Available CSS Variables
+                  </summary>
+                  <div className="mt-2 p-3 bg-dark-bg rounded border border-dark-border font-mono text-xs">
+                    <pre className="whitespace-pre-wrap">
+{`--color-bg         /* Main background */
+--color-surface    /* Surface/card background */
+--color-border     /* Border color */
+--color-text       /* Primary text */
+--color-muted      /* Muted text */
+--color-accent     /* Accent/primary color */
+--color-accent-hover /* Accent hover state */
+
+/* Classes: */
+.theme-bg, .theme-surface, .theme-border
+.theme-text, .theme-muted
+.btn-primary, .btn-secondary, .btn-danger
+.card, .label, .chip`}
+                    </pre>
+                  </div>
+                </details>
+
+                <textarea
+                  value={theme.customCss}
+                  onChange={(e) => setCustomCss(e.target.value)}
+                  placeholder="/* Your custom CSS here */\n:root {\n  --color-accent: #ff00ff;\n}"
+                  rows={8}
+                  className="w-full bg-dark-card border border-dark-border rounded px-3 py-2 font-mono text-sm resize-none"
+                />
               </div>
             </div>
           )}
@@ -1460,15 +1874,35 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                               preset.isBuiltIn
                                 ? 'border-dark-border bg-dark-card/50'
                                 : 'border-dark-border hover:border-blue-500'
-                            } transition-colors`}
+                            } ${preset.isHidden ? 'opacity-50' : ''} transition-colors`}
                           >
                             <div className="flex justify-between items-start">
                               <div className="flex-1">
                                 <div className="flex items-center gap-2">
+                                  {/* Show/Hide checkbox */}
+                                  <input
+                                    type="checkbox"
+                                    checked={!preset.isHidden}
+                                    onChange={async () => {
+                                      const result = await api.togglePresetHidden(preset.id);
+                                      if (!result.error) {
+                                        loadPresets();
+                                      } else {
+                                        setPresetStatus(`Failed to toggle visibility: ${result.error}`);
+                                      }
+                                    }}
+                                    title={preset.isHidden ? 'Show in LLM Assist' : 'Hide from LLM Assist'}
+                                    className="rounded"
+                                  />
                                   <h6 className="font-semibold">{preset.name}</h6>
                                   {preset.isBuiltIn && (
                                     <span className="px-2 py-0.5 text-xs bg-gray-700 text-gray-300 rounded">
                                       Built-in
+                                    </span>
+                                  )}
+                                  {preset.isHidden && (
+                                    <span className="px-2 py-0.5 text-xs bg-yellow-700 text-yellow-200 rounded">
+                                      Hidden
                                     </span>
                                   )}
                                 </div>
@@ -1484,22 +1918,40 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                   </pre>
                                 </details>
                               </div>
-                              {!preset.isBuiltIn && (
-                                <div className="flex gap-2 ml-4">
-                                  <button
-                                    onClick={() => setEditingPreset(preset)}
-                                    className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                                  >
-                                    Edit
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeletePreset(preset.id)}
-                                    className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
-                                  >
-                                    Delete
-                                  </button>
-                                </div>
-                              )}
+                              <div className="flex gap-2 ml-4">
+                                {/* Copy button - always available */}
+                                <button
+                                  onClick={async () => {
+                                    const result = await api.copyPreset(preset.id);
+                                    if (!result.error) {
+                                      setPresetStatus(`Copied "${preset.name}" as a new user preset`);
+                                      loadPresets();
+                                    } else {
+                                      setPresetStatus(`Failed to copy: ${result.error}`);
+                                    }
+                                  }}
+                                  className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                                  title="Create editable copy"
+                                >
+                                  Copy
+                                </button>
+                                {!preset.isBuiltIn && (
+                                  <>
+                                    <button
+                                      onClick={() => setEditingPreset(preset)}
+                                      className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeletePreset(preset.id)}
+                                      className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                                    >
+                                      Delete
+                                    </button>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </div>
                         ))}
