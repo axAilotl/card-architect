@@ -1328,6 +1328,47 @@ export async function importExportRoutes(fastify: FastifyInstance) {
           // CHARX export - get card assets
           let assets = cardAssetRepo.listByCardWithDetails(request.params.id);
 
+          // If no main icon asset exists, use the card's uploaded PNG as the icon
+          const hasMainIcon = assets.some(a => a.type === 'icon' && a.isMain);
+          if (!hasMainIcon) {
+            const originalImage = cardRepo.getOriginalImage(request.params.id);
+            if (originalImage) {
+              // Save the original image to storage temporarily for CHARX build
+              const iconFilename = `${request.params.id}-icon.png`;
+              const iconPath = join(config.storagePath, request.params.id, iconFilename);
+
+              // Ensure directory exists
+              await fs.mkdir(join(config.storagePath, request.params.id), { recursive: true });
+              await fs.writeFile(iconPath, originalImage);
+
+              const now = new Date().toISOString();
+
+              // Add as a virtual asset for CHARX build
+              assets.push({
+                id: `temp-icon-${request.params.id}`,
+                cardId: request.params.id,
+                assetId: `temp-asset-${request.params.id}`,
+                type: 'icon',
+                name: 'main',
+                ext: 'png',
+                order: 0,
+                isMain: true,
+                createdAt: now,
+                updatedAt: now,
+                asset: {
+                  id: `temp-asset-${request.params.id}`,
+                  filename: iconFilename,
+                  mimetype: 'image/png',
+                  size: originalImage.length,
+                  url: `/storage/${request.params.id}/${iconFilename}`,
+                  createdAt: now,
+                },
+              });
+
+              fastify.log.info({ cardId: request.params.id }, 'Using card original image as main icon for CHARX export');
+            }
+          }
+
           // CHARX is always V3 - convert if needed
           let charxData: CCv3Data;
           const currentSpec = detectSpec(card.data);
