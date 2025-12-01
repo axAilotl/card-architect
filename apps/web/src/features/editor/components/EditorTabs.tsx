@@ -1,42 +1,27 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useCardStore } from '../../../store/card-store';
 import { useUIStore } from '../../../store/ui-store';
-import { useSettingsStore } from '../../../store/settings-store';
+import { useEditorTabs, useAvailableTabIds } from '../../../lib/registry/hooks';
+import type { TabContext } from '../../../lib/registry/types';
 
-export function EditorTabs() {
+interface EditorTabsProps {
+  context?: TabContext;
+}
+
+export function EditorTabs({ context = 'card' }: EditorTabsProps) {
   const { currentCard, createSnapshot } = useCardStore();
   const { activeTab, setActiveTab } = useUIStore();
-  const wwwyzzerddEnabled = useSettingsStore((state) => state.features?.wwwyzzerddEnabled ?? false);
-  const comfyUIEnabled = useSettingsStore((state) => state.features?.comfyUIEnabled ?? false);
+  const tabs = useEditorTabs(context);
+  const availableTabIds = useAvailableTabIds(context);
+
   const [isCreating, setIsCreating] = useState(false);
   const [showPrompt, setShowPrompt] = useState(false);
   const [message, setMessage] = useState('');
 
-  const tabs = useMemo(() => {
-    const baseTabs: { id: string; label: string; color?: string }[] = [
-      { id: 'edit', label: 'Edit' },
-      { id: 'assets', label: 'Assets' },
-      { id: 'focused', label: 'Focused' },
-    ];
-
-    // Add wwwyzzerdd tab after Focused if enabled
-    if (wwwyzzerddEnabled) {
-      baseTabs.push({ id: 'wwwyzzerdd', label: 'wwwyzzerdd', color: 'purple' });
-    }
-
-    // Add ComfyUI tab if enabled
-    if (comfyUIEnabled) {
-      baseTabs.push({ id: 'comfyui', label: 'ComfyUI', color: 'green' });
-    }
-
-    // Add remaining tabs
-    baseTabs.push(
-      { id: 'preview', label: 'Preview' },
-      { id: 'diff', label: 'Diff' }
-    );
-
-    return baseTabs;
-  }, [wwwyzzerddEnabled, comfyUIEnabled]);
+  // If current active tab is not available, fallback to first available
+  const effectiveActiveTab = availableTabIds.includes(activeTab)
+    ? activeTab
+    : availableTabIds[0] ?? 'edit';
 
   const handleCreateSnapshot = async () => {
     if (showPrompt) {
@@ -60,23 +45,37 @@ export function EditorTabs() {
     setMessage('');
   };
 
+  // Get color classes based on tab color
+  const getColorClasses = (color?: string, isActive?: boolean) => {
+    if (!isActive) return 'text-dark-muted hover:text-dark-text';
+
+    switch (color) {
+      case 'purple':
+        return 'text-purple-400 border-b-2 border-purple-500 bg-dark-bg';
+      case 'green':
+        return 'text-green-400 border-b-2 border-green-500 bg-dark-bg';
+      case 'orange':
+        return 'text-orange-400 border-b-2 border-orange-500 bg-dark-bg';
+      case 'red':
+        return 'text-red-400 border-b-2 border-red-500 bg-dark-bg';
+      default:
+        return 'text-dark-text border-b-2 border-blue-500 bg-dark-bg';
+    }
+  };
+
   return (
     <div className="bg-dark-surface border-b border-dark-border">
       <div className="flex items-center justify-between">
         <div className="flex">
           {tabs.map((tab) => {
-            const borderColor = tab.color === 'purple' ? 'border-purple-500' : tab.color === 'green' ? 'border-green-500' : 'border-blue-500';
-            const textColor = tab.color === 'purple' ? 'text-purple-400' : tab.color === 'green' ? 'text-green-400' : 'text-dark-text';
+            const isActive = effectiveActiveTab === tab.id;
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`px-6 py-3 font-medium transition-colors ${
-                  activeTab === tab.id
-                    ? `bg-dark-bg ${textColor} border-b-2 ${borderColor}`
-                    : 'text-dark-muted hover:text-dark-text'
-                }`}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-6 py-3 font-medium transition-colors ${getColorClasses(tab.color, isActive)}`}
               >
+                {tab.icon && <tab.icon className="w-4 h-4 mr-2 inline" />}
                 {tab.label}
               </button>
             );

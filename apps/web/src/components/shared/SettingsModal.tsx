@@ -41,7 +41,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     getCachedModels,
   } = useLLMStore();
 
-  const [activeTab, setActiveTab] = useState<'general' | 'editor' | 'themes' | 'providers' | 'rag' | 'templates' | 'presets' | 'sillytavern' | 'wwwyzzerdd' | 'comfyui'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'modules' | 'editor' | 'themes' | 'providers' | 'rag' | 'templates' | 'presets' | 'sillytavern' | 'wwwyzzerdd' | 'comfyui'>('general');
 
   // Settings from store
   const {
@@ -60,6 +60,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setExportSpec,
     setShowExtensionsTab,
     setExtendedFocusedField,
+    setBlockEditorEnabled,
     setWwwyzzerddEnabled,
     setComfyUIEnabled,
     setWwwyzzerddActivePromptSet,
@@ -71,6 +72,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   } = useSettingsStore();
 
   // Use individual selectors for feature flags to ensure proper reactivity
+  const blockEditorEnabled = useSettingsStore((state) => state.features?.blockEditorEnabled ?? true);
   const wwwyzzerddEnabled = useSettingsStore((state) => state.features?.wwwyzzerddEnabled ?? false);
   const comfyUIEnabled = useSettingsStore((state) => state.features?.comfyUIEnabled ?? false);
   const wwwyzzerddSettings = useSettingsStore((state) => state.wwwyzzerdd);
@@ -836,6 +838,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </button>
           <button
             className={`px-4 py-3 font-medium transition-colors whitespace-nowrap ${
+              activeTab === 'modules'
+                ? 'border-b-2 border-orange-500 text-orange-500'
+                : 'text-dark-muted hover:text-dark-text'
+            }`}
+            onClick={() => setActiveTab('modules')}
+          >
+            Modules
+          </button>
+          <button
+            className={`px-4 py-3 font-medium transition-colors whitespace-nowrap ${
               activeTab === 'editor'
                 ? 'border-b-2 border-blue-500 text-blue-500'
                 : 'text-dark-muted hover:text-dark-text'
@@ -1024,46 +1036,126 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
               </div>
 
-              {/* Experimental Features */}
+              {/* Modules Link */}
               <div className="border border-dark-border rounded-lg p-6 space-y-4">
-                <h4 className="font-semibold">Experimental Features</h4>
+                <h4 className="font-semibold">Optional Modules</h4>
                 <p className="text-sm text-dark-muted">
-                  Enable experimental features. These are in development and may change.
+                  Enable and configure optional modules like Block Editor, wwwyzzerdd, and ComfyUI.
                 </p>
+                <button
+                  onClick={() => setActiveTab('modules')}
+                  className="px-4 py-2 bg-orange-600 text-white rounded font-medium hover:bg-orange-500 transition-colors"
+                >
+                  Manage Modules →
+                </button>
+              </div>
+            </div>
+          )}
 
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
+          {activeTab === 'modules' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold mb-2">Modules</h3>
+                <p className="text-dark-muted">
+                  Enable and configure optional modules. Enabled modules appear as tabs in the editor.
+                </p>
+              </div>
+
+              {/* Block Editor Module */}
+              <div className="border border-dark-border rounded-lg p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold flex items-center gap-2">
+                      Block Editor
+                      <span className="px-2 py-0.5 bg-orange-500/20 text-orange-400 text-xs rounded">Core</span>
+                    </h4>
+                    <p className="text-sm text-dark-muted mt-1">
+                      Visual block-based character card builder with drag & drop, nested blocks, and content types.
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
-                      id="wwwyzzerddEnabled"
+                      checked={blockEditorEnabled}
+                      onChange={(e) => setBlockEditorEnabled(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                  </label>
+                </div>
+              </div>
+
+              {/* wwwyzzerdd Module */}
+              <div className="border border-dark-border rounded-lg p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold flex items-center gap-2">
+                      wwwyzzerdd
+                      <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 text-xs rounded">AI Wizard</span>
+                    </h4>
+                    <p className="text-sm text-dark-muted mt-1">
+                      AI-assisted character card creation wizard with chat-based generation.
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
                       checked={wwwyzzerddEnabled}
                       onChange={(e) => setWwwyzzerddEnabled(e.target.checked)}
-                      className="rounded"
+                      className="sr-only peer"
                     />
-                    <label htmlFor="wwwyzzerddEnabled" className="text-sm font-medium">
-                      Enable wwwyzzerdd Mode
-                    </label>
+                    <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-purple-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-500"></div>
+                  </label>
+                </div>
+                {wwwyzzerddEnabled && (
+                  <div className="pt-4 border-t border-dark-border">
+                    <p className="text-xs text-dark-muted">
+                      Configure prompts and settings in the <button className="text-purple-400 hover:underline" onClick={() => setActiveTab('wwwyzzerdd')}>wwwyzzerdd tab</button>.
+                    </p>
                   </div>
-                  <p className="text-xs text-dark-muted ml-6">
-                    AI-assisted character card creation wizard. Adds a "wwwyzzerdd" tab in the editor and settings for prompt configuration.
-                  </p>
+                )}
+              </div>
 
-                  <div className="flex items-center gap-2">
+              {/* ComfyUI Module */}
+              <div className="border border-dark-border rounded-lg p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold flex items-center gap-2">
+                      ComfyUI
+                      <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded">Experimental</span>
+                    </h4>
+                    <p className="text-sm text-dark-muted mt-1">
+                      Image generation integration with ComfyUI (scaffolding - not yet connected).
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
-                      id="comfyUIEnabled"
                       checked={comfyUIEnabled}
                       onChange={(e) => setComfyUIEnabled(e.target.checked)}
-                      className="rounded"
+                      className="sr-only peer"
                     />
-                    <label htmlFor="comfyUIEnabled" className="text-sm font-medium">
-                      Enable ComfyUI Integration
-                    </label>
-                  </div>
-                  <p className="text-xs text-dark-muted ml-6">
-                    Scaffolding for future ComfyUI image generation integration. Adds workflow and prompt template management in settings.
-                  </p>
+                    <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
+                  </label>
                 </div>
+                {comfyUIEnabled && (
+                  <div className="pt-4 border-t border-dark-border">
+                    <p className="text-xs text-dark-muted">
+                      Configure workflows and prompts in the <button className="text-blue-400 hover:underline" onClick={() => setActiveTab('comfyui')}>ComfyUI tab</button>.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Module Info */}
+              <div className="p-4 bg-dark-bg rounded border border-dark-border">
+                <h5 className="font-medium text-sm mb-2">About Modules</h5>
+                <ul className="text-xs text-dark-muted space-y-1 list-disc list-inside">
+                  <li>Enabled modules appear as tabs in the character editor</li>
+                  <li>Module state is saved locally in your browser</li>
+                  <li>Disabling a module hides it but preserves your data</li>
+                  <li>Module-specific settings appear in their dedicated tabs when enabled</li>
+                </ul>
               </div>
             </div>
           )}
