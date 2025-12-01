@@ -5,7 +5,7 @@
  * Provides a toolbar and hosts the block hierarchy.
  */
 
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -18,6 +18,8 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useBlockEditorStore } from '../store';
 import { BlockComponent } from './BlockComponent';
 import { useCardStore } from '../../../store/card-store';
+import type { CCv3Data } from '@card-architect/schemas';
+import { V2_FIELDS, type TargetField } from '../types';
 
 export function BlockEditorPanel() {
   const store = useBlockEditorStore();
@@ -29,6 +31,19 @@ export function BlockEditorPanel() {
 
   const [showTemplates, setShowTemplates] = useState(false);
   const [templateName, setTemplateName] = useState('');
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [selectedImportFields, setSelectedImportFields] = useState<Set<TargetField>>(new Set());
+
+  // Track current card ID to clear blocks when switching cards
+  const currentCardId = currentCard?.meta.id ?? null;
+  const storedCardId = useBlockEditorStore((s) => s.currentCardId);
+
+  useEffect(() => {
+    // Only update if the card ID actually changed from what's stored
+    if (currentCardId !== storedCardId) {
+      store.setCurrentCardId(currentCardId);
+    }
+  }, [currentCardId, storedCardId, store]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -55,6 +70,76 @@ export function BlockEditorPanel() {
     store.saveTemplate(templateName.trim());
     setTemplateName('');
     setShowTemplates(false);
+  };
+
+  // Get available fields from current card with their content
+  const cardFieldContent = useMemo(() => {
+    if (!currentCard) return {};
+
+    const isV3 = currentCard.meta.spec === 'v3';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const v2Data = currentCard.data as any;
+    const isWrappedV2 = !isV3 && v2Data?.spec === 'chara_card_v2' && 'data' in v2Data;
+
+    const data = isV3
+      ? (currentCard.data as CCv3Data).data
+      : isWrappedV2
+        ? v2Data.data
+        : v2Data;
+
+    const content: Record<string, string> = {};
+
+    // Standard fields
+    for (const field of V2_FIELDS) {
+      const value = data[field.value];
+      if (value && typeof value === 'string' && value.trim()) {
+        content[field.value] = value;
+      }
+    }
+
+    // Special fields from extensions
+    const extensions = data.extensions || {};
+
+    // Appearance from voxta or visual_description
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const appearance = (extensions as any).voxta?.appearance || (extensions as any).visual_description;
+    if (appearance && typeof appearance === 'string') {
+      content.appearance = appearance;
+    }
+
+    // Character note from depth_prompt
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const charNote = (extensions as any).depth_prompt?.prompt;
+    if (charNote && typeof charNote === 'string') {
+      content.character_note = charNote;
+    }
+
+    return content;
+  }, [currentCard]);
+
+  const handleImportFromCard = () => {
+    if (selectedImportFields.size === 0) return;
+
+    const fieldsToImport: Record<string, string> = {};
+    for (const field of selectedImportFields) {
+      if (cardFieldContent[field]) {
+        fieldsToImport[field] = cardFieldContent[field];
+      }
+    }
+
+    store.importFromCard(fieldsToImport);
+    setShowImportModal(false);
+    setSelectedImportFields(new Set());
+  };
+
+  const toggleImportField = (field: TargetField) => {
+    const newSet = new Set(selectedImportFields);
+    if (newSet.has(field)) {
+      newSet.delete(field);
+    } else {
+      newSet.add(field);
+    }
+    setSelectedImportFields(newSet);
   };
 
   const handleApplyToCard = () => {
@@ -126,10 +211,72 @@ export function BlockEditorPanel() {
     }
 
     if (Object.keys(fieldUpdates).length > 0) {
-      // Wrap in data for proper card structure
-      // The updateCardData function will deep merge this with existing data
+      const isV3 = currentCard.meta.spec === 'v3';
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      updateCardData({ data: fieldUpdates } as any);
+      const v2Data = currentCard.data as any;
+      const isWrappedV2 = !isV3 && v2Data?.spec === 'chara_card_v2' && 'data' in v2Data;
+
+      // Separate special fields from regular fields
+      const { appearance, character_note, ...regularFields } = fieldUpdates;
+
+      // Handle regular fields
+      if (Object.keys(regularFields).length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        updateCardData({ data: regularFields } as any);
+      }
+
+      // Handle appearance specially - stored in extensions
+      if (appearance !== undefined) {
+        if (isV3 || isWrappedV2) {
+          const currentData = isV3 ? (currentCard.data as CCv3Data).data : v2Data.data;
+          const extensions = { ...(currentData.extensions || {}) };
+          // Use voxta extension if it exists, otherwise visual_description
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if ((extensions as any).voxta) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (extensions as any).voxta = { ...((extensions as any).voxta || {}), appearance };
+          } else {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (extensions as any).visual_description = appearance;
+          }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          updateCardData({ data: { ...currentData, extensions } } as any);
+        } else {
+          const extensions = { ...(v2Data.extensions || {}) };
+          extensions.visual_description = appearance;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          updateCardData({ extensions } as any);
+        }
+      }
+
+      // Handle character_note specially - stored in extensions.depth_prompt.prompt
+      if (character_note !== undefined) {
+        if (isV3 || isWrappedV2) {
+          const currentData = isV3 ? (currentCard.data as CCv3Data).data : v2Data.data;
+          const extensions = { ...(currentData.extensions || {}) };
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (extensions as any).depth_prompt = {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ...((extensions as any).depth_prompt || {}),
+            prompt: character_note,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            depth: (extensions as any).depth_prompt?.depth ?? 4,
+            role: 'system',
+          };
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          updateCardData({ data: { ...currentData, extensions } } as any);
+        } else {
+          const extensions = { ...(v2Data.extensions || {}) };
+          extensions.depth_prompt = {
+            ...(extensions.depth_prompt || {}),
+            prompt: character_note,
+            depth: extensions.depth_prompt?.depth ?? 4,
+            role: 'system',
+          };
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          updateCardData({ extensions } as any);
+        }
+      }
     }
   };
 
@@ -145,6 +292,15 @@ export function BlockEditorPanel() {
         </button>
 
         <div className="flex-1" />
+
+        <button
+          className="px-4 py-2 bg-cyan-600 text-white rounded-lg font-medium transition-colors hover:bg-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          onClick={() => setShowImportModal(true)}
+          disabled={!currentCard || Object.keys(cardFieldContent).length === 0}
+          title="Import fields from current card into blocks"
+        >
+          Import from Card
+        </button>
 
         <button
           className="px-4 py-2 bg-slate-700 text-slate-200 border border-slate-600 rounded-lg font-medium transition-colors hover:bg-slate-600 hover:border-slate-500"
@@ -259,6 +415,103 @@ export function BlockEditorPanel() {
         </span>
         <span>Drag blocks and items to reorder</span>
       </div>
+
+      {/* Import from Card Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-slate-800 rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-slate-700">
+              <h3 className="text-lg font-semibold text-white">Import from Card</h3>
+              <button
+                onClick={() => {
+                  setShowImportModal(false);
+                  setSelectedImportFields(new Set());
+                }}
+                className="text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-4 overflow-auto flex-1">
+              <p className="text-slate-300 text-sm mb-4">
+                Select fields to import. Content will be parsed into blocks (headings become block labels, lists become list items, text becomes text blocks).
+              </p>
+
+              <div className="space-y-2">
+                {Object.entries(cardFieldContent).map(([field, content]) => {
+                  const fieldDef = V2_FIELDS.find((f) => f.value === field);
+                  const label = fieldDef?.label || field;
+                  const preview = content.length > 100 ? content.slice(0, 100) + '...' : content;
+
+                  return (
+                    <label
+                      key={field}
+                      className={`flex items-start gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
+                        selectedImportFields.has(field as TargetField)
+                          ? 'bg-cyan-600/20 border border-cyan-500'
+                          : 'bg-slate-700/50 border border-slate-600 hover:bg-slate-700'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedImportFields.has(field as TargetField)}
+                        onChange={() => toggleImportField(field as TargetField)}
+                        className="mt-1 rounded"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-white">{label}</div>
+                        <div className="text-xs text-slate-400 truncate">{preview}</div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+
+              {Object.keys(cardFieldContent).length === 0 && (
+                <p className="text-slate-400 text-center py-8">
+                  No content found in current card to import.
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between p-4 border-t border-slate-700">
+              <button
+                onClick={() => {
+                  const allFields = new Set(Object.keys(cardFieldContent) as TargetField[]);
+                  setSelectedImportFields(
+                    selectedImportFields.size === allFields.size ? new Set() : allFields
+                  );
+                }}
+                className="px-3 py-1.5 text-sm text-slate-300 hover:text-white"
+              >
+                {selectedImportFields.size === Object.keys(cardFieldContent).length
+                  ? 'Deselect All'
+                  : 'Select All'}
+              </button>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowImportModal(false);
+                    setSelectedImportFields(new Set());
+                  }}
+                  className="px-4 py-2 text-slate-300 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleImportFromCard}
+                  disabled={selectedImportFields.size === 0}
+                  className="px-4 py-2 bg-cyan-600 text-white rounded-lg font-medium transition-colors hover:bg-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Import {selectedImportFields.size > 0 ? `(${selectedImportFields.size})` : ''}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

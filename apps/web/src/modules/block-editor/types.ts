@@ -84,7 +84,9 @@ export type TargetField =
   | 'tags'
   | 'creator'
   | 'character_version'
-  | 'extensions';
+  | 'extensions'
+  | 'appearance'
+  | 'character_note';
 
 /**
  * Field definition for dropdown
@@ -106,6 +108,8 @@ export const V2_FIELDS: FieldDefinition[] = [
   { value: 'creator_notes', label: 'Creator Notes' },
   { value: 'system_prompt', label: 'System Prompt' },
   { value: 'post_history_instructions', label: 'Post History Instructions' },
+  { value: 'appearance', label: 'Appearance' },
+  { value: 'character_note', label: 'Character Note' },
 ];
 
 /**
