@@ -69,6 +69,22 @@
 
 ## Quick Start
 
+### Windows (Easy Install)
+
+For Windows users who are new to development:
+
+1. Download or clone this repository
+2. Right-click `install-windows.bat` and select **"Run as administrator"**
+3. Follow the prompts (this will install Node.js, build tools, and dependencies)
+4. Once complete, double-click `start-dev.bat` to run Card Architect
+5. Open http://localhost:5173 in your browser
+
+The installer will set up:
+- NVM for Windows (Node Version Manager)
+- Node.js v22
+- Visual Studio Build Tools (for native modules like better-sqlite3)
+- All project dependencies
+
 ### Using Docker Compose (Recommended)
 
 ```bash
