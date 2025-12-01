@@ -63,6 +63,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setBlockEditorEnabled,
     setWwwyzzerddEnabled,
     setComfyUIEnabled,
+    setAssetsEnabled,
+    setFocusedEnabled,
+    setDiffEnabled,
     setWwwyzzerddActivePromptSet,
     setComfyUIServerUrl,
     setComfyUIActiveWorkflow,
@@ -75,6 +78,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const blockEditorEnabled = useSettingsStore((state) => state.features?.blockEditorEnabled ?? true);
   const wwwyzzerddEnabled = useSettingsStore((state) => state.features?.wwwyzzerddEnabled ?? false);
   const comfyUIEnabled = useSettingsStore((state) => state.features?.comfyUIEnabled ?? false);
+  const assetsEnabled = useSettingsStore((state) => state.features?.assetsEnabled ?? true);
+  const focusedEnabled = useSettingsStore((state) => state.features?.focusedEnabled ?? true);
+  const diffEnabled = useSettingsStore((state) => state.features?.diffEnabled ?? true);
   const wwwyzzerddSettings = useSettingsStore((state) => state.wwwyzzerdd);
   const comfyUISettings = useSettingsStore((state) => state.comfyUI);
   const [editingProvider, setEditingProvider] = useState<Partial<ProviderConfig> | null>(null);
@@ -1139,6 +1145,86 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     </p>
                   </div>
                 )}
+              </div>
+
+              {/* Core Tabs Section */}
+              <div className="border-t border-dark-border pt-6 mt-6">
+                <h3 className="text-lg font-semibold mb-2">Core Tabs</h3>
+                <p className="text-dark-muted mb-4">
+                  Toggle visibility of built-in editor tabs.
+                </p>
+
+                {/* Assets Tab */}
+                <div className="border border-dark-border rounded-lg p-6 space-y-4 mb-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-semibold flex items-center gap-2">
+                        Assets
+                        <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs rounded">Core</span>
+                      </h4>
+                      <p className="text-sm text-dark-muted mt-1">
+                        Manage character images and assets with crop, resize, and format conversion.
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={assetsEnabled}
+                        onChange={(e) => setAssetsEnabled(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-green-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Focused Tab */}
+                <div className="border border-dark-border rounded-lg p-6 space-y-4 mb-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-semibold flex items-center gap-2">
+                        Focused
+                        <span className="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 text-xs rounded">Core</span>
+                      </h4>
+                      <p className="text-sm text-dark-muted mt-1">
+                        Distraction-free WYSIWYG + raw markdown editing with AI assistant integration.
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={focusedEnabled}
+                        onChange={(e) => setFocusedEnabled(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-cyan-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-500"></div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Diff Tab */}
+                <div className="border border-dark-border rounded-lg p-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-semibold flex items-center gap-2">
+                        Diff
+                        <span className="px-2 py-0.5 bg-amber-500/20 text-amber-400 text-xs rounded">Core</span>
+                      </h4>
+                      <p className="text-sm text-dark-muted mt-1">
+                        Version comparison and snapshot management for tracking changes.
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={diffEnabled}
+                        onChange={(e) => setDiffEnabled(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-amber-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                    </label>
+                  </div>
+                </div>
               </div>
 
               {/* Module Info */}

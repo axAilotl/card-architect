@@ -7,6 +7,7 @@
 
 import { lazy } from 'react';
 import { registry } from '../../lib/registry';
+import { useSettingsStore } from '../../store/settings-store';
 
 // Eager-loaded core components (small, always needed)
 import { EditPanel } from './components/EditPanel';
@@ -45,6 +46,7 @@ export function registerCoreTabs(): void {
     component: AssetsPanel,
     order: 10,
     contexts: ['card'],
+    condition: () => useSettingsStore.getState().features?.assetsEnabled ?? true,
   });
 
   // Focused - Distraction-free editing (order: 20)
@@ -54,6 +56,7 @@ export function registerCoreTabs(): void {
     component: FocusedEditor,
     order: 20,
     contexts: ['card'],
+    condition: () => useSettingsStore.getState().features?.focusedEnabled ?? true,
   });
 
   // Preview - Markdown preview (order: 60)
@@ -72,6 +75,7 @@ export function registerCoreTabs(): void {
     component: DiffPanel,
     order: 70,
     contexts: ['card'],
+    condition: () => useSettingsStore.getState().features?.diffEnabled ?? true,
   });
 
   console.log('[CoreTabs] Registered 5 core editor tabs');
