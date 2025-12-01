@@ -93,6 +93,9 @@ export function AssetsPanel() {
       setUploadIsMain(false);
       setShowUploadForm(false);
       await loadAssets();
+
+      // Refresh the card store to update timestamps (for header avatar cache busting)
+      await useCardStore.getState().loadCard(currentCard.meta.id);
     } catch (err) {
       console.error('Failed to upload assets:', err);
       alert('Failed to upload one or more assets');
@@ -117,6 +120,8 @@ export function AssetsPanel() {
       if (selectedAsset === assetId) {
         setSelectedAsset(null);
       }
+      // Refresh card store to update header avatar (in case deleted asset was the portrait)
+      await useCardStore.getState().loadCard(currentCard.meta.id);
     } catch (err) {
       console.error('Failed to delete asset:', err);
       alert('Failed to delete asset');
@@ -129,6 +134,8 @@ export function AssetsPanel() {
     try {
       await api.setPortraitOverride(currentCard.meta.id, assetId);
       await loadAssets();
+      // Refresh card store to update header avatar
+      await useCardStore.getState().loadCard(currentCard.meta.id);
     } catch (err) {
       console.error('Failed to set portrait override:', err);
       alert('Failed to set portrait override');
