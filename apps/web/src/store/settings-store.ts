@@ -14,6 +14,9 @@ interface FeatureFlags {
   blockEditorEnabled: boolean;
   wwwyzzerddEnabled: boolean;
   comfyUIEnabled: boolean;
+  assetsEnabled: boolean;
+  focusedEnabled: boolean;
+  diffEnabled: boolean;
 }
 
 interface WwwyzzerddSettings {
@@ -250,6 +253,9 @@ interface SettingsStore {
   setBlockEditorEnabled: (enabled: boolean) => void;
   setWwwyzzerddEnabled: (enabled: boolean) => void;
   setComfyUIEnabled: (enabled: boolean) => void;
+  setAssetsEnabled: (enabled: boolean) => void;
+  setFocusedEnabled: (enabled: boolean) => void;
+  setDiffEnabled: (enabled: boolean) => void;
 
   // wwwyzzerdd actions
   setWwwyzzerddActivePromptSet: (id: string | null) => void;
@@ -301,6 +307,9 @@ const DEFAULT_FEATURES: FeatureFlags = {
   blockEditorEnabled: true, // Enabled by default
   wwwyzzerddEnabled: false,
   comfyUIEnabled: false,
+  assetsEnabled: true, // Enabled by default
+  focusedEnabled: true, // Enabled by default
+  diffEnabled: true, // Enabled by default
 };
 
 const DEFAULT_WWWYZZERDD: WwwyzzerddSettings = {
@@ -414,6 +423,21 @@ export const useSettingsStore = create<SettingsStore>()(
       setComfyUIEnabled: (enabled) =>
         set((state) => ({
           features: { ...state.features, comfyUIEnabled: enabled },
+        })),
+
+      setAssetsEnabled: (enabled) =>
+        set((state) => ({
+          features: { ...state.features, assetsEnabled: enabled },
+        })),
+
+      setFocusedEnabled: (enabled) =>
+        set((state) => ({
+          features: { ...state.features, focusedEnabled: enabled },
+        })),
+
+      setDiffEnabled: (enabled) =>
+        set((state) => ({
+          features: { ...state.features, diffEnabled: enabled },
         })),
 
       // wwwyzzerdd actions
