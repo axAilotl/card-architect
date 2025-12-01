@@ -14,6 +14,7 @@ interface FeatureFlags {
   blockEditorEnabled: boolean;
   wwwyzzerddEnabled: boolean;
   comfyUIEnabled: boolean;
+  sillyTavernEnabled: boolean;
   assetsEnabled: boolean;
   focusedEnabled: boolean;
   diffEnabled: boolean;
@@ -253,6 +254,7 @@ interface SettingsStore {
   setBlockEditorEnabled: (enabled: boolean) => void;
   setWwwyzzerddEnabled: (enabled: boolean) => void;
   setComfyUIEnabled: (enabled: boolean) => void;
+  setSillyTavernEnabled: (enabled: boolean) => void;
   setAssetsEnabled: (enabled: boolean) => void;
   setFocusedEnabled: (enabled: boolean) => void;
   setDiffEnabled: (enabled: boolean) => void;
@@ -307,6 +309,7 @@ const DEFAULT_FEATURES: FeatureFlags = {
   blockEditorEnabled: true, // Enabled by default
   wwwyzzerddEnabled: false,
   comfyUIEnabled: false,
+  sillyTavernEnabled: false, // Disabled by default - needs configuration
   assetsEnabled: true, // Enabled by default
   focusedEnabled: true, // Enabled by default
   diffEnabled: true, // Enabled by default
@@ -423,6 +426,11 @@ export const useSettingsStore = create<SettingsStore>()(
       setComfyUIEnabled: (enabled) =>
         set((state) => ({
           features: { ...state.features, comfyUIEnabled: enabled },
+        })),
+
+      setSillyTavernEnabled: (enabled) =>
+        set((state) => ({
+          features: { ...state.features, sillyTavernEnabled: enabled },
         })),
 
       setAssetsEnabled: (enabled) =>

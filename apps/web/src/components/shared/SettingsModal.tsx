@@ -78,9 +78,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const blockEditorEnabled = useSettingsStore((state) => state.features?.blockEditorEnabled ?? true);
   const wwwyzzerddEnabled = useSettingsStore((state) => state.features?.wwwyzzerddEnabled ?? false);
   const comfyUIEnabled = useSettingsStore((state) => state.features?.comfyUIEnabled ?? false);
+  const sillyTavernEnabled = useSettingsStore((state) => state.features?.sillyTavernEnabled ?? false);
   const assetsEnabled = useSettingsStore((state) => state.features?.assetsEnabled ?? true);
   const focusedEnabled = useSettingsStore((state) => state.features?.focusedEnabled ?? true);
   const diffEnabled = useSettingsStore((state) => state.features?.diffEnabled ?? true);
+  const setSillyTavernEnabled = useSettingsStore((state) => state.setSillyTavernEnabled);
   const wwwyzzerddSettings = useSettingsStore((state) => state.wwwyzzerdd);
   const comfyUISettings = useSettingsStore((state) => state.comfyUI);
   const [editingProvider, setEditingProvider] = useState<Partial<ProviderConfig> | null>(null);
@@ -912,20 +914,22 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           >
             LLM Presets
           </button>
-          <button
-            className={`px-4 py-3 font-medium transition-colors whitespace-nowrap ${
-              activeTab === 'sillytavern'
-                ? 'border-b-2 border-blue-500 text-blue-500'
-                : 'text-dark-muted hover:text-dark-text'
-            }`}
-            onClick={() => setActiveTab('sillytavern')}
-          >
-            SillyTavern
-          </button>
+          {sillyTavernEnabled && (
+            <button
+              className={`px-4 py-3 font-medium transition-colors whitespace-nowrap ${
+                activeTab === 'sillytavern'
+                  ? 'border-b-2 border-blue-500 text-blue-500'
+                  : 'text-dark-muted hover:text-dark-text'
+              }`}
+              onClick={() => setActiveTab('sillytavern')}
+            >
+              SillyTavern
+            </button>
+          )}
         </div>
 
         {/* Module Settings Tabs - Row 2 (shown when modules are enabled) */}
-        {(wwwyzzerddEnabled || comfyUIEnabled) && (
+        {(wwwyzzerddEnabled || comfyUIEnabled || sillyTavernEnabled) && (
           <div className="flex border-b border-dark-border overflow-x-auto bg-dark-card/50">
             <span className="px-4 py-2 text-xs text-dark-muted uppercase tracking-wide self-center">Module Settings:</span>
             {wwwyzzerddEnabled && (
@@ -1142,6 +1146,37 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <div className="pt-4 border-t border-dark-border">
                     <p className="text-xs text-dark-muted">
                       Configure workflows and prompts in the <button className="text-blue-400 hover:underline" onClick={() => setActiveTab('comfyui')}>ComfyUI tab</button>.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* SillyTavern Module */}
+              <div className="border border-dark-border rounded-lg p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold flex items-center gap-2">
+                      SillyTavern
+                      <span className="px-2 py-0.5 bg-pink-500/20 text-pink-400 text-xs rounded">Integration</span>
+                    </h4>
+                    <p className="text-sm text-dark-muted mt-1">
+                      Direct push to SillyTavern with one click. Requires SillyTavern to be running.
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={sillyTavernEnabled}
+                      onChange={(e) => setSillyTavernEnabled(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-pink-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-pink-500"></div>
+                  </label>
+                </div>
+                {sillyTavernEnabled && (
+                  <div className="pt-4 border-t border-dark-border">
+                    <p className="text-xs text-dark-muted">
+                      Configure connection settings in the <button className="text-pink-400 hover:underline" onClick={() => setActiveTab('sillytavern')}>SillyTavern tab</button>.
                     </p>
                   </div>
                 )}
