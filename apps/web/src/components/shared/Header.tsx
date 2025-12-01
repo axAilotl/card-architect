@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useCardStore, extractCardData } from '../../store/card-store';
 import { useTokenStore } from '../../store/token-store';
+import { useSettingsStore } from '../../store/settings-store';
 import { SettingsModal } from './SettingsModal';
 import { api } from '../../lib/api';
 import { useNavigate } from 'react-router-dom';
@@ -14,6 +15,7 @@ export function Header({ onBack }: HeaderProps) {
   const navigate = useNavigate();
   const { currentCard, isSaving, createNewCard } = useCardStore();
   const tokenCounts = useTokenStore((state) => state.tokenCounts);
+  const sillyTavernEnabled = useSettingsStore((state) => state.features?.sillyTavernEnabled ?? false);
   const [showSettings, setShowSettings] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showImportMenu, setShowImportMenu] = useState(false);
@@ -271,7 +273,7 @@ export function Header({ onBack }: HeaderProps) {
           </div>
         )}
 
-        {currentCard && (
+        {currentCard && sillyTavernEnabled && (
           <button
             onClick={handlePushToSillyTavern}
             className="btn-primary"
