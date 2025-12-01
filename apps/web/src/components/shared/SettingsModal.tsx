@@ -824,7 +824,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </button>
         </div>
 
-        {/* Tabs */}
+        {/* Core Settings Tabs - Row 1 */}
         <div className="flex border-b border-dark-border overflow-x-auto">
           <button
             className={`px-4 py-3 font-medium transition-colors whitespace-nowrap ${
@@ -916,31 +916,38 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           >
             SillyTavern
           </button>
-          {wwwyzzerddEnabled && (
-            <button
-              className={`px-4 py-3 font-medium transition-colors whitespace-nowrap ${
-                activeTab === 'wwwyzzerdd'
-                  ? 'border-b-2 border-purple-500 text-purple-500'
-                  : 'text-dark-muted hover:text-dark-text'
-              }`}
-              onClick={() => setActiveTab('wwwyzzerdd')}
-            >
-              wwwyzzerdd
-            </button>
-          )}
-          {comfyUIEnabled && (
-            <button
-              className={`px-4 py-3 font-medium transition-colors whitespace-nowrap ${
-                activeTab === 'comfyui'
-                  ? 'border-b-2 border-green-500 text-green-500'
-                  : 'text-dark-muted hover:text-dark-text'
-              }`}
-              onClick={() => setActiveTab('comfyui')}
-            >
-              ComfyUI
-            </button>
-          )}
         </div>
+
+        {/* Module Settings Tabs - Row 2 (shown when modules are enabled) */}
+        {(wwwyzzerddEnabled || comfyUIEnabled) && (
+          <div className="flex border-b border-dark-border overflow-x-auto bg-dark-card/50">
+            <span className="px-4 py-2 text-xs text-dark-muted uppercase tracking-wide self-center">Module Settings:</span>
+            {wwwyzzerddEnabled && (
+              <button
+                className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${
+                  activeTab === 'wwwyzzerdd'
+                    ? 'border-b-2 border-purple-500 text-purple-500'
+                    : 'text-dark-muted hover:text-dark-text'
+                }`}
+                onClick={() => setActiveTab('wwwyzzerdd')}
+              >
+                wwwyzzerdd
+              </button>
+            )}
+            {comfyUIEnabled && (
+              <button
+                className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${
+                  activeTab === 'comfyui'
+                    ? 'border-b-2 border-green-500 text-green-500'
+                    : 'text-dark-muted hover:text-dark-text'
+                }`}
+                onClick={() => setActiveTab('comfyui')}
+              >
+                ComfyUI
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Content */}
         <div className="flex-1 overflow-auto p-6">
@@ -1036,19 +1043,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
               </div>
 
-              {/* Modules Link */}
-              <div className="border border-dark-border rounded-lg p-6 space-y-4">
-                <h4 className="font-semibold">Optional Modules</h4>
-                <p className="text-sm text-dark-muted">
-                  Enable and configure optional modules like Block Editor, wwwyzzerdd, and ComfyUI.
-                </p>
-                <button
-                  onClick={() => setActiveTab('modules')}
-                  className="px-4 py-2 bg-orange-600 text-white rounded font-medium hover:bg-orange-500 transition-colors"
-                >
-                  Manage Modules →
-                </button>
-              </div>
             </div>
           )}
 
