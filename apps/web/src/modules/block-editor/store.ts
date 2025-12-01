@@ -14,6 +14,8 @@ import type {
   FlatNestedListBaby,
   NestedListBaby,
   BlockTemplate,
+  TargetField,
+  ListItem,
 } from './types';
 
 interface BlockEditorStore {
@@ -21,6 +23,13 @@ interface BlockEditorStore {
   blocks: Block[];
   templates: BlockTemplate[];
   specVersion: 'v2' | 'v3';
+  currentCardId: string | null;
+
+  // Import from card
+  importFromCard: (fieldContent: Record<string, string>) => void;
+
+  // Card tracking
+  setCurrentCardId: (cardId: string | null) => void;
 
   // Block CRUD
   addBlock: (parentId: string | null, level?: number) => void;
@@ -181,12 +190,193 @@ const arrayMove = <T>(array: T[], from: number, to: number): T[] => {
   return newArray;
 };
 
+// Parse markdown content into blocks
+const parseMarkdownToBlocks = (
+  content: string,
+  targetField: TargetField
+): Block[] => {
+  const blocks: Block[] = [];
+  const lines = content.split('\n');
+
+  let currentBlock: Block | null = null;
+  let currentTextContent: string[] = [];
+  let currentListItems: ListItem[] = [];
+  let inList = false;
+
+  const flushText = () => {
+    if (currentTextContent.length > 0 && currentBlock) {
+      const text = currentTextContent.join('\n').trim();
+      if (text) {
+        currentBlock.babies.push({
+          id: generateId(),
+          type: 'text',
+          content: text,
+        });
+      }
+      currentTextContent = [];
+    }
+  };
+
+  const flushList = () => {
+    if (currentListItems.length > 0 && currentBlock) {
+      currentBlock.babies.push({
+        id: generateId(),
+        type: 'flat',
+        items: currentListItems,
+      });
+      currentListItems = [];
+    }
+    inList = false;
+  };
+
+  const ensureBlock = (label = '') => {
+    if (!currentBlock) {
+      currentBlock = {
+        id: generateId(),
+        label,
+        targetField,
+        collapsed: false,
+        babies: [],
+        children: [],
+        level: 1,
+      };
+      blocks.push(currentBlock);
+    }
+  };
+
+  for (const line of lines) {
+    // Check for headings
+    const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
+    if (headingMatch) {
+      // Flush any pending content
+      flushList();
+      flushText();
+
+      // Start a new block with the heading as label
+      currentBlock = {
+        id: generateId(),
+        label: headingMatch[2].trim(),
+        targetField,
+        collapsed: false,
+        babies: [],
+        children: [],
+        level: headingMatch[1].length,
+      };
+      blocks.push(currentBlock);
+      continue;
+    }
+
+    // Check for list items (- or * or numbered)
+    const listMatch = line.match(/^(\s*)[-*]\s+(.+)$/) || line.match(/^(\s*)\d+\.\s+(.+)$/);
+    if (listMatch) {
+      ensureBlock();
+
+      // If we were collecting text, flush it first
+      if (!inList) {
+        flushText();
+      }
+      inList = true;
+
+      const itemContent = listMatch[2].trim();
+
+      // Check for "Header: Body" pattern (split item)
+      const splitMatch = itemContent.match(/^\*\*(.+?)\*\*:\s*(.+)$/) ||
+                         itemContent.match(/^(.+?):\s+(.+)$/);
+      if (splitMatch && splitMatch[1].length < 50) {
+        // Looks like a split item
+        const isBold = itemContent.startsWith('**');
+        currentListItems.push({
+          header: splitMatch[1].replace(/\*\*/g, ''),
+          body: splitMatch[2],
+          bold: isBold,
+          split: true,
+        });
+      } else {
+        currentListItems.push(itemContent);
+      }
+      continue;
+    }
+
+    // Empty line
+    if (line.trim() === '') {
+      if (inList) {
+        flushList();
+      }
+      // Keep empty lines in text for paragraph breaks
+      if (currentTextContent.length > 0) {
+        currentTextContent.push('');
+      }
+      continue;
+    }
+
+    // Regular text
+    ensureBlock();
+    if (inList) {
+      flushList();
+    }
+    currentTextContent.push(line);
+  }
+
+  // Flush any remaining content
+  flushList();
+  flushText();
+
+  // If no blocks were created but there was content, create one
+  if (blocks.length === 0 && content.trim()) {
+    blocks.push({
+      id: generateId(),
+      label: '',
+      targetField,
+      collapsed: false,
+      babies: [{
+        id: generateId(),
+        type: 'text',
+        content: content.trim(),
+      }],
+      children: [],
+      level: 1,
+    });
+  }
+
+  return blocks;
+};
+
 export const useBlockEditorStore = create<BlockEditorStore>()(
   persist(
     (set, get) => ({
       blocks: [],
       templates: [],
       specVersion: 'v2',
+      currentCardId: null,
+
+  // Card tracking - clears blocks when switching to a different card
+  setCurrentCardId: (cardId) => {
+    const { currentCardId: oldCardId } = get();
+    if (oldCardId !== null && cardId !== oldCardId) {
+      // Switching to a different card - clear blocks
+      set({ blocks: [], currentCardId: cardId });
+    } else {
+      set({ currentCardId: cardId });
+    }
+  },
+
+  // Import from card - parses markdown content into blocks
+  importFromCard: (fieldContent) => {
+    const allBlocks: Block[] = [];
+
+    for (const [field, content] of Object.entries(fieldContent)) {
+      if (!content || !content.trim()) continue;
+
+      const parsedBlocks = parseMarkdownToBlocks(content, field as TargetField);
+      allBlocks.push(...parsedBlocks);
+    }
+
+    if (allBlocks.length > 0) {
+      set((state) => ({
+        blocks: [...state.blocks, ...allBlocks],
+      }));
+    }
+  },
 
   // Block CRUD
   addBlock: (parentId, level = 1) => {
@@ -684,6 +874,7 @@ export const useBlockEditorStore = create<BlockEditorStore>()(
         blocks: state.blocks,
         templates: state.templates,
         specVersion: state.specVersion,
+        currentCardId: state.currentCardId,
       }),
     }
   )
