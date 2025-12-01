@@ -1347,18 +1347,18 @@ export async function importExportRoutes(fastify: FastifyInstance) {
                 scenario: sourceData.scenario || '',
                 first_mes: sourceData.first_mes || '',
                 mes_example: sourceData.mes_example || '',
-                creator: sourceData.creator || '',
-                character_version: sourceData.character_version || '1.0',
-                tags: sourceData.tags || [],
-                creator_notes: sourceData.creator_notes,
-                system_prompt: sourceData.system_prompt,
-                post_history_instructions: sourceData.post_history_instructions,
-                alternate_greetings: sourceData.alternate_greetings || [],
+                creator: sourceData.creator || undefined,
+                character_version: sourceData.character_version || undefined,
+                tags: sourceData.tags?.length ? sourceData.tags : undefined,
+                creator_notes: sourceData.creator_notes || undefined,
+                system_prompt: sourceData.system_prompt || undefined,
+                post_history_instructions: sourceData.post_history_instructions || undefined,
+                alternate_greetings: sourceData.alternate_greetings?.length ? sourceData.alternate_greetings : undefined,
                 group_only_greetings: [],
                 character_book: sourceData.character_book as CCv3Data['data']['character_book'],
-                extensions: sourceData.extensions,
+                extensions: sourceData.extensions || undefined,
               },
-            };
+            } as CCv3Data;
             fastify.log.info({ cardId: request.params.id }, 'Converted V2 card to V3 for CHARX export');
           } else {
             charxData = card.data as CCv3Data;
