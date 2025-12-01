@@ -1,0 +1,78 @@
+/**
+ * Core Editor Tabs Registration
+ *
+ * Registers the built-in editor tabs with the UI registry.
+ * These are the default tabs that ship with Card Architect.
+ */
+
+import { lazy } from 'react';
+import { registry } from '../../lib/registry';
+
+// Eager-loaded core components (small, always needed)
+import { EditPanel } from './components/EditPanel';
+
+// Lazy-loaded components (larger, less frequently used)
+const AssetsPanel = lazy(() =>
+  import('./components/AssetsPanel').then((m) => ({ default: m.AssetsPanel }))
+);
+const FocusedEditor = lazy(() =>
+  import('./components/FocusedEditor').then((m) => ({ default: m.FocusedEditor }))
+);
+const PreviewPanel = lazy(() =>
+  import('./components/PreviewPanel').then((m) => ({ default: m.PreviewPanel }))
+);
+const DiffPanel = lazy(() =>
+  import('./components/DiffPanel').then((m) => ({ default: m.DiffPanel }))
+);
+
+/**
+ * Register all core editor tabs
+ */
+export function registerCoreTabs(): void {
+  // Edit - Primary editing interface (order: 0)
+  registry.registerTab({
+    id: 'edit',
+    label: 'Edit',
+    component: EditPanel,
+    order: 0,
+    contexts: ['card', 'template', 'all'],
+  });
+
+  // Assets - Image/asset management (order: 10)
+  registry.registerTab({
+    id: 'assets',
+    label: 'Assets',
+    component: AssetsPanel,
+    order: 10,
+    contexts: ['card'],
+  });
+
+  // Focused - Distraction-free editing (order: 20)
+  registry.registerTab({
+    id: 'focused',
+    label: 'Focused',
+    component: FocusedEditor,
+    order: 20,
+    contexts: ['card'],
+  });
+
+  // Preview - Markdown preview (order: 60)
+  registry.registerTab({
+    id: 'preview',
+    label: 'Preview',
+    component: PreviewPanel,
+    order: 60,
+    contexts: ['card'],
+  });
+
+  // Diff - Version comparison (order: 70)
+  registry.registerTab({
+    id: 'diff',
+    label: 'Diff',
+    component: DiffPanel,
+    order: 70,
+    contexts: ['card'],
+  });
+
+  console.log('[CoreTabs] Registered 5 core editor tabs');
+}

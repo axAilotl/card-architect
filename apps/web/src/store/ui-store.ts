@@ -1,6 +1,26 @@
 import { create } from 'zustand';
 
-type EditorTab = 'edit' | 'preview' | 'diff' | 'simulator' | 'redundancy' | 'lore-trigger' | 'focused' | 'assets' | 'wwwyzzerdd' | 'comfyui';
+/**
+ * Known core editor tabs (for type hints, not enforced)
+ * With the plugin architecture, any string tab ID is valid.
+ */
+export type CoreEditorTab =
+  | 'edit'
+  | 'preview'
+  | 'diff'
+  | 'simulator'
+  | 'redundancy'
+  | 'lore-trigger'
+  | 'focused'
+  | 'assets'
+  | 'block-editor'
+  | 'wwwyzzerdd'
+  | 'comfyui';
+
+/**
+ * Tab ID type - accepts any string to support plugin-registered tabs
+ */
+export type EditorTab = string;
 
 interface UIStore {
   // Editor UI State

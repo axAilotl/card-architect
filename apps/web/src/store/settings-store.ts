@@ -11,6 +11,7 @@ interface CreatorNotesSettings {
 }
 
 interface FeatureFlags {
+  blockEditorEnabled: boolean;
   wwwyzzerddEnabled: boolean;
   comfyUIEnabled: boolean;
 }
@@ -246,6 +247,7 @@ interface SettingsStore {
   setExtendedFocusedField: (field: keyof EditorSettings['extendedFocusedFields'], enabled: boolean) => void;
 
   // Feature flag actions
+  setBlockEditorEnabled: (enabled: boolean) => void;
   setWwwyzzerddEnabled: (enabled: boolean) => void;
   setComfyUIEnabled: (enabled: boolean) => void;
 
@@ -296,6 +298,7 @@ const DEFAULT_EDITOR: EditorSettings = {
 };
 
 const DEFAULT_FEATURES: FeatureFlags = {
+  blockEditorEnabled: true, // Enabled by default
   wwwyzzerddEnabled: false,
   comfyUIEnabled: false,
 };
@@ -398,6 +401,11 @@ export const useSettingsStore = create<SettingsStore>()(
         })),
 
       // Feature flag actions
+      setBlockEditorEnabled: (enabled) =>
+        set((state) => ({
+          features: { ...state.features, blockEditorEnabled: enabled },
+        })),
+
       setWwwyzzerddEnabled: (enabled) =>
         set((state) => ({
           features: { ...state.features, wwwyzzerddEnabled: enabled },
