@@ -226,9 +226,6 @@ echo @echo off
 echo cd /d "%%~dp0"
 echo echo Starting Card Architect development servers...
 echo echo.
-echo echo Building packages first...
-echo call npm run build:packages
-echo echo.
 echo echo Web UI will be available at: http://localhost:5173
 echo echo API will be available at: http://localhost:3456
 echo echo.
