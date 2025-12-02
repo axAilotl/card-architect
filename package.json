@@ -9,7 +9,8 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run build:packages && concurrently \"npm run dev:api\" \"npm run dev:web\"",
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:fresh": "npm run build:packages && npm run dev",
     "dev:api": "npm run dev --workspace=@card-architect/api",
     "dev:web": "npm run dev --workspace=@card-architect/web",
     "build": "npm run build:packages && npm run build:apps",
