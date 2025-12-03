@@ -399,6 +399,42 @@ If ffmpeg is not available, MP4 files are included unchanged.
 
 ---
 
+## Main Icon Conventions
+
+Different formats use different conventions for the main character icon:
+
+| Format | Main Icon Convention | On Import | On Export |
+|--------|---------------------|-----------|-----------|
+| **Voxta** | `thumbnail.png` | Set `isMain: true` | Rename to `thumbnail.png` |
+| **CHARX** | `main.png` (or `name: "main"`) | Set `isMain: true` | Rename to `main.png` |
+| **PNG** | The PNG file itself | Saved as `original_image` | Embedded in PNG |
+| **JSON** | N/A (no image) | N/A | N/A |
+
+### Implementation Details
+
+**Voxta Import** (`services/voxta-import.service.ts`):
+- `thumbnail.png` is extracted and saved as both:
+  - The card's `original_image` (for PNG export)
+  - A card asset with `isMain: true` and `name: "main"` (for CHARX export)
+
+**Voxta Export** (`packages/voxta/src/writer.ts`):
+- Looks for asset with `isMain: true` or `name: "main"`
+- Falls back to first `type: "icon"` asset
+- Writes as `Characters/{id}/thumbnail.png`
+
+**CHARX Import** (`services/card-import.service.ts`):
+- Assets with `name: "main"` get `isMain: true`
+
+**CHARX Export** (`packages/charx/src/writer.ts`):
+- Assets with `isMain: true` are renamed to `main.png`
+- Written to `assets/icon/images/main.{ext}`
+
+**PNG Export** (`routes/import-export.ts`):
+- Uses `original_image` from database
+- Falls back to main icon asset if no original image
+
+---
+
 ## ComfyUI Integration (Scaffolding)
 
 Image generation integration with ComfyUI (not yet connected).
