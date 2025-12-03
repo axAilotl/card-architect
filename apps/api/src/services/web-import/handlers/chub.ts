@@ -23,8 +23,51 @@
  * - Gallery images (when hasGallery is true)
  */
 
-import type { SiteHandler, FetchedCard, AssetToImport } from '../types.js';
+import type { SiteHandler, FetchedCard, AssetToImport, RelatedLorebook } from '../types.js';
 import { BROWSER_USER_AGENT, DEFAULT_CHUB_VOICE_UUIDS } from '../constants.js';
+
+/**
+ * Fetch a related lorebook from Chub by project ID
+ */
+async function fetchRelatedLorebook(lorebookId: number | string, path?: string): Promise<RelatedLorebook> {
+  const result: RelatedLorebook = {
+    id: lorebookId,
+    path,
+    fetched: false,
+  };
+
+  try {
+    // Fetch the SillyTavern raw format which has the lorebook entries
+    const lorebookUrl = `https://gateway.chub.ai/api/v4/projects/${lorebookId}/repository/files/raw%252Fsillytavern_raw.json/raw?ref=main&response_type=blob`;
+    const response = await fetch(lorebookUrl, {
+      headers: { 'User-Agent': BROWSER_USER_AGENT },
+    });
+
+    if (!response.ok) {
+      result.error = `Failed to fetch lorebook: ${response.status}`;
+      return result;
+    }
+
+    const data = await response.json() as Record<string, unknown>;
+    result.data = data;
+    result.fetched = true;
+
+    // Extract name and entries
+    if (data.name && typeof data.name === 'string') {
+      result.name = data.name;
+    }
+    if (Array.isArray(data.entries)) {
+      result.entries = data.entries;
+    }
+
+    console.log(`[Chub] Fetched related lorebook ${lorebookId}: ${result.name || 'unnamed'} (${result.entries?.length || 0} entries)`);
+  } catch (err) {
+    result.error = `Error fetching lorebook: ${err}`;
+    console.warn(`[Chub] ${result.error}`);
+  }
+
+  return result;
+}
 
 export const chubHandler: SiteHandler = {
   id: 'chub',
@@ -203,12 +246,43 @@ export const chubHandler: SiteHandler = {
       }
     }
 
+    // 7. Extract and fetch related lorebooks
+    // Can be in two places:
+    // - metaData.node.definition.extensions.chub.related_lorebooks (array of objects)
+    // - cardData.extensions.chub.related_lorebooks (same structure)
+    const relatedLorebooks: RelatedLorebook[] = [];
+    const chubExtensions = metaData.node?.definition?.extensions?.chub;
+    const relatedLorebooksData = chubExtensions?.related_lorebooks;
+
+    if (Array.isArray(relatedLorebooksData) && relatedLorebooksData.length > 0) {
+      console.log(`[Chub] Found ${relatedLorebooksData.length} related lorebook(s) for ${creator}/${slug}`);
+
+      // Fetch each related lorebook in parallel
+      const lorebookPromises = relatedLorebooksData.map(async (lb: { id?: number; path?: string }) => {
+        if (lb.id) {
+          return fetchRelatedLorebook(lb.id, lb.path);
+        }
+        return null;
+      });
+
+      const fetchedLorebooks = await Promise.all(lorebookPromises);
+      for (const lb of fetchedLorebooks) {
+        if (lb) {
+          relatedLorebooks.push(lb);
+          if (!lb.fetched && lb.error) {
+            warnings.push(`Related lorebook ${lb.id}: ${lb.error}`);
+          }
+        }
+      }
+    }
+
     return {
       cardData,
       spec: 'v2',
       pngBuffer,
       avatarUrl,
       assets,
+      relatedLorebooks: relatedLorebooks.length > 0 ? relatedLorebooks : undefined,
       warnings,
       meta: { creator, slug, source: 'chub.ai' },
     };

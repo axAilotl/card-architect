@@ -8,6 +8,20 @@
 import { lazy } from 'react';
 import { registry } from '../../lib/registry';
 import { useSettingsStore } from '../../store/settings-store';
+import type { ModuleDefinition } from '../../lib/registry/types';
+
+/**
+ * Module metadata for auto-discovery
+ */
+export const MODULE_METADATA: ModuleDefinition = {
+  id: 'block-editor',
+  name: 'Block Editor',
+  description: 'Visual block-based character card builder with drag-and-drop editing.',
+  defaultEnabled: true,
+  badge: 'Editor',
+  color: 'orange',
+  order: 10,
+};
 
 // Lazy-load the components
 const BlockEditorPanel = lazy(() =>

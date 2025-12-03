@@ -43,6 +43,11 @@ export const DEFAULT_WEB_IMPORT_SETTINGS: WebImportSettings = {
     convertToWebp: false, // Keep full PNG by default
     webpQuality: 85,
   },
+  relatedLorebooks: {
+    enabled: true, // Fetch related lorebooks by default
+    mergeIntoCard: true, // Merge entries into character_book
+    saveAsAsset: false, // Don't save as separate JSON asset (future feature)
+  },
 };
 
 // ============================================================================

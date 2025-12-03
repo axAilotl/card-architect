@@ -139,6 +139,7 @@ export class WebImportService {
       audio: { ...current.audio, ...updates.audio },
       wyvernGallery: { ...current.wyvernGallery, ...updates.wyvernGallery },
       chubGallery: { ...current.chubGallery, ...updates.chubGallery },
+      relatedLorebooks: { ...current.relatedLorebooks, ...updates.relatedLorebooks },
     };
 
     (settings as any).webImport = updated;
@@ -224,6 +225,84 @@ export class WebImportService {
       // Normalize card structure
       normalizeCardData(cardData, spec);
 
+      // Handle related lorebooks if enabled and present
+      // Track lorebooks to save as assets (processed after card creation)
+      let lorebooksToSaveAsAssets: typeof fetched.relatedLorebooks = [];
+
+      if (fetched.relatedLorebooks && fetched.relatedLorebooks.length > 0) {
+        const relatedSettings = webImportSettings.relatedLorebooks;
+        if (relatedSettings?.enabled) {
+          const successfulLorebooks = fetched.relatedLorebooks.filter(lb => lb.fetched && lb.entries);
+
+          if (successfulLorebooks.length > 0) {
+            logger?.info(
+              { count: successfulLorebooks.length, names: successfulLorebooks.map(lb => lb.name) },
+              'Processing related lorebooks'
+            );
+
+            // Merge entries into card's character_book if enabled
+            if (relatedSettings.mergeIntoCard) {
+              const obj = cardData as Record<string, any>;
+              const dataObj = obj.data || obj;
+
+              // Ensure character_book exists
+              if (!dataObj.character_book) {
+                dataObj.character_book = {
+                  name: '',
+                  entries: [],
+                  extensions: {},
+                };
+              }
+
+              const existingEntries = dataObj.character_book.entries || [];
+              let maxId = existingEntries.reduce((max: number, e: any) => Math.max(max, e.id || 0), 0);
+
+              for (const lb of successfulLorebooks) {
+                if (lb.entries) {
+                  for (const entry of lb.entries) {
+                    // Assign new unique IDs to avoid conflicts
+                    maxId++;
+                    const entryExtensions = (entry.extensions && typeof entry.extensions === 'object')
+                      ? entry.extensions as Record<string, unknown>
+                      : {};
+                    const newEntry = {
+                      ...entry,
+                      id: maxId,
+                      // Add source tracking in extensions
+                      extensions: {
+                        ...entryExtensions,
+                        source_lorebook: {
+                          id: lb.id,
+                          name: lb.name,
+                          path: lb.path,
+                        },
+                      },
+                    };
+                    existingEntries.push(newEntry);
+                  }
+                  warnings.push(`Merged ${lb.entries.length} entries from lorebook: ${lb.name || lb.id}`);
+                }
+              }
+
+              dataObj.character_book.entries = existingEntries;
+              logger?.info(
+                { totalEntries: existingEntries.length },
+                'Merged related lorebook entries'
+              );
+            }
+
+            // Track lorebooks to save as assets (will be saved after card creation)
+            if (relatedSettings.saveAsAsset) {
+              lorebooksToSaveAsAssets = successfulLorebooks;
+            }
+          }
+        } else {
+          // Just log that we found related lorebooks but didn't process them
+          const lorebookNames = fetched.relatedLorebooks.map(lb => lb.name || lb.id).join(', ');
+          warnings.push(`Found related lorebooks (disabled): ${lorebookNames}`);
+        }
+      }
+
       // Extract name
       let name = 'Untitled';
       const obj = cardData as Record<string, any>;
@@ -270,12 +349,66 @@ export class WebImportService {
       );
 
       // Import assets
-      const assetsImported = await this.importAssets(
+      let assetsImported = await this.importAssets(
         card.meta.id,
         fetched.assets,
         webImportSettings,
         warnings
       );
+
+      // Save related lorebooks as JSON assets if enabled
+      if (lorebooksToSaveAsAssets && lorebooksToSaveAsAssets.length > 0) {
+        for (const lb of lorebooksToSaveAsAssets) {
+          try {
+            // Sanitize name for filename
+            const safeName = (lb.name || `lorebook_${lb.id}`)
+              .replace(/[^a-zA-Z0-9_-]/g, '_')
+              .substring(0, 50);
+
+            // Create lorebook JSON with full data
+            const lorebookJson = JSON.stringify(lb.data || { entries: lb.entries }, null, 2);
+            const lorebookBuffer = Buffer.from(lorebookJson, 'utf-8');
+
+            // Save to storage
+            const assetUrl = await saveAssetToStorage(
+              card.meta.id,
+              lorebookBuffer,
+              'json',
+              this.storagePath,
+              'lorebooks'
+            );
+
+            // Create asset record
+            const assetRecord = this.assetRepo.create({
+              filename: `${safeName}.json`,
+              mimetype: 'application/json',
+              size: lorebookBuffer.length,
+              width: undefined,
+              height: undefined,
+              url: assetUrl,
+            });
+
+            // Link to card
+            const existing = this.cardAssetRepo.listByCard(card.meta.id);
+            this.cardAssetRepo.create({
+              cardId: card.meta.id,
+              assetId: assetRecord.id,
+              type: 'custom',
+              name: lb.name || `Lorebook ${lb.id}`,
+              ext: 'json',
+              order: existing.length,
+              isMain: false,
+              tags: ['lorebook', 'related-lorebook', `source:${lb.id}`],
+            });
+
+            assetsImported++;
+            warnings.push(`Saved lorebook as asset: ${lb.name || lb.id}`);
+            logger?.info({ lorebookId: lb.id, name: lb.name }, 'Saved related lorebook as asset');
+          } catch (err) {
+            warnings.push(`Failed to save lorebook ${lb.name || lb.id} as asset: ${err}`);
+          }
+        }
+      }
 
       logger?.info(
         { cardId: card.meta.id, site: handler.id, assetsImported, warnings: warnings.length },

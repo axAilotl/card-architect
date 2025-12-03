@@ -27,6 +27,11 @@ interface WebImportSettingsData {
     convertToWebp: boolean;
     webpQuality: number;
   };
+  relatedLorebooks: {
+    enabled: boolean;
+    mergeIntoCard: boolean;
+    saveAsAsset: boolean;
+  };
 }
 
 interface SiteInfo {
@@ -368,6 +373,67 @@ export function WebImportSettings() {
                       />
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* Related Lorebooks Settings (Chub) */}
+              <div className="space-y-3 pt-4 border-t border-dark-border">
+                <h5 className="font-medium text-sm">Related Lorebooks (Chub)</h5>
+                <p className="text-xs text-dark-muted">
+                  Automatically fetch and merge linked lorebooks from Chub cards into the character's lorebook.
+                </p>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={settings.relatedLorebooks?.enabled ?? true}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          relatedLorebooks: { ...settings.relatedLorebooks, enabled: e.target.checked },
+                        })
+                      }
+                      className="rounded"
+                    />
+                    <span className="text-sm">Fetch related lorebooks</span>
+                  </label>
+                  <label className="flex items-center gap-2 ml-6">
+                    <input
+                      type="checkbox"
+                      checked={settings.relatedLorebooks?.mergeIntoCard ?? true}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          relatedLorebooks: { ...settings.relatedLorebooks, mergeIntoCard: e.target.checked },
+                        })
+                      }
+                      disabled={!settings.relatedLorebooks?.enabled}
+                      className="rounded"
+                    />
+                    <span className={`text-sm ${!settings.relatedLorebooks?.enabled ? 'text-dark-muted' : ''}`}>
+                      Merge entries into character_book
+                    </span>
+                  </label>
+                  <label className="flex items-center gap-2 ml-6">
+                    <input
+                      type="checkbox"
+                      checked={settings.relatedLorebooks?.saveAsAsset ?? false}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          relatedLorebooks: { ...settings.relatedLorebooks, saveAsAsset: e.target.checked },
+                        })
+                      }
+                      disabled={!settings.relatedLorebooks?.enabled}
+                      className="rounded"
+                    />
+                    <span className={`text-sm ${!settings.relatedLorebooks?.enabled ? 'text-dark-muted' : ''}`}>
+                      Save as separate asset (JSON)
+                    </span>
+                  </label>
+                  <p className="text-xs text-dark-muted ml-6">
+                    Source tracking is added to each merged entry for traceability.
+                  </p>
                 </div>
               </div>
 

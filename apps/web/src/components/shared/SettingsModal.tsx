@@ -11,8 +11,9 @@ import type { ProviderConfig, ProviderKind, OpenAIMode, UserPreset, CreatePreset
 import { TemplateSnippetPanel } from '../../features/editor/components/TemplateSnippetPanel';
 import { api } from '../../lib/api';
 import { SearchableSelect } from '../ui/SearchableSelect';
-import { useSettingsPanels } from '../../lib/registry/hooks';
-import type { SettingsPanelDefinition } from '../../lib/registry/types';
+import { useSettingsPanels, useModules } from '../../lib/registry/hooks';
+import { registry } from '../../lib/registry';
+import type { SettingsPanelDefinition, ModuleDefinition } from '../../lib/registry/types';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -43,7 +44,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     getCachedModels,
   } = useLLMStore();
 
-  const [activeTab, setActiveTab] = useState<'general' | 'modules' | 'editor' | 'themes' | 'providers' | 'rag' | 'templates' | 'presets' | 'sillytavern' | 'wwwyzzerdd' | 'comfyui' | 'webimport' | 'focused-settings' | 'diff-settings' | 'blockeditor-settings'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'modules' | 'editor' | 'themes' | 'providers' | 'rag' | 'templates' | 'presets' | 'sillytavern' | 'wwwyzzerdd' | 'comfyui' | 'webimport' | 'charx-optimizer' | 'focused-settings' | 'diff-settings' | 'blockeditor-settings'>('general');
 
   // Settings from store
   const {
@@ -56,30 +57,27 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setShowV3Fields,
     setExportSpec,
     setShowExtensionsTab,
-    setBlockEditorEnabled,
-    setWwwyzzerddEnabled,
-    setComfyuiEnabled,
     setAssetsEnabled,
     setFocusedEnabled,
     setDiffEnabled,
   } = useSettingsStore();
 
   // Use individual selectors for feature flags to ensure proper reactivity
-  const blockEditorEnabled = useSettingsStore((state) => state.features?.blockEditorEnabled ?? true);
-  const wwwyzzerddEnabled = useSettingsStore((state) => state.features?.wwwyzzerddEnabled ?? false);
-  const comfyuiEnabled = useSettingsStore((state) => state.features?.comfyuiEnabled ?? false);
-  const sillytavernEnabled = useSettingsStore((state) => state.features?.sillytavernEnabled ?? false);
   const assetsEnabled = useSettingsStore((state) => state.features?.assetsEnabled ?? true);
   const focusedEnabled = useSettingsStore((state) => state.features?.focusedEnabled ?? true);
   const diffEnabled = useSettingsStore((state) => state.features?.diffEnabled ?? true);
-  const webimportEnabled = useSettingsStore((state) => state.features?.webimportEnabled ?? false);
   const linkedImageArchivalEnabled = useSettingsStore((state) => state.features?.linkedImageArchivalEnabled ?? false);
-  const setSillytavernEnabled = useSettingsStore((state) => state.setSillytavernEnabled);
-  const setWebimportEnabled = useSettingsStore((state) => state.setWebimportEnabled);
   const setLinkedImageArchivalEnabled = useSettingsStore((state) => state.setLinkedImageArchivalEnabled);
+  const setModuleEnabled = useSettingsStore((state) => state.setModuleEnabled);
 
   // Get module settings panels from registry
   const moduleSettingsPanels = useSettingsPanels('modules');
+
+  // Get registered modules for dynamic toggles
+  const registeredModules = useModules();
+
+  // Get the current feature flags for dynamic modules
+  const features = useSettingsStore((state) => state.features);
 
   // Helper to get color class for panel tab
   const getColorClass = (color: SettingsPanelDefinition['color'], isActive: boolean) => {
@@ -96,6 +94,36 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     };
     const classes = colorMap[color || 'blue'] || colorMap.blue;
     return isActive ? classes.active : classes.inactive;
+  };
+
+  // Helper to get toggle switch classes based on module color
+  const getToggleColorClasses = (color: ModuleDefinition['color']) => {
+    const colorMap: Record<string, { ring: string; bg: string; badge: string; text: string }> = {
+      blue: { ring: 'peer-focus:ring-blue-500', bg: 'peer-checked:bg-blue-500', badge: 'bg-blue-500/20 text-blue-400', text: 'text-blue-400' },
+      purple: { ring: 'peer-focus:ring-purple-500', bg: 'peer-checked:bg-purple-500', badge: 'bg-purple-500/20 text-purple-400', text: 'text-purple-400' },
+      green: { ring: 'peer-focus:ring-green-500', bg: 'peer-checked:bg-green-500', badge: 'bg-green-500/20 text-green-400', text: 'text-green-400' },
+      orange: { ring: 'peer-focus:ring-orange-500', bg: 'peer-checked:bg-orange-500', badge: 'bg-orange-500/20 text-orange-400', text: 'text-orange-400' },
+      red: { ring: 'peer-focus:ring-red-500', bg: 'peer-checked:bg-red-500', badge: 'bg-red-500/20 text-red-400', text: 'text-red-400' },
+      pink: { ring: 'peer-focus:ring-pink-500', bg: 'peer-checked:bg-pink-500', badge: 'bg-pink-500/20 text-pink-400', text: 'text-pink-400' },
+      cyan: { ring: 'peer-focus:ring-cyan-500', bg: 'peer-checked:bg-cyan-500', badge: 'bg-cyan-500/20 text-cyan-400', text: 'text-cyan-400' },
+      amber: { ring: 'peer-focus:ring-amber-500', bg: 'peer-checked:bg-amber-500', badge: 'bg-amber-500/20 text-amber-400', text: 'text-amber-400' },
+      teal: { ring: 'peer-focus:ring-teal-500', bg: 'peer-checked:bg-teal-500', badge: 'bg-teal-500/20 text-teal-400', text: 'text-teal-400' },
+    };
+    return colorMap[color || 'blue'] || colorMap.blue;
+  };
+
+  // Check if a module is enabled based on its feature flag
+  const isModuleEnabled = (module: ModuleDefinition): boolean => {
+    const flagName = registry.moduleIdToFlagName(module.id);
+    return features?.[flagName] ?? module.defaultEnabled;
+  };
+
+  // Handle module toggle
+  const handleModuleToggle = (module: ModuleDefinition, enabled: boolean) => {
+    // Convert module ID to the expected format for setModuleEnabled
+    // 'charx-optimizer' -> 'charxOptimizer' (remove hyphens, camelCase)
+    const camelId = module.id.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+    setModuleEnabled(camelId, enabled);
   };
 
   const [editingProvider, setEditingProvider] = useState<Partial<ProviderConfig> | null>(null);
@@ -485,7 +513,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-      <div className="bg-slate-800 rounded-lg shadow-xl w-full max-w-4xl h-[67vh] overflow-hidden flex flex-col">
+      <div className="bg-slate-800 rounded-lg shadow-xl w-full max-w-5xl h-[67vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="p-4 border-b border-dark-border flex justify-between items-center">
           <h2 className="text-xl font-bold">Settings</h2>
@@ -665,153 +693,52 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </p>
               </div>
 
-              {/* Block Editor Module */}
-              <div className="border border-dark-border rounded-lg p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-semibold flex items-center gap-2">
-                      Block Editor
-                      <span className="px-2 py-0.5 bg-orange-500/20 text-orange-400 text-xs rounded">BeastBlocks</span>
-                    </h4>
-                    <p className="text-sm text-dark-muted mt-1">
-                      Visual block-based character card builder with drag & drop, nested blocks, and content types.
-                    </p>
+              {/* Dynamic Module Toggles - rendered from registry */}
+              {registeredModules.map((module) => {
+                const colorClasses = getToggleColorClasses(module.color);
+                const enabled = isModuleEnabled(module);
+                return (
+                  <div key={module.id} className="border border-dark-border rounded-lg p-6 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-semibold flex items-center gap-2">
+                          {module.name}
+                          {module.badge && (
+                            <span className={`px-2 py-0.5 ${colorClasses.badge} text-xs rounded`}>
+                              {module.badge}
+                            </span>
+                          )}
+                        </h4>
+                        <p className="text-sm text-dark-muted mt-1">
+                          {module.description}
+                        </p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={enabled}
+                          onChange={(e) => handleModuleToggle(module, e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className={`w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 ${colorClasses.ring} rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all ${colorClasses.bg}`}></div>
+                      </label>
+                    </div>
+                    {enabled && (
+                      <div className="pt-4 border-t border-dark-border">
+                        <p className="text-xs text-dark-muted">
+                          Configure settings in the{' '}
+                          <button
+                            className={`${colorClasses.text} hover:underline`}
+                            onClick={() => setActiveTab(module.id as typeof activeTab)}
+                          >
+                            {module.name} tab
+                          </button>.
+                        </p>
+                      </div>
+                    )}
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={blockEditorEnabled}
-                      onChange={(e) => setBlockEditorEnabled(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
-                  </label>
-                </div>
-              </div>
-
-              {/* wwwyzzerdd Module */}
-              <div className="border border-dark-border rounded-lg p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-semibold flex items-center gap-2">
-                      wwwyzzerdd
-                      <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 text-xs rounded">AI Wizard</span>
-                    </h4>
-                    <p className="text-sm text-dark-muted mt-1">
-                      AI-assisted character card creation wizard with chat-based generation.
-                    </p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={wwwyzzerddEnabled}
-                      onChange={(e) => setWwwyzzerddEnabled(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-purple-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-500"></div>
-                  </label>
-                </div>
-                {wwwyzzerddEnabled && (
-                  <div className="pt-4 border-t border-dark-border">
-                    <p className="text-xs text-dark-muted">
-                      Configure prompts and settings in the <button className="text-purple-400 hover:underline" onClick={() => setActiveTab('wwwyzzerdd')}>wwwyzzerdd tab</button>.
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* ComfyUI Module */}
-              <div className="border border-dark-border rounded-lg p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-semibold flex items-center gap-2">
-                      ComfyUI
-                      <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded">Experimental</span>
-                    </h4>
-                    <p className="text-sm text-dark-muted mt-1">
-                      Image generation integration with ComfyUI (scaffolding - not yet connected).
-                    </p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={comfyuiEnabled}
-                      onChange={(e) => setComfyuiEnabled(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
-                  </label>
-                </div>
-                {comfyuiEnabled && (
-                  <div className="pt-4 border-t border-dark-border">
-                    <p className="text-xs text-dark-muted">
-                      Configure workflows and prompts in the <button className="text-blue-400 hover:underline" onClick={() => setActiveTab('comfyui')}>ComfyUI tab</button>.
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* SillyTavern Module */}
-              <div className="border border-dark-border rounded-lg p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-semibold flex items-center gap-2">
-                      SillyTavern
-                      <span className="px-2 py-0.5 bg-pink-500/20 text-pink-400 text-xs rounded">Integration</span>
-                    </h4>
-                    <p className="text-sm text-dark-muted mt-1">
-                      Direct push to SillyTavern with one click. Requires SillyTavern to be running.
-                    </p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={sillytavernEnabled}
-                      onChange={(e) => setSillytavernEnabled(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-pink-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-pink-500"></div>
-                  </label>
-                </div>
-                {sillytavernEnabled && (
-                  <div className="pt-4 border-t border-dark-border">
-                    <p className="text-xs text-dark-muted">
-                      Configure connection settings in the <button className="text-pink-400 hover:underline" onClick={() => setActiveTab('sillytavern')}>SillyTavern tab</button>.
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Web Import Module */}
-              <div className="border border-dark-border rounded-lg p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-semibold flex items-center gap-2">
-                      Web Import
-                      <span className="px-2 py-0.5 bg-teal-500/20 text-teal-400 text-xs rounded">Userscript</span>
-                    </h4>
-                    <p className="text-sm text-dark-muted mt-1">
-                      Import characters from Chub.ai, Wyvern, Character Tavern, and Risu Realm via browser userscript.
-                    </p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={webimportEnabled}
-                      onChange={(e) => setWebimportEnabled(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-teal-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-500"></div>
-                  </label>
-                </div>
-                {webimportEnabled && (
-                  <div className="pt-4 border-t border-dark-border">
-                    <p className="text-xs text-dark-muted">
-                      Configure import settings in the <button className="text-teal-400 hover:underline" onClick={() => setActiveTab('webimport')}>Web Import tab</button>.
-                    </p>
-                  </div>
-                )}
-              </div>
+                );
+              })}
 
               {/* Core Tabs Section */}
               <div className="border-t border-dark-border pt-6 mt-6">

@@ -1,6 +1,6 @@
 import { useSyncExternalStore, useCallback, useMemo } from 'react';
 import { registry } from './index';
-import type { EditorTabDefinition, SettingsPanelDefinition, TabContext } from './types';
+import type { EditorTabDefinition, SettingsPanelDefinition, TabContext, ModuleDefinition } from './types';
 
 /**
  * Hook to get registered editor tabs with automatic re-render on changes
@@ -85,4 +85,39 @@ export function useIsTabAvailable(id: string, context: TabContext = 'card'): boo
 export function useAvailableTabIds(context: TabContext = 'card'): string[] {
   const tabs = useEditorTabs(context);
   return useMemo(() => tabs.map((tab) => tab.id), [tabs]);
+}
+
+/**
+ * Hook to get registered modules with automatic re-render on changes
+ * Used to dynamically render module enable/disable toggles in Settings
+ */
+export function useModules(): ModuleDefinition[] {
+  const subscribe = useCallback(
+    (callback: () => void) => registry.subscribe(callback),
+    []
+  );
+
+  const getSnapshot = useCallback(
+    () => registry.getModules(),
+    []
+  );
+
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+/**
+ * Hook to get a specific module by ID
+ */
+export function useModule(id: string): ModuleDefinition | undefined {
+  const subscribe = useCallback(
+    (callback: () => void) => registry.subscribe(callback),
+    []
+  );
+
+  const getSnapshot = useCallback(
+    () => registry.getModule(id),
+    [id]
+  );
+
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }

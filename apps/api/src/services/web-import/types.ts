@@ -63,6 +63,18 @@ export interface ChubGallerySettings {
 }
 
 /**
+ * Settings for related/linked lorebooks (Chub)
+ */
+export interface RelatedLorebooksSettings {
+  /** Enable fetching related lorebooks */
+  enabled: boolean;
+  /** Merge entries into card's character_book */
+  mergeIntoCard: boolean;
+  /** Save as separate asset (type: custom) */
+  saveAsAsset: boolean;
+}
+
+/**
  * Complete web import settings object
  */
 export interface WebImportSettings {
@@ -72,11 +84,32 @@ export interface WebImportSettings {
   audio: WebImportAudioSettings;
   wyvernGallery: WyvernGallerySettings;
   chubGallery: ChubGallerySettings;
+  relatedLorebooks: RelatedLorebooksSettings;
 }
 
 // ============================================================================
 // Site Handler Types
 // ============================================================================
+
+/**
+ * Related lorebook fetched from a site (e.g., Chub)
+ */
+export interface RelatedLorebook {
+  /** Source ID (e.g., Chub project ID) */
+  id: number | string;
+  /** Path/slug for display */
+  path?: string;
+  /** Lorebook name */
+  name?: string;
+  /** Lorebook entries (SillyTavern format) */
+  entries?: Array<Record<string, unknown>>;
+  /** Full lorebook data if fetched */
+  data?: Record<string, unknown>;
+  /** Whether this lorebook was successfully fetched */
+  fetched?: boolean;
+  /** Error message if fetch failed */
+  error?: string;
+}
 
 /**
  * Result returned by a site handler's fetchCard method
@@ -94,6 +127,8 @@ export interface FetchedCard {
   avatarUrl?: string;
   /** Assets to import (icons, emotions, sounds, etc.) */
   assets: AssetToImport[];
+  /** Related/linked lorebooks to optionally merge */
+  relatedLorebooks?: RelatedLorebook[];
   /** Non-fatal warnings during fetch */
   warnings: string[];
   /** Site-specific metadata */
