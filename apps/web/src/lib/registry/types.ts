@@ -79,3 +79,24 @@ export interface PluginManifest {
  * Tab context type
  */
 export type TabContext = 'card' | 'template' | 'all';
+
+/**
+ * Module definition - metadata for optional modules
+ * Used to auto-generate enable/disable toggles in Settings
+ */
+export interface ModuleDefinition {
+  /** Unique module ID (kebab-case, e.g., 'charx-optimizer') */
+  id: string;
+  /** Display name for the toggle */
+  name: string;
+  /** Short description of what the module does */
+  description: string;
+  /** Whether the module is enabled by default */
+  defaultEnabled: boolean;
+  /** Badge text (e.g., 'Export', 'Import', 'Beta') */
+  badge?: string;
+  /** Badge/toggle color */
+  color?: 'blue' | 'purple' | 'green' | 'orange' | 'red' | 'pink' | 'cyan' | 'amber' | 'teal';
+  /** Display order in the modules list (lower = earlier) */
+  order?: number;
+}

@@ -176,14 +176,11 @@ const moduleLoaders = import.meta.glob('../modules/*/index.ts');
 // - Register function: register{PascalCaseId}Module (e.g., registerBlockEditorModule)
 ```
 
-**Adding a New Module:**
+**Adding a New Module (Auto-Discovery):**
 1. Create `modules/{your-module}/index.ts`
-2. Export `register{YourModule}Module()` function that calls `registry.registerSettingsPanel()` and/or `registry.registerTab()`
-3. Add the feature flag to `settings-store.ts`:
-   - Add `{moduleId}Enabled: boolean` to the `FeatureFlags` interface
-   - Add the default value to `DEFAULT_FEATURES` (e.g., `myModuleEnabled: false`)
-4. Add the enable/disable toggle to `SettingsModal.tsx` in the "Modules" section (General tab)
-5. Module settings panel is auto-discovered via registry once enabled
+2. Export `MODULE_METADATA` constant with module info (name, description, defaultEnabled, etc.)
+3. Export `register{YourModule}Module()` function that calls `registry.registerSettingsPanel()` and/or `registry.registerTab()`
+4. That's it! The toggle switch, feature flag, and settings panel are all auto-discovered.
 
 The feature flag naming convention is `{camelCaseModuleId}Enabled` (e.g., `charxOptimizerEnabled` for `charx-optimizer`).
 
@@ -192,6 +189,18 @@ The feature flag naming convention is `{camelCaseModuleId}Enabled` (e.g., `charx
 import { lazy } from 'react';
 import { registry } from '@/lib/registry';
 import { useSettingsStore } from '@/store/settings-store';
+import type { ModuleDefinition } from '@/lib/registry/types';
+
+// Module metadata - required for auto-discovery
+export const MODULE_METADATA: ModuleDefinition = {
+  id: 'my-module',           // kebab-case, matches folder name
+  name: 'My Module',         // Display name
+  description: 'What this module does.',
+  defaultEnabled: false,     // Initial state for new users
+  badge: 'Beta',             // Optional badge text
+  color: 'purple',           // Toggle/badge color
+  order: 50,                 // Display order in settings
+};
 
 const MyModuleTab = lazy(() => import('./MyModuleTab'));
 const MyModuleSettings = lazy(() =>
@@ -200,8 +209,8 @@ const MyModuleSettings = lazy(() =>
   }))
 );
 
-export function registerMyModule(): void {
-  // Register editor tab
+export function registerMyModuleModule(): void {
+  // Register editor tab (optional)
   registry.registerTab({
     id: 'my-module',
     label: 'My Module',
@@ -803,6 +812,11 @@ interface WebImportSettings {
     convertToWebp: boolean;     // Default: false - Keep full PNG quality
     webpQuality: number;        // Default: 85
   };
+  relatedLorebooks: {
+    enabled: boolean;           // Default: true - Fetch related lorebooks from Chub
+    mergeIntoCard: boolean;     // Default: true - Merge entries into character_book
+    saveAsAsset: boolean;       // Default: false - Save lorebooks as JSON assets
+  };
 }
 ```
 
@@ -818,6 +832,22 @@ interface WebImportSettings {
 - **API Endpoint**: `https://gateway.chub.ai/api/gallery/project/{projectId}?limit=48`
 - **Storage**: Saved as `custom` type assets in `{cardId}/custom/` directory
 - **Full Quality**: WebP conversion disabled by default to preserve full PNG quality
+
+#### Related Lorebooks (Chub)
+- **Detection**: Checks `metaData.node.definition.extensions.chub.related_lorebooks` array
+- **API Endpoint**: `https://gateway.chub.ai/api/v4/projects/{lorebookId}/repository/files/raw%252Fsillytavern_raw.json/raw`
+- **Merge Behavior**: When `mergeIntoCard` is enabled:
+  - Creates `character_book` if it doesn't exist
+  - Assigns unique IDs to avoid conflicts with existing entries
+  - Adds `extensions.source_lorebook` tracking to each merged entry with:
+    - `id`: Original Chub lorebook project ID
+    - `name`: Lorebook name
+    - `path`: Lorebook path/slug
+- **Save as Asset**: When `saveAsAsset` is enabled:
+  - Saves complete lorebook JSON as card asset
+  - Stored in `{cardId}/lorebooks/{sanitized_name}.json`
+  - Tagged with `lorebook`, `related-lorebook`, `source:{id}`
+- **Parallel Fetching**: Multiple related lorebooks fetched concurrently
 
 #### Wyvern Gallery Images
 - **Image Proxy**: Gallery images fetched client-side via `https://app.wyvern.chat/api/image-proxy?url={url}`

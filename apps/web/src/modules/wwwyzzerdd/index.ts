@@ -8,6 +8,20 @@
 import { lazy } from 'react';
 import { registry } from '../../lib/registry';
 import { useSettingsStore } from '../../store/settings-store';
+import type { ModuleDefinition } from '../../lib/registry/types';
+
+/**
+ * Module metadata for auto-discovery
+ */
+export const MODULE_METADATA: ModuleDefinition = {
+  id: 'wwwyzzerdd',
+  name: 'wwwyzzerdd',
+  description: 'AI-assisted character creation wizard with two-column editing layout.',
+  defaultEnabled: false,
+  badge: 'AI',
+  color: 'purple',
+  order: 20,
+};
 
 // Lazy-load the components
 const WwwyzzerddTab = lazy(() =>
