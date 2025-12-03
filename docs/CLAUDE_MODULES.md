@@ -12,7 +12,7 @@ Modules are optional features that can be enabled/disabled in Settings > General
 |--------|--------------|---------|-------------|
 | Block Editor | `blockEditorEnabled` | true | Visual block-based card builder |
 | wwwyzzerdd | `wwwyzzerddEnabled` | false | AI character creation wizard |
-| ComfyUI | `comfyuiEnabled` | false | Image generation (scaffolding) |
+| ComfyUI | `comfyuiEnabled` | false | Image generation with emotion sprites |
 | SillyTavern | `sillytavernEnabled` | false | Direct push to SillyTavern |
 | Web Import | `webimportEnabled` | false | Browser userscript integration |
 | Package Optimizer | `charxOptimizerEnabled` | true | Media optimization for exports |
@@ -435,33 +435,109 @@ Different formats use different conventions for the main character icon:
 
 ---
 
-## ComfyUI Integration (Scaffolding)
+## ComfyUI Integration
 
-Image generation integration with ComfyUI (not yet connected).
+Full image generation integration with ComfyUI for character portraits and emotion sprites.
 
-### Features (Planned)
+### Features
 
-- **Workflow Management**: Save and load ComfyUI workflows
-- **Prompt Templates**: Character-specific image generation prompts
-- **Direct Integration**: Generate portraits from character descriptions
+- **Connection Management**: Test and monitor ComfyUI server connectivity
+- **Workflow Management**: Upload, save, and load ComfyUI workflow JSON files
+- **Checkpoint Selection**: Browse and select models from connected ComfyUI server
+- **Prompt Generation**:
+  - Build prompts from card appearance/description fields
+  - LLM-powered prompt generation with configurable context
+  - Quick presets for full body, portrait, scene, background
+- **Image Generation**:
+  - Real-time generation with progress display
+  - Base64 image streaming for instant preview
+  - History with regeneration from saved settings
+  - Save generated images as card assets
 
-### Current Status
+### Emotion Images Sub-Tab
 
-This is scaffolding only - not connected to an actual ComfyUI server.
+Batch generation of emotion sprites for SillyTavern and Voxta formats.
+
+**Supported Formats:**
+| Format | Items | Naming Convention |
+|--------|-------|-------------------|
+| SillyTavern | 84 | `emotion-variant-#` (28 emotions × 3 variants) |
+| Voxta | 186 | `Emotion_State_##` (11 emotions × 17 states) |
+
+**Features:**
+- **Source Image Upload**: Upload or use card icon as base image
+- **Workflow Integration**: Injects prompts, filenames, counts into workflow nodes
+- **Settings Persistence**: All settings saved to localStorage
+- **Results Grid**: Visual grid with selection, save, and delete actions
+- **Batch Operations**: Select All, Save as Emotions, Delete selected
+
+**Workflow Node Mapping** (Voxta Avatar Generator):
+| Node ID | Purpose |
+|---------|---------|
+| 166 | LoadImage (source image input) |
+| 227 | Filename list |
+| 255 | Total count |
+| 261 | Output path |
+| 266 | Prompt list |
+
+### API Endpoints
+
+```
+POST   /api/comfyui/connect              # Test server connection
+POST   /api/comfyui/models               # List checkpoints from server
+GET    /api/comfyui/workflows            # List saved workflows
+POST   /api/comfyui/workflows            # Save new workflow
+PATCH  /api/comfyui/workflows/:id        # Update workflow
+DELETE /api/comfyui/workflows/:id        # Delete workflow
+POST   /api/comfyui/generate             # Generate image
+GET    /api/comfyui/image                # Proxy image from ComfyUI
+POST   /api/comfyui/history              # Get generation history
+GET    /api/comfyui/emotions             # Get emotion presets
+PATCH  /api/comfyui/emotions             # Update emotion presets
+POST   /api/comfyui/generate-emotions    # Batch emotion generation
+POST   /api/comfyui/upload-image         # Upload image to ComfyUI
+```
 
 ### Settings
 
 Settings > ComfyUI:
-- Server URL configuration
-- Workflow management
-- Prompt template management
+- **Server URL**: ComfyUI server address (e.g., `http://localhost:8188`)
+- **Auto-Select Asset Type**: Skip save dialog for generated images
+- **Positive/Negative Prompts**: Default prompts for generation
+
+### Workflow Injection
+
+Workflows support injection maps that define which nodes receive dynamic values:
+
+```json
+{
+  "injectionMap": {
+    "positive_prompt": "6",
+    "negative_prompt": "7",
+    "seed": "3",
+    "checkpoint": "4"
+  },
+  "emotionInjectionMap": {
+    "filename_list": "227",
+    "prompt_list": "266",
+    "total_count": "255",
+    "source_image": "166",
+    "output_path": "261"
+  }
+}
+```
 
 ### Implementation
 
-- **Location**: `apps/web/src/modules/comfyui/`
-- **Tab**: `ComfyUITab.tsx`
-- **Settings**: `settings/ComfyUISettings.tsx`
-- **Service**: `apps/api/src/services/comfyui-client.ts`
+| File | Purpose |
+|------|---------|
+| `apps/web/src/modules/comfyui/index.ts` | Module registration |
+| `apps/web/src/features/comfyui/ComfyUITab.tsx` | Main tab with General and Emotion sub-tabs |
+| `apps/web/src/modules/comfyui/settings/ComfyUISettings.tsx` | Server and workflow settings |
+| `apps/api/src/routes/comfyui.ts` | API endpoints |
+| `apps/api/src/services/comfyui-client.ts` | ComfyUI API client and injection logic |
+| `apps/api/data/settings/presets/comfyui.json` | Workflow storage |
+| `apps/api/data/settings/presets/emotions.json` | Emotion preset data |
 
 ---
 
