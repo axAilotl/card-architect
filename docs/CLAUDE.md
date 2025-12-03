@@ -28,7 +28,7 @@ This tool helps creators build, edit, and maintain AI character cards with advan
 - **DOMPurify** - HTML sanitization for security
 
 **Testing:**
-- **Vitest** - Test framework (57 tests passing)
+- **Vitest** - Test framework (68 tests passing)
 
 ## Architecture
 
@@ -159,6 +159,7 @@ Each optional module provides its own self-contained settings component that man
 | wwwyzzerdd | `modules/wwwyzzerdd/settings/WwwyzzerddSettings.tsx` | amber | 30 |
 | ComfyUI | `modules/comfyui/settings/ComfyUISettings.tsx` | orange | 40 |
 | Web Import | `modules/webimport/settings/WebImportSettings.tsx` | teal | 60 |
+| CHARX Optimizer | `modules/charx-optimizer/settings/CharxOptimizerSettings.tsx` | purple | 65 |
 | SillyTavern | `modules/sillytavern/settings/SillyTavernSettings.tsx` | pink | 70 |
 
 **Module Auto-Discovery** (`lib/modules.ts`):
@@ -177,10 +178,14 @@ const moduleLoaders = import.meta.glob('../modules/*/index.ts');
 
 **Adding a New Module:**
 1. Create `modules/{your-module}/index.ts`
-2. Export `register{YourModule}Module()` function
-3. That's it - auto-discovered on next build/refresh
+2. Export `register{YourModule}Module()` function that calls `registry.registerSettingsPanel()` and/or `registry.registerTab()`
+3. Add the feature flag to `settings-store.ts`:
+   - Add `{moduleId}Enabled: boolean` to the `FeatureFlags` interface
+   - Add the default value to `DEFAULT_FEATURES` (e.g., `myModuleEnabled: false`)
+4. Add the enable/disable toggle to `SettingsModal.tsx` in the "Modules" section (General tab)
+5. Module settings panel is auto-discovered via registry once enabled
 
-The feature flag `{moduleId}Enabled` is automatically derived from the folder name and checked in `settings-store.ts`.
+The feature flag naming convention is `{camelCaseModuleId}Enabled` (e.g., `charxOptimizerEnabled` for `charx-optimizer`).
 
 **Module Index File Pattern** (`modules/*/index.ts`):
 ```typescript
@@ -613,6 +618,7 @@ Optional features that can be enabled in Settings > General:
 | wwwyzzerdd Mode | AI-assisted character creation wizard |
 | ComfyUI Integration | Image generation scaffolding (not connected) |
 | Web Import | Browser userscript for one-click imports from character sites |
+| CHARX Optimizer | Optimize images during CHARX/Voxta export with WebP conversion (enabled by default) |
 | Linked Image Archival | Archive external images from greetings as local assets (destructive) |
 
 ## Web Import - Browser Userscript Integration
