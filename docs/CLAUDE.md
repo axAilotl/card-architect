@@ -28,7 +28,7 @@ This tool helps creators build, edit, and maintain AI character cards with advan
 - **DOMPurify** - HTML sanitization for security
 
 **Testing:**
-- **Vitest** - Test framework (27 tests passing)
+- **Vitest** - Test framework (57 tests passing)
 
 ## Architecture
 
@@ -85,22 +85,22 @@ card_doctor/
 
 ### Plugin Architecture
 
-The frontend uses a dynamic plugin-based architecture for editor tabs. This allows:
-- **Dynamic Registration**: Tabs can be registered at runtime
+The frontend uses a dynamic plugin-based architecture for editor tabs and settings panels. This allows:
+- **Dynamic Registration**: Tabs and settings panels can be registered at runtime
 - **Lazy Loading**: Optional modules load on-demand
 - **Feature Flags**: Modules conditionally enabled based on settings
-- **Consistent API**: Core and plugin tabs use the same registration mechanism
+- **Consistent API**: Core and plugin tabs/panels use the same registration mechanism
 
 **Key Components:**
 
 | File | Purpose |
 |------|---------|
-| `lib/registry/types.ts` | Type definitions (EditorTabDefinition, PluginManifest) |
+| `lib/registry/types.ts` | Type definitions (EditorTabDefinition, SettingsPanelDefinition) |
 | `lib/registry/index.ts` | Registry singleton with CRUD operations |
 | `lib/registry/hooks.ts` | React hooks (useEditorTabs, useSettingsPanels) |
 | `lib/modules.ts` | Module loader for async initialization |
-| `features/editor/tabs.ts` | Core tab registration |
-| `modules/*/index.ts` | Optional module registration |
+| `features/editor/tabs.ts` | Core tab registration (focused-settings, diff-settings) |
+| `modules/*/index.ts` | Optional module registration (tabs + settings panels) |
 
 **Tab Registration Example:**
 ```typescript
@@ -116,20 +116,114 @@ registry.registerTab({
 });
 ```
 
+**Settings Panel Registration Example:**
+```typescript
+import { registry } from '@/lib/registry';
+
+registry.registerSettingsPanel({
+  id: 'my-module',
+  label: 'My Module',
+  component: lazy(() => import('./settings/MyModuleSettings')),
+  row: 'modules',     // 'main' for core settings, 'modules' for optional modules
+  color: 'purple',    // Tab badge color (purple, pink, teal, amber, etc.)
+  order: 50,          // Display order within row
+  condition: () => useSettingsStore.getState().features?.myFeatureEnabled ?? false,
+});
+```
+
+**Settings Modal Structure:**
+The Settings Modal renders panels in two rows:
+1. **Main Row** (`row: 'main'`): Core settings (General, LLM Providers, RAG, Presets, Templates, Snippets)
+2. **Modules Row** (`row: 'modules'`): Optional module settings (dynamically rendered from registry)
+
 **Application Bootstrap:**
 ```typescript
 // main.tsx
 async function bootstrap() {
-  await initializeModules(); // Registers all tabs
+  await initializeModules(); // Registers all tabs and settings panels
   ReactDOM.createRoot(...).render(<App />);
+}
+```
+
+### Module Settings Structure
+
+Each optional module provides its own self-contained settings component that manages its own state, data loading, and UI rendering.
+
+**Module Settings Components:**
+
+| Module | Settings Component | Color | Order |
+|--------|-------------------|-------|-------|
+| Block Editor | `modules/block-editor/settings/BlockEditorSettings.tsx` | purple | 10 |
+| Focused Mode | `features/editor/settings/FocusedSettings.tsx` | blue | 15 |
+| Diff Mode | `features/editor/settings/DiffSettings.tsx` | green | 20 |
+| wwwyzzerdd | `modules/wwwyzzerdd/settings/WwwyzzerddSettings.tsx` | amber | 30 |
+| ComfyUI | `modules/comfyui/settings/ComfyUISettings.tsx` | orange | 40 |
+| Web Import | `modules/webimport/settings/WebImportSettings.tsx` | teal | 60 |
+| SillyTavern | `modules/sillytavern/settings/SillyTavernSettings.tsx` | pink | 70 |
+
+**Module Auto-Discovery** (`lib/modules.ts`):
+
+Modules are automatically discovered using Vite's `import.meta.glob`. No manual registration required.
+
+```typescript
+// Auto-discover all modules from the modules directory
+const moduleLoaders = import.meta.glob('../modules/*/index.ts');
+
+// Convention-based naming:
+// - Folder: modules/{module-id}/index.ts
+// - Feature flag: {camelCaseId}Enabled (e.g., blockEditorEnabled, comfyuiEnabled)
+// - Register function: register{PascalCaseId}Module (e.g., registerBlockEditorModule)
+```
+
+**Adding a New Module:**
+1. Create `modules/{your-module}/index.ts`
+2. Export `register{YourModule}Module()` function
+3. That's it - auto-discovered on next build/refresh
+
+The feature flag `{moduleId}Enabled` is automatically derived from the folder name and checked in `settings-store.ts`.
+
+**Module Index File Pattern** (`modules/*/index.ts`):
+```typescript
+import { lazy } from 'react';
+import { registry } from '@/lib/registry';
+import { useSettingsStore } from '@/store/settings-store';
+
+const MyModuleTab = lazy(() => import('./MyModuleTab'));
+const MyModuleSettings = lazy(() =>
+  import('./settings/MyModuleSettings').then((m) => ({
+    default: m.MyModuleSettings,
+  }))
+);
+
+export function registerMyModule(): void {
+  // Register editor tab
+  registry.registerTab({
+    id: 'my-module',
+    label: 'My Module',
+    component: MyModuleTab,
+    order: 50,
+    contexts: ['card'],
+    condition: () => useSettingsStore.getState().features?.myModuleEnabled ?? false,
+  });
+
+  // Register settings panel
+  registry.registerSettingsPanel({
+    id: 'my-module',
+    label: 'My Module',
+    component: MyModuleSettings,
+    row: 'modules',
+    color: 'purple',
+    order: 50,
+    condition: () => useSettingsStore.getState().features?.myModuleEnabled ?? false,
+  });
 }
 ```
 
 ### Code Metrics
 
-- **Total Lines**: ~37,626 TypeScript
-- **File Count**: 192 TypeScript files
-- **API Endpoints**: 90+
+- **Total Lines**: ~39,000 TypeScript
+- **File Count**: 193 TypeScript files
+- **API Endpoints**: 95+
 - **Test Coverage**: 27/27 tests passing
 
 ## Character Card Formats
@@ -463,6 +557,7 @@ The `normalizeCardData()` function in `apps/api/src/routes/import-export.ts` han
     - Supports HTTP/HTTPS URLs
     - Auto-detects file type from Content-Type header or file extension
     - Works with direct file links from hosting services
+  - **Web Import (Userscript)**: One-click import from character sites (see Web Import section below)
   - Automatic normalization of non-standard spec values
   - Handles legacy numeric position fields
   - Compatible with: CharacterHub, SillyTavern, Agnai, TavernAI, Wyvern, Chub
@@ -517,6 +612,512 @@ Optional features that can be enabled in Settings > General:
 | Block Editor | Visual block-based character card builder (enabled by default) |
 | wwwyzzerdd Mode | AI-assisted character creation wizard |
 | ComfyUI Integration | Image generation scaffolding (not connected) |
+| Web Import | Browser userscript for one-click imports from character sites |
+| Linked Image Archival | Archive external images from greetings as local assets (destructive) |
+
+## Web Import - Browser Userscript Integration
+
+One-click character card importing from supported character hosting sites via a browser userscript.
+
+### Overview
+
+Web Import adds a "Send to Card Architect" button to supported character hosting sites. When clicked, the character card (including assets like expressions/sprites) is automatically imported into Card Architect.
+
+### Supported Sites
+
+| Site | Domain | Status | Notes |
+|------|--------|--------|-------|
+| Chub.ai | `chub.ai`, `venus.chub.ai` | ✅ Working | Uses v4 API for fresh card data |
+| Character Tavern | `character-tavern.com` | ✅ Working | Direct PNG download |
+| Risu Realm | `realm.risuai.net` | ✅ Working | Supports PNG and CHARX |
+| Wyvern | `app.wyvern.chat` | ✅ Working | Intercepts download blob |
+
+### Architecture
+
+```
+┌─────────────────────┐     ┌─────────────────────┐     ┌─────────────────────┐
+│   Browser + Script  │     │   Card Architect    │     │   Character Site    │
+│   (Userscript)      │────▶│   API Server        │────▶│   (Chub, etc.)      │
+└─────────────────────┘     └─────────────────────┘     └─────────────────────┘
+        │                           │
+        │ 1. Click button           │ 2. Fetch card data
+        │ 3. Send URL + data        │    + PNG + assets
+        │                           │
+        ▼                           ▼
+   Shows toast with              Imports card,
+   success/link                  downloads assets
+```
+
+### Installation
+
+1. Install a userscript manager (Tampermonkey, Violentmonkey, Greasemonkey)
+2. Navigate to Card Architect Settings > Web Import
+3. Click "Download Userscript" button
+4. The userscript is dynamically generated with your server's IP and ports
+5. Install the script in your userscript manager
+
+### Userscript Features
+
+- **Dynamic Server Detection**: Userscript is generated with correct server IP/port
+- **API URL Configuration**: Right-click userscript manager icon → Configure API URL
+- **Version Tracking**: Userscript version updated with each change (currently 1.0.8)
+- **Site-Specific Button Injection**: Button placed in appropriate location per site
+- **Toast Notifications**: Success/error feedback with link to imported card
+- **Blob Interception**: For sites that build PNGs client-side (Wyvern)
+
+### Site-Specific Implementations
+
+#### Chub.ai
+- **API Flow**:
+  1. Fetch metadata from `gateway.chub.ai/api/characters/{creator}/{slug}?full=true`
+  2. Extract project ID from response
+  3. Fetch actual card.json from `gateway.chub.ai/api/v4/projects/{id}/repository/files/card.json/raw`
+- **Why Two Requests**: The PNG on Chub pages can be stale; the v4 API always has latest data
+- **Avatar URL**: Use `node.max_res_url` from metadata (full resolution chara_card_v2.png), fallback to `node.avatar_url` (webp thumbnail)
+- **Expressions**: Extracted from `extensions.chub.expressions.expressions` object
+- **Expression Filtering**:
+  - Skip `lfs.charhub.io/lfs/88` (default placeholder)
+  - Skip 120x120px images (small placeholders)
+  - Download other `lfs.charhub.io/lfs/{id}/` URLs
+- **Gallery**: If `node.hasGallery` is true, fetch from `gateway.chub.ai/api/gallery/project/{projectId}?limit=48`
+
+#### Character Tavern
+- **Domain**: `character-tavern.com` (with hyphen)
+- **Cards Domain**: `cards.character-tavern.com`
+- **URL Pattern**: `/character/{creator}/{slug}`
+- **Download URL**: `https://cards.character-tavern.com/{creator}/{slug}.png?action=download`
+- **Format**: PNG with embedded card data (tEXt chunk)
+
+#### Risu Realm
+- **Domain**: `realm.risuai.net`
+- **URL Pattern**: `/character/{id}`
+- **Formats**: Supports both PNG and CHARX
+- **Detection**: Checks page for download format hints
+
+#### Wyvern
+- **Domain**: `app.wyvern.chat`
+- **URL Pattern**: `/characters/{id}`
+- **Implementation**: Blob interception via `URL.createObjectURL` hook
+- **How It Works**:
+  1. Userscript hooks `URL.createObjectURL` before triggering download
+  2. Finds and clicks Wyvern's download button programmatically
+  3. Wyvern's export function creates a PNG blob with embedded card data
+  4. The hook intercepts the blob, reads it as base64
+  5. Base64 PNG sent to Card Architect server
+  6. Server extracts card data from PNG tEXt chunk (standard extraction)
+- **Why This Approach**: Wyvern builds the PNG client-side using their own export logic:
+  ```javascript
+  // Wyvern's export flow (deobfuscated):
+  async function exportCard(character) {
+    const cardJson = await prepareCardData(character);
+    const base64Card = btoa(JSON.stringify(cardJson));
+    const avatar = await fetchAvatar(character.avatar);
+    const chunks = decodePNG(avatar);
+    chunks = chunks.filter(c => c.name !== 'tEXt'); // Remove old
+    chunks.push(encodeTEXT('chara', base64Card));   // Add new
+    return new Blob([encodePNG(chunks)], {type: 'image/png'});
+  }
+  ```
+- **Sprites**: Fetched from public API `https://api.wyvern.chat/characters/{id}`
+- **Userscript Code**:
+  ```javascript
+  function fetchWyvernPng() {
+    return new Promise((resolve, reject) => {
+      const originalCreateObjectURL = URL.createObjectURL.bind(URL);
+      let captured = false;
+
+      // Hook to intercept PNG blob
+      URL.createObjectURL = function(blob) {
+        const url = originalCreateObjectURL(blob);
+        if (!captured && blob instanceof Blob && blob.type === 'image/png') {
+          captured = true;
+          URL.createObjectURL = originalCreateObjectURL; // Restore
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.readAsDataURL(blob);
+        }
+        return url;
+      };
+
+      // Find and click download button
+      const btn = document.querySelector('button[aria-label*="download" i]');
+      if (btn) btn.click();
+    });
+  }
+  ```
+
+### Asset Importing
+
+Assets (icons, expressions/emotions) are automatically downloaded and stored:
+
+#### Asset Processing
+1. **Download**: Fetch from source URL with proper User-Agent
+2. **Size Check**: Skip 120x120px images (placeholders)
+3. **Conversion**: Convert to WebP format for storage efficiency
+4. **Resize**: Emotions resized to 256x256px max
+5. **Storage**: Saved to `{storagePath}/cards/{cardId}/assets/`
+
+#### Asset Types
+| Type | Description | Stored As |
+|------|-------------|-----------|
+| `icon` | Character avatar/main image | `{cardId}/{name}.webp` |
+| `emotion` | Expression sprites | `{cardId}/emotions/{emotion}.webp` |
+| `background` | Background images (Wyvern gallery) | `{cardId}/backgrounds/{name}.webp` |
+| `custom` | Other gallery images | `{cardId}/custom/{name}.webp` |
+| `sound` | Voice samples (Chub) | `{cardId}/audio/{voice}_{id}_{model}.wav` |
+
+#### Asset Settings (Settings > Web Import)
+```typescript
+interface WebImportSettings {
+  icons: {
+    convertToWebp: boolean; // Convert to WebP format
+    webpQuality: number;    // WebP quality (default: 80)
+    maxMegapixels: number;  // Max megapixels (default: 2)
+  };
+  emotions: {
+    convertToWebp: boolean;
+    webpQuality: number;    // Default: 80
+    maxMegapixels: number;  // Default: 1
+  };
+  skipDefaultEmoji: boolean; // Skip 120x120 placeholder expressions
+  audio: {
+    enabled: boolean;           // Default: false - Download Chub voice samples
+    downloadAllModels: boolean; // Download e2, f5, z model variants (not just example)
+  };
+  wyvernGallery: {
+    enabled: boolean;           // Default: true - Download Wyvern gallery images
+    includeAvatar: boolean;     // Download avatar type images
+    includeBackground: boolean; // Download background type images
+    includeOther: boolean;      // Download other type images
+    convertToWebp: boolean;     // Default: false - Keep full PNG quality
+    webpQuality: number;        // Default: 85
+  };
+  chubGallery: {
+    enabled: boolean;           // Default: true - Download Chub gallery images
+    convertToWebp: boolean;     // Default: false - Keep full PNG quality
+    webpQuality: number;        // Default: 85
+  };
+}
+```
+
+#### Chub Audio Archival
+- **Voice Samples**: Downloads voice samples from Chub cards with voice data
+- **Default Voices**: 17 default Chub voices are cached globally in `{storagePath}/cache/chub-voices/{uuid}/`
+- **TTS Models**: `example`, `e2_example`, `f5_example`, `z_example`, `sample`
+- **Naming**: `{voiceName}_{voiceId8}_{model}.wav` (e.g., `Alathea_Bezn_9126c3e6_example.wav`)
+- **Deduplication**: Same voice ID only downloads once per card
+
+#### Chub Gallery Images
+- **Detection**: Checks `metaData.node.hasGallery` to determine if gallery exists
+- **API Endpoint**: `https://gateway.chub.ai/api/gallery/project/{projectId}?limit=48`
+- **Storage**: Saved as `custom` type assets in `{cardId}/custom/` directory
+- **Full Quality**: WebP conversion disabled by default to preserve full PNG quality
+
+#### Wyvern Gallery Images
+- **Image Proxy**: Gallery images fetched client-side via `https://app.wyvern.chat/api/image-proxy?url={url}`
+- **Type Mapping**: Wyvern `avatar` → CCv3 `icon`, `background` → `background`, `other` → `custom`
+- **Full Quality**: WebP conversion disabled by default to preserve full PNG quality
+
+### API Endpoints
+
+```
+GET  /api/web-import/sites              # List supported sites with patterns
+GET  /api/web-import/settings           # Get web import settings
+POST /api/web-import/settings           # Update settings
+GET  /api/web-import/userscript         # Download dynamically generated userscript
+POST /api/web-import                    # Import card from URL
+     Body: { url: string, pngData?: string, clientData?: object }
+     - pngData: Base64 PNG for sites requiring client-side fetch (Wyvern)
+     - clientData: Optional data from client (Wyvern gallery images)
+       { galleryImages: [{ type: string, title: string, base64: string }] }
+```
+
+### Response Format
+
+```typescript
+// Success
+{
+  success: true,
+  cardId: string,
+  name: string,           // Character name for toast
+  card: Card,             // Full card object
+  assetsImported: number, // Count of imported assets
+  warnings: string[],     // Any non-fatal issues
+  source: string          // Handler ID (chub, wyvern, etc.)
+}
+
+// Error
+{
+  success: false,
+  error: string
+}
+```
+
+### Data Normalization
+
+Web imports go through normalization to ensure compatibility:
+
+1. **Creator Field**: If object (Wyvern user data), extract `displayName` or `name`
+2. **Tags**: Filter to only string values
+3. **Extensions**: Preserved as-is (important for SillyTavern compatibility)
+4. **Lorebook Entries**: Extensions data inside entries preserved without validation
+5. **Timestamps**: CharacterTavern milliseconds converted to seconds
+
+### Settings Store Integration
+
+```typescript
+// settings-store.ts
+interface FeatureFlags {
+  webimportEnabled: boolean; // Default: false (needs userscript)
+  // Note: Feature flags use lowercase module IDs (e.g., comfyuiEnabled, sillytavernEnabled)
+}
+```
+
+### Implementation Files
+
+| File | Purpose |
+|------|---------|
+| `apps/api/src/routes/web-import.ts` | Thin route layer (~118 lines) |
+| `apps/api/src/services/web-import/index.ts` | WebImportService class (orchestration) |
+| `apps/api/src/services/web-import/types.ts` | Shared TypeScript interfaces |
+| `apps/api/src/services/web-import/constants.ts` | Default settings, voice UUIDs |
+| `apps/api/src/services/web-import/utils.ts` | Asset processing utilities |
+| `apps/api/src/services/web-import/userscript.ts` | Userscript generator |
+| `apps/api/src/services/web-import/handlers/*.ts` | Site-specific handlers (chub, wyvern, etc.) |
+| `apps/web/src/store/settings-store.ts` | Web import feature flag |
+| `apps/web/src/modules/webimport/index.ts` | Module registration |
+| `apps/web/src/modules/webimport/settings/WebImportSettings.tsx` | Web Import settings panel |
+
+### Web Import Service Architecture
+
+The web import functionality follows a modular architecture for easy maintenance and extensibility:
+
+```
+apps/api/src/
+├── routes/
+│   └── web-import.ts           # Thin route layer (118 lines)
+└── services/
+    └── web-import/
+        ├── index.ts            # WebImportService class (orchestration)
+        ├── types.ts            # Shared TypeScript interfaces
+        ├── constants.ts        # Default settings, voice UUIDs
+        ├── utils.ts            # Asset processing utilities
+        ├── userscript.ts       # Userscript generator
+        └── handlers/
+            ├── index.ts        # Handler registry
+            ├── chub.ts         # Chub.ai handler
+            ├── wyvern.ts       # Wyvern handler
+            ├── character-tavern.ts  # Character Tavern handler
+            └── risu-realm.ts   # Risu Realm handler
+```
+
+#### Service File Details
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `types.ts` | ~220 | `WebImportSettings`, `SiteHandler`, `FetchedCard`, `AssetToImport` interfaces |
+| `constants.ts` | ~110 | `DEFAULT_WEB_IMPORT_SETTINGS`, `DEFAULT_CHUB_VOICE_UUIDS`, `BROWSER_USER_AGENT` |
+| `utils.ts` | ~390 | `downloadAndProcessImage`, `downloadAndProcessAudio`, `saveAssetToStorage`, `normalizeCardData` |
+| `userscript.ts` | ~560 | `generateUserscript()` - Dynamically generates userscript with server IP/port |
+| `index.ts` | ~450 | `WebImportService` class with `importCard()`, `getSettings()`, `updateSettings()` |
+
+#### Handler File Details
+
+| File | Lines | Handler ID | Notes |
+|------|-------|------------|-------|
+| `handlers/index.ts` | ~75 | - | `findSiteHandler()`, `getSiteList()`, `SITE_HANDLERS` registry |
+| `handlers/chub.ts` | ~215 | `chub` | v4 API, expressions, gallery, audio samples |
+| `handlers/wyvern.ts` | ~135 | `wyvern` | Client-side PNG, gallery via clientData |
+| `handlers/character-tavern.ts` | ~65 | `character-tavern` | Direct PNG download from cards subdomain |
+| `handlers/risu-realm.ts` | ~90 | `risu` | CHARX preferred, PNG fallback |
+
+### Adding a New Site Handler
+
+To add support for a new character card site:
+
+1. **Create handler file** (`services/web-import/handlers/mysite.ts`):
+```typescript
+import type { SiteHandler, FetchedCard, AssetToImport } from '../types.js';
+import { BROWSER_USER_AGENT } from '../constants.js';
+
+export const mySiteHandler: SiteHandler = {
+  id: 'mysite',
+  name: 'My Site',
+  patterns: [/^https?:\/\/(www\.)?mysite\.com\/characters\/([^\/]+)/],
+  fetchCard: async (url, match, clientPngData, clientData) => {
+    const characterId = match[2];
+    const warnings: string[] = [];
+    const assets: AssetToImport[] = [];
+
+    // Fetch card data from site API
+    const response = await fetch(`https://api.mysite.com/cards/${characterId}`);
+    const cardData = await response.json();
+
+    return {
+      cardData,
+      spec: 'v2',
+      assets,
+      warnings,
+      meta: { characterId, source: 'mysite' },
+    };
+  },
+};
+```
+
+2. **Register handler** in `handlers/index.ts`:
+```typescript
+import { mySiteHandler } from './mysite.js';
+
+export const SITE_HANDLERS: SiteHandler[] = [
+  // ... existing handlers
+  mySiteHandler,
+];
+```
+
+3. **Add @match pattern** in `userscript.ts`:
+```javascript
+// @match        https://mysite.com/characters/*
+```
+
+4. **Add site detection** in userscript's `detectSite()`:
+```javascript
+if (host === 'mysite.com' && path.startsWith('/characters/')) {
+  return { site: 'mysite', id: path.split('/characters/')[1] };
+}
+```
+
+5. **Add button injection** in userscript's `siteInjectors`:
+```javascript
+mysite: () => {
+  // Add button to page
+}
+```
+
+6. **Update documentation** in `docs/CLAUDE.md`
+
+### Userscript Header (Generated)
+
+```javascript
+// ==UserScript==
+// @name         Card Architect - Web Import
+// @namespace    https://card-architect.local
+// @version      1.0.9
+// @match        https://chub.ai/characters/*
+// @match        https://www.chub.ai/characters/*
+// @match        https://venus.chub.ai/characters/*
+// @match        https://app.wyvern.chat/characters/*
+// @match        https://character-tavern.com/character/*
+// @match        https://realm.risuai.net/character/*
+// @grant        GM_xmlhttpRequest
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_registerMenuCommand
+// @connect      {server-ip}
+// @connect      localhost
+// @connect      127.0.0.1
+// ==/UserScript==
+```
+
+### Configuration
+
+```typescript
+// config.ts
+{
+  port: 3456,        // API server port
+  webPort: 5173,     // Web frontend port (for success links)
+  bodyLimit: 50MB,   // Increased for base64 PNG uploads
+}
+```
+
+### Known Issues & Limitations
+
+1. **Large Cards**: Body limit increased to 50MB for base64 PNG uploads
+2. **Asset Count**: Card grid now shows `meta.assetCount` from database query
+3. **Cloudflare**: Some sites may block server-side requests; uses browser User-Agent
+4. **Wyvern Download Button**: If button selector fails, userscript retries with fallback selectors
+
+### Debugging
+
+- Console logs in userscript (prefix `[CA]`) show fetch progress
+- Error stack traces included in API error responses
+- Wyvern: Hook intercept logged to browser console
+
+## Linked Image Archival
+
+Archive external images embedded in `first_mes` and `alternate_greetings` as local assets.
+
+### Overview
+
+Character cards often contain external image links (markdown `![](url)` or HTML `<img src="url">`) that may become unavailable over time. This feature downloads these images and stores them locally, updating the card content to reference the local paths.
+
+### Features
+
+- **Image Detection**: Parses markdown `![alt](url)` and HTML `<img src="url">` formats
+- **Automatic Download**: Fetches images from external URLs with proper User-Agent
+- **Local Storage**: Saves images as card assets with type `custom`
+- **SillyTavern Compatible Paths**: Uses `/user/images/{character-name}/{filename}` format
+- **Original URL Preservation**: Stores original URLs in database for reverting
+- **Auto-Snapshot**: Creates backup snapshot before any modifications (destructive operation)
+- **Export Behavior**:
+  - JSON/PNG exports: Restores original external URLs
+  - CHARX/Voxta exports: Keeps local embedded paths
+
+### Usage
+
+1. Enable "Linked Image Archival" in Settings → General (disabled by default)
+2. Open a card with external images in first_mes or alternate_greetings
+3. Navigate to the Assets panel
+4. View archive status showing external vs archived image counts
+5. Click "Archive" to download and embed images locally
+6. Click "Revert" to restore original external URLs
+
+### API Endpoints
+
+```
+GET  /api/cards/:id/archive-status         # Get counts of external/archived images
+POST /api/cards/:id/archive-linked-images  # Download and archive external images
+POST /api/cards/:id/revert-archived-images # Restore original URLs
+GET  /user/images/:characterName/:filename # Serve archived images (ST-compatible)
+```
+
+### Database Schema
+
+The `card_assets` table includes an `original_url` column to track archived image origins:
+
+```sql
+ALTER TABLE card_assets ADD COLUMN original_url TEXT;
+```
+
+### Implementation Files
+
+| File | Purpose |
+|------|---------|
+| `apps/api/src/routes/image-archival.ts` | Archive/revert endpoints and image serving |
+| `apps/api/src/db/migrations.ts` | Migration 6: Add original_url column |
+| `apps/web/src/features/editor/components/AssetsPanel.tsx` | Archive/Revert UI buttons |
+| `apps/web/src/store/settings-store.ts` | `linkedImageArchivalEnabled` feature flag |
+
+### Image Path Format
+
+Archived images use absolute paths for browser compatibility:
+- Format: `/user/images/{slugified-character-name}/{nanoid}.{ext}`
+- Example: `/user/images/zina/TzqQ5tpeavznFBMssO7GC.png`
+
+The character name is slugified (lowercase, alphanumeric, hyphens) for filesystem safety.
+
+### Vite Proxy Configuration
+
+The `/user` path is proxied to the API server in development:
+
+```typescript
+// vite.config.ts
+proxy: {
+  '/user': {
+    target: 'http://localhost:3456',
+    changeOrigin: true,
+  },
+}
+```
 
 ## wwwyzzerdd - AI Character Wizard
 
@@ -628,9 +1229,43 @@ Tool for replacing placeholder character names throughout a card.
 - alternate_greetings array
 - character_book entries (content and keys)
 
+### Name Database Management
+
+The name database can be managed in **Settings > Templates > ELARA VOSS** tab:
+
+- **Import Names**: Upload a custom JSON file with names
+- **Export Names**: Download current name database
+- **Reset to Defaults**: Restore the built-in name database
+
+#### JSON File Format
+```json
+[
+  { "gender": "male", "type": "first", "name": "Ace" },
+  { "gender": "female", "type": "first", "name": "Nova" },
+  { "gender": "neutral", "type": "last", "name": "Vega" }
+]
+```
+
+- **gender**: "male" | "female" | "neutral"
+- **type**: "first" | "last"
+- **name**: The actual name string
+
+Note: Names with `gender: "neutral"` and `type: "last"` are used as surnames for all genders.
+
+### API Endpoints
+```
+GET  /api/elara-voss/names         # Get all names
+GET  /api/elara-voss/names/:gender # Get names by gender
+POST /api/elara-voss/names/import  # Import names (body: { names: [], merge?: boolean })
+GET  /api/elara-voss/names/export  # Export names as JSON file
+POST /api/elara-voss/names/reset   # Reset to defaults
+GET  /api/elara-voss/stats         # Get name counts by gender/type
+```
+
 ### Implementation
 - Location: `apps/web/src/features/editor/components/ElaraVossPanel.tsx`
-- Name database: `elara_voss.json` (~100 names per gender)
+- Settings UI: `apps/web/src/features/editor/components/TemplateSnippetPanel.tsx` (ELARA VOSS tab)
+- Name database: `apps/api/data/settings/presets/elara_voss.json` (~300 names)
 
 ## AI Generation Buttons
 
@@ -782,6 +1417,24 @@ DELETE /api/comfyui/workflows/:id     # Delete workflow
 POST   /api/comfyui/reset             # Reset to defaults
 ```
 
+### Web Import
+```
+GET    /api/web-import/sites          # List supported sites with URL patterns
+GET    /api/web-import/settings       # Get web import settings (asset processing)
+POST   /api/web-import/settings       # Update web import settings
+GET    /api/web-import/userscript     # Download dynamically generated userscript
+POST   /api/web-import                # Import card from URL
+       Body: { url: string, pngData?: string }
+```
+
+### Linked Image Archival
+```
+GET    /api/cards/:id/archive-status          # Get external/archived image counts
+POST   /api/cards/:id/archive-linked-images   # Download external images as local assets
+POST   /api/cards/:id/revert-archived-images  # Restore original external URLs
+GET    /user/images/:characterName/:filename  # Serve archived images (root level, ST-compatible)
+```
+
 ### Health Check
 ```
 GET    /health                        # Server status
@@ -813,6 +1466,29 @@ CREATE TABLE card_versions (
   created_at TEXT NOT NULL,
   FOREIGN KEY (card_id) REFERENCES cards(id)
 );
+```
+
+### Card Assets Table
+```sql
+CREATE TABLE card_assets (
+  id TEXT PRIMARY KEY,
+  card_id TEXT NOT NULL,
+  type TEXT NOT NULL,        -- 'icon' or 'emotion'
+  name TEXT NOT NULL,        -- Asset name (e.g., 'main', 'happy', 'sad')
+  filename TEXT NOT NULL,    -- Stored filename
+  mime_type TEXT,
+  width INTEGER,
+  height INTEGER,
+  is_main INTEGER DEFAULT 0, -- Main asset for card header
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (card_id) REFERENCES cards(id)
+);
+```
+
+**Note**: Asset count is included in card list queries via subquery:
+```sql
+SELECT c.*, (SELECT COUNT(*) FROM card_assets WHERE card_id = c.id) as asset_count
+FROM cards c
 ```
 
 ### LLM Presets Table
@@ -868,7 +1544,10 @@ CREATE TABLE llm_presets (
 ### Settings Store (apps/web/src/store/settings-store.ts)
 - **autoSnapshot.enabled**: Auto-snapshot toggle
 - **autoSnapshot.intervalMinutes**: Interval (1, 5, 10, 15, 30)
-- **featureFlags**: wwwyzzerdd, comfyui enabled states
+- **features**: Module feature flags with dynamic key support
+  - Known flags: `blockEditorEnabled`, `wwwyzzerddEnabled`, `comfyuiEnabled`, `sillytavernEnabled`, `webimportEnabled`, etc.
+  - Dynamic flags: `[key: string]: boolean` for auto-discovered modules
+- **setModuleEnabled(moduleId, enabled)**: Generic setter for any module flag
 - Persisted to localStorage as `card-architect-settings`
 
 ### UI Store (apps/web/src/store/ui-store.ts)
@@ -891,12 +1570,30 @@ CREATE TABLE llm_presets (
   - `LLMAssistSidebar.tsx`, `TemplateSnippetPanel.tsx`
   - `ElaraVossPanel.tsx`, `TagInput.tsx`
   - `TemplateEditor.tsx`, `SnippetEditor.tsx`
-- `features/wwwyzzerdd/WwwyzzerddTab.tsx` - AI character wizard
-- `features/comfyui/ComfyUITab.tsx` - ComfyUI integration (scaffolding)
+**Modules (apps/web/src/modules/):**
+- `block-editor/` - Visual block-based card builder
+  - `index.ts` - Module registration
+  - `settings/BlockEditorSettings.tsx` - Settings panel component
+- `wwwyzzerdd/` - AI character wizard
+  - `index.ts` - Module registration
+  - `WwwyzzerddTab.tsx` - Main editor tab
+  - `settings/WwwyzzerddSettings.tsx` - Prompt set management
+- `comfyui/` - ComfyUI integration (scaffolding)
+  - `index.ts` - Module registration
+  - `ComfyUITab.tsx` - Main editor tab
+  - `settings/ComfyUISettings.tsx` - Server config, prompts, workflows
+- `sillytavern/` - SillyTavern push integration
+  - `index.ts` - Module registration
+  - `settings/SillyTavernSettings.tsx` - Push config and session settings
+- `webimport/` - Browser userscript integration
+  - `index.ts` - Module registration
+  - `settings/WebImportSettings.tsx` - Asset processing settings
 
 **Shared Components:**
 - `components/shared/Header.tsx` - Top navigation bar
-- `components/shared/SettingsModal.tsx` - Settings UI (General, Providers, RAG, wwwyzzerdd, etc.)
+- `components/shared/SettingsModal.tsx` - Settings UI with two-row layout:
+  - Main row: General, LLM Providers, RAG, Presets, Templates, Snippets (hardcoded)
+  - Modules row: Dynamic panels from registry via `useSettingsPanels('modules')`
 - `components/shared/Sidebar.tsx` - Navigation sidebar
 - `components/ui/` - Reusable UI elements:
   - `SearchableSelect.tsx`, `SnapshotButton.tsx`
@@ -917,6 +1614,7 @@ CREATE TABLE llm_presets (
 **Core:**
 - `App.tsx` - Main application container with Routes
 - `lib/api.ts` - API client
+- `vite-env.d.ts` - Vite client type definitions (enables `import.meta.glob`)
 
 ### Key Backend Files (apps/api/src/)
 
@@ -940,11 +1638,15 @@ CREATE TABLE llm_presets (
 - `sillytavern.ts` - SillyTavern push integration
 - `settings.ts` - Settings persistence
 - `assets.ts` - Asset management
+- `web-import.ts` - Web import route layer (~120 lines, delegates to service)
+- `image-archival.ts` - Linked image archival and ST-compatible serving
 
 **Services (apps/api/src/services/):**
 - `prompt-simulator.ts` - Prompt assembly simulation logic
 - `redundancy-killer.ts` - Cross-field duplicate detection
 - `lore-trigger-tester.ts` - Lorebook trigger testing
+- `card-import.service.ts` - Card import orchestration (CHARX, PNG, JSON)
+- `web-import/` - Modular web import service (see Web Import Service Architecture)
 
 **Utilities (apps/api/src/utils/):**
 - `settings.ts` - Secure settings storage and retrieval

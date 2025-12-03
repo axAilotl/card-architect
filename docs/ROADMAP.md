@@ -91,6 +91,14 @@
 - [x] Frontend tab scaffolding
 - [ ] Actual ComfyUI server connection (future)
 
+### 3.8 Linked Lorebook Support
+- [ ] Support for external/linked lorebooks (separate from embedded character_book)
+- [ ] Import linked lorebooks from Chub (`extensions.chub.related_lorebooks`)
+- [ ] Lorebook library management (CRUD, search, tags)
+- [ ] Link/unlink lorebooks to cards
+- [ ] Merge linked lorebooks into card on export
+- [ ] Lorebook sharing between multiple cards
+
 ---
 
 ## Ultimate Goal: Universal Format Bridge
