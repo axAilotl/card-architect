@@ -28,7 +28,7 @@ This tool helps creators build, edit, and maintain AI character cards with advan
 - **DOMPurify** - HTML sanitization for security
 
 **Testing:**
-- **Vitest** - Test framework (68 tests passing)
+- **Vitest** - Test framework (68 tests passing) - See [CLAUDE_TESTING.md](./CLAUDE_TESTING.md)
 
 ## Architecture
 
@@ -238,7 +238,7 @@ export function registerMyModuleModule(): void {
 - **Total Lines**: ~39,000 TypeScript
 - **File Count**: 193 TypeScript files
 - **API Endpoints**: 95+
-- **Test Coverage**: 27/27 tests passing
+- **Test Coverage**: 68/68 tests passing
 
 ## Character Card Formats
 
@@ -780,6 +780,8 @@ Assets (icons, expressions/emotions) are automatically downloaded and stored:
 | `background` | Background images (Wyvern gallery) | `{cardId}/backgrounds/{name}.webp` |
 | `custom` | Other gallery images | `{cardId}/custom/{name}.webp` |
 | `sound` | Voice samples (Chub) | `{cardId}/audio/{voice}_{id}_{model}.wav` |
+| `workflow` | ComfyUI workflow JSON files | `{cardId}/workflows/{name}.json` |
+| `lorebook` | Linked lorebooks (not embedded) | `{cardId}/lorebooks/{name}.json` |
 
 #### Asset Settings (Settings > Web Import)
 ```typescript
@@ -1154,6 +1156,69 @@ proxy: {
   },
 }
 ```
+
+## Assets Panel - Grid View & Bulk Operations
+
+The Assets Panel provides two view modes for managing card assets with bulk editing capabilities.
+
+### View Modes
+
+| Mode | Description |
+|------|-------------|
+| **List View** | Traditional list with details and inline editing |
+| **Grid View** | Responsive thumbnail grid with selection checkboxes |
+
+### Grid View Features
+
+- **Responsive Layout**: 4-6 columns based on screen width (grid-cols-4, xl:5, 2xl:6)
+- **Thumbnail Preview**: Image thumbnails with type badge overlay
+- **Checkbox Selection**: Click checkboxes to select multiple assets
+- **Sidebar Preview**: Selected asset shows full preview in left column
+- **Sort Controls**: Sort by name, type, format, or date (ascending/descending)
+
+### Bulk Operations
+
+When assets are selected, a bulk action bar appears:
+
+| Action | Description |
+|--------|-------------|
+| **Select All** | Toggle selection of all assets |
+| **Change Type** | Set asset type for all selected items (dropdown + Apply) |
+| **Delete Selected** | Remove all selected assets with confirmation |
+
+### Asset Types
+
+Available asset types for classification:
+
+| Type | Color | Description |
+|------|-------|-------------|
+| `icon` | Blue | Character portrait/avatar |
+| `background` | Green | Scene backgrounds |
+| `emotion` | Purple | Expression/emotion variants |
+| `user_icon` | Cyan | User avatar |
+| `sound` | Yellow | Audio assets |
+| `workflow` | Orange | ComfyUI workflow JSON |
+| `lorebook` | Teal | Linked lorebook JSON |
+| `custom` | Gray | Other/miscellaneous |
+
+### Implementation
+
+- **Location**: `apps/web/src/features/editor/components/AssetsPanel.tsx`
+- **State Management**:
+  - `viewMode`: 'list' | 'grid'
+  - `sortField`: 'name' | 'type' | 'format' | 'date'
+  - `sortOrder`: 'asc' | 'desc'
+  - `selectedAssets`: Set<string> for tracking selections
+- **Sorting**: Uses `useMemo` for efficient sorted asset computation
+
+### Usage
+
+1. Open a card in the editor
+2. Navigate to the Assets tab
+3. Click the Grid icon to switch to Grid View
+4. Use checkboxes to select assets
+5. Use the bulk action bar to change types or delete
+6. Sort using the dropdown controls in the toolbar
 
 ## wwwyzzerdd - AI Character Wizard
 
@@ -1783,17 +1848,12 @@ npm run test:watch # Watch mode
 npm run test:ui    # UI mode
 ```
 
-**Test Coverage:**
-- Card CRUD operations
-- V2 and V3 validation
-- Import/Export (JSON, PNG)
-- Tokenization
-- Lorebook validation
-- Alternate greetings
+**Test Suite:** 68 tests across 3 files
+- `api-endpoints.test.ts` - API CRUD operations (17 tests)
+- `card-validation.test.ts` - Schema validation (10 tests)
+- `format-interoperability.test.ts` - Format conversions & round-trips (41 tests)
 
-**Test Files:**
-- `apps/api/src/__tests__/api-endpoints.test.ts` - API integration tests
-- `apps/api/src/__tests__/card-validation.test.ts` - Schema validation tests
+For comprehensive testing documentation including format interoperability, Voxta limitations, and manual testing plans, see **[CLAUDE_TESTING.md](./CLAUDE_TESTING.md)**.
 
 ### Docker Deployment
 
