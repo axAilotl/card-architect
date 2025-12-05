@@ -49,11 +49,21 @@ function dataURLToUint8Array(dataURL: string): Uint8Array {
  * Resizes to max 400px and converts to WebP for smaller storage
  */
 async function createThumbnail(imageDataUrl: string, maxSize = 400): Promise<string> {
+  console.log('[web-import] createThumbnail starting, input length:', imageDataUrl.length);
+
   return new Promise((resolve, reject) => {
     const img = new Image();
+
+    const timeout = setTimeout(() => {
+      console.error('[web-import] createThumbnail timeout');
+      reject(new Error('Thumbnail creation timed out'));
+    }, 10000);
+
     img.onload = () => {
-      let width = img.width;
-      let height = img.height;
+      clearTimeout(timeout);
+      let width = img.naturalWidth || img.width;
+      let height = img.naturalHeight || img.height;
+      console.log('[web-import] Image loaded:', width, 'x', height);
 
       if (width > height) {
         if (width > maxSize) {
@@ -67,6 +77,8 @@ async function createThumbnail(imageDataUrl: string, maxSize = 400): Promise<str
         }
       }
 
+      console.log('[web-import] Resizing to:', width, 'x', height);
+
       const canvas = document.createElement('canvas');
       canvas.width = width;
       canvas.height = height;
@@ -79,14 +91,23 @@ async function createThumbnail(imageDataUrl: string, maxSize = 400): Promise<str
       ctx.drawImage(img, 0, 0, width, height);
 
       let dataUrl = canvas.toDataURL('image/webp', 0.8);
+      console.log('[web-import] Output:', dataUrl.substring(0, 30), 'size:', dataUrl.length);
+
       if (dataUrl.startsWith('data:image/webp')) {
         resolve(dataUrl);
       } else {
         dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        console.log('[web-import] JPEG fallback size:', dataUrl.length);
         resolve(dataUrl);
       }
     };
-    img.onerror = () => reject(new Error('Failed to load image'));
+
+    img.onerror = (e) => {
+      clearTimeout(timeout);
+      console.error('[web-import] Image load error:', e);
+      reject(new Error('Failed to load image'));
+    };
+
     img.src = imageDataUrl;
   });
 }

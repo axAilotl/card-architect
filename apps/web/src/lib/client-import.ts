@@ -53,12 +53,28 @@ function uint8ArrayToDataURL(buffer: Uint8Array, mimeType: string): string {
  * Resizes to max 400px and converts to WebP for smaller storage
  */
 async function createThumbnail(imageDataUrl: string, maxSize = 400): Promise<string> {
+  console.log('[createThumbnail] Starting, input length:', imageDataUrl.length);
+  console.log('[createThumbnail] Input starts with:', imageDataUrl.substring(0, 50));
+
   return new Promise((resolve, reject) => {
     const img = new Image();
+
+    // Set up a timeout in case the image never loads
+    const timeout = setTimeout(() => {
+      console.error('[createThumbnail] Timeout waiting for image to load');
+      reject(new Error('Thumbnail creation timed out'));
+    }, 10000);
+
     img.onload = () => {
+      clearTimeout(timeout);
+      console.log('[createThumbnail] Image loaded:', img.width, 'x', img.height);
+      console.log('[createThumbnail] Natural size:', img.naturalWidth, 'x', img.naturalHeight);
+
       // Calculate new dimensions maintaining aspect ratio
-      let width = img.width;
-      let height = img.height;
+      let width = img.naturalWidth || img.width;
+      let height = img.naturalHeight || img.height;
+
+      console.log('[createThumbnail] Original dimensions:', width, 'x', height);
 
       if (width > height) {
         if (width > maxSize) {
@@ -72,6 +88,8 @@ async function createThumbnail(imageDataUrl: string, maxSize = 400): Promise<str
         }
       }
 
+      console.log('[createThumbnail] Target dimensions:', width, 'x', height);
+
       // Create canvas and draw resized image
       const canvas = document.createElement('canvas');
       canvas.width = width;
@@ -82,19 +100,43 @@ async function createThumbnail(imageDataUrl: string, maxSize = 400): Promise<str
         return;
       }
 
-      ctx.drawImage(img, 0, 0, width, height);
+      try {
+        ctx.drawImage(img, 0, 0, width, height);
+        console.log('[createThumbnail] Drew image to canvas');
+      } catch (drawErr) {
+        console.error('[createThumbnail] Draw error:', drawErr);
+        reject(new Error(`Canvas draw failed: ${drawErr}`));
+        return;
+      }
 
       // Convert to WebP (with fallback to JPEG for older browsers)
-      let dataUrl = canvas.toDataURL('image/webp', 0.8);
-      if (dataUrl.startsWith('data:image/webp')) {
-        resolve(dataUrl);
-      } else {
-        // Fallback to JPEG if WebP not supported
-        dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-        resolve(dataUrl);
+      let dataUrl: string;
+      try {
+        dataUrl = canvas.toDataURL('image/webp', 0.8);
+        console.log('[createThumbnail] Output format:', dataUrl.substring(0, 30));
+        console.log('[createThumbnail] Output size:', dataUrl.length);
+
+        if (dataUrl.startsWith('data:image/webp')) {
+          resolve(dataUrl);
+        } else {
+          // Fallback to JPEG if WebP not supported
+          dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          console.log('[createThumbnail] JPEG fallback size:', dataUrl.length);
+          resolve(dataUrl);
+        }
+      } catch (encodeErr) {
+        console.error('[createThumbnail] Encoding error:', encodeErr);
+        reject(new Error(`Canvas encoding failed: ${encodeErr}`));
       }
     };
-    img.onerror = () => reject(new Error('Failed to load image for thumbnail'));
+
+    img.onerror = (e) => {
+      clearTimeout(timeout);
+      console.error('[createThumbnail] Image load error:', e);
+      reject(new Error('Failed to load image for thumbnail'));
+    };
+
+    // For data URLs, we don't need crossOrigin
     img.src = imageDataUrl;
   });
 }
@@ -190,10 +232,16 @@ export async function importCardClientSide(file: File): Promise<ClientImportResu
     const card = createCard(result.data, result.spec);
     // Convert PNG buffer to data URL, then create smaller WebP thumbnail
     const fullImageUrl = uint8ArrayToDataURL(buffer, 'image/png');
+    console.log('[client-import] Full image data URL length:', fullImageUrl.length);
+    console.log('[client-import] Calling createThumbnail...');
     let imageDataUrl: string;
     try {
       imageDataUrl = await createThumbnail(fullImageUrl);
-    } catch {
+      console.log('[client-import] Thumbnail created, size:', imageDataUrl.length);
+      console.log('[client-import] Thumbnail format:', imageDataUrl.substring(0, 30));
+    } catch (err) {
+      console.error('[client-import] Thumbnail creation failed:', err);
+      console.error('[client-import] Error details:', err instanceof Error ? err.stack : String(err));
       imageDataUrl = fullImageUrl; // Fallback to full image if thumbnail fails
     }
     return { card, imageDataUrl, warnings: warnings.length > 0 ? warnings : undefined };
