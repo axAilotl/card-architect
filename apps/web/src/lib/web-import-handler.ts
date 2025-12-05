@@ -10,8 +10,6 @@ import { extractFromPNG, isPNG } from '@card-architect/png';
 import type { Card, CCv2Data, CCv3Data } from '@card-architect/schemas';
 import { localDB } from './db';
 
-const PENDING_IMPORT_KEY = 'ca-pending-import';
-
 interface PendingImport {
   site: string;
   url: string;
@@ -151,23 +149,54 @@ function createCard(
 }
 
 /**
- * Process a pending web import from localStorage
+ * Request import data from opener window via postMessage
+ */
+function requestImportDataFromOpener(): Promise<PendingImport> {
+  return new Promise((resolve, reject) => {
+    // Check if we have an opener
+    if (!window.opener) {
+      reject(new Error('No opener window found. Please use the import button from a character site.'));
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      window.removeEventListener('message', handler);
+      reject(new Error('Timeout waiting for import data. Please try again.'));
+    }, 10000);
+
+    function handler(event: MessageEvent) {
+      if (event.data?.type === 'CA_IMPORT_DATA') {
+        clearTimeout(timeout);
+        window.removeEventListener('message', handler);
+
+        if (event.data.error) {
+          reject(new Error(event.data.error));
+        } else if (event.data.data) {
+          resolve(event.data.data);
+        } else {
+          reject(new Error('Invalid import data received'));
+        }
+      }
+    }
+
+    window.addEventListener('message', handler);
+
+    // Request data from opener
+    console.log('[WebImport] Requesting import data from opener...');
+    window.opener.postMessage({ type: 'CA_REQUEST_IMPORT_DATA' }, '*');
+  });
+}
+
+/**
+ * Process a pending web import via postMessage from opener
  */
 export async function processPendingWebImport(): Promise<WebImportResult> {
-  // Get pending import from localStorage
-  const pendingJson = localStorage.getItem(PENDING_IMPORT_KEY);
-  if (!pendingJson) {
-    return { success: false, error: 'No pending import found' };
-  }
-
-  // Clear the pending import immediately to prevent duplicate processing
-  localStorage.removeItem(PENDING_IMPORT_KEY);
-
   let pending: PendingImport;
+
   try {
-    pending = JSON.parse(pendingJson);
+    pending = await requestImportDataFromOpener();
   } catch (err) {
-    return { success: false, error: 'Invalid import data format' };
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to get import data' };
   }
 
   // Check if import is stale (more than 5 minutes old)
@@ -253,15 +282,15 @@ export async function processPendingWebImport(): Promise<WebImportResult> {
 }
 
 /**
- * Check if there's a pending import
+ * Check if there's an opener window that could have import data
  */
 export function hasPendingImport(): boolean {
-  return localStorage.getItem(PENDING_IMPORT_KEY) !== null;
+  return window.opener !== null;
 }
 
 /**
- * Clear any pending import
+ * Clear reference (no longer uses localStorage)
  */
 export function clearPendingImport(): void {
-  localStorage.removeItem(PENDING_IMPORT_KEY);
+  // No-op - postMessage clears automatically after transfer
 }

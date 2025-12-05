@@ -20,7 +20,8 @@
 
     // Configuration
     const DEFAULT_WEB_URL = 'https://ca.axailotl.ai';
-    const PENDING_IMPORT_KEY = 'ca-pending-import';
+    let pendingImportData = null;
+    let caWindow = null;
 
     const BUTTON_STYLES = `
         .ca-import-btn {
@@ -122,8 +123,13 @@
             return { site: 'wyvern', id: path.split('/characters/')[1]?.split('/')[0] };
         }
         if (host === 'character-tavern.com' && path.startsWith('/character/')) {
-            const parts = path.split('/character/')[1];
-            return { site: 'character_tavern', id: parts?.replace(/\/$/, '') };
+            const pathPart = path.split('/character/')[1]?.replace(/\/$/, '');
+            // Must have creator/slug format (e.g., "anon1/My Character")
+            if (pathPart && pathPart.includes('/')) {
+                return { site: 'character_tavern', id: pathPart };
+            }
+            // Invalid path format (e.g., /character/catalog or /character/)
+            return null;
         }
         if (host === 'realm.risuai.net' && path.startsWith('/character/')) {
             return { site: 'risu', id: path.split('/character/')[1]?.split('/')[0] };
@@ -296,12 +302,12 @@
 
             btn.innerHTML = `${IMPORT_ICON} Opening Card Architect...`;
 
-            // Store in localStorage for Card Architect to pick up
-            localStorage.setItem(PENDING_IMPORT_KEY, JSON.stringify(importData));
+            // Store data for postMessage transfer
+            pendingImportData = importData;
 
-            // Open Card Architect import page - it will process the pending import
+            // Open Card Architect import page
             const importUrl = `${webUrl}/#/import-pending`;
-            window.open(importUrl, '_blank');
+            caWindow = window.open(importUrl, '_blank');
 
             showToast('Card Architect opened! Check the new tab.', 'success');
         } catch (err) {
@@ -379,6 +385,35 @@
         const injector = siteInjectors[siteInfo.site];
         if (injector) injector();
     }
+
+    // Listen for Card Architect requesting import data
+    window.addEventListener('message', (event) => {
+        // Verify origin is Card Architect
+        const webUrl = getWebUrl();
+        if (!event.origin.includes(new URL(webUrl).hostname) &&
+            !event.origin.includes('localhost') &&
+            !event.origin.includes('127.0.0.1')) {
+            return;
+        }
+
+        if (event.data?.type === 'CA_REQUEST_IMPORT_DATA') {
+            console.log('[CA Userscript] Received import data request');
+            if (pendingImportData && caWindow) {
+                caWindow.postMessage({
+                    type: 'CA_IMPORT_DATA',
+                    data: pendingImportData
+                }, '*');
+                console.log('[CA Userscript] Sent import data to Card Architect');
+                // Clear after sending
+                pendingImportData = null;
+            } else {
+                caWindow?.postMessage({
+                    type: 'CA_IMPORT_DATA',
+                    error: 'No pending import data'
+                }, '*');
+            }
+        }
+    });
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
