@@ -49,6 +49,29 @@ function createPlaceholderPNG(): Uint8Array {
 }
 
 /**
+ * Convert any image data URL to PNG data URL using canvas
+ */
+async function convertToPNG(imageDataUrl: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth || img.width;
+      canvas.height = img.naturalHeight || img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Failed to get canvas context'));
+        return;
+      }
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => reject(new Error('Failed to load image for PNG conversion'));
+    img.src = imageDataUrl;
+  });
+}
+
+/**
  * Export card as PNG with embedded character data
  */
 export async function exportCardAsPNG(card: Card): Promise<Blob> {
@@ -58,6 +81,11 @@ export async function exportCardAsPNG(card: Card): Promise<Blob> {
   let pngBuffer: Uint8Array;
 
   if (imageData) {
+    // Image might be WebP or JPEG, need to convert to PNG for embedding
+    if (!imageData.startsWith('data:image/png')) {
+      console.log('[client-export] Converting thumbnail to PNG...');
+      imageData = await convertToPNG(imageData);
+    }
     // Convert data URL to Uint8Array
     pngBuffer = dataURLToUint8Array(imageData);
   } else {
