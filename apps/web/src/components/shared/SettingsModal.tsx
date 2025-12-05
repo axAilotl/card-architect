@@ -22,10 +22,6 @@ interface SettingsModalProps {
 }
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
-  // Light mode check - RAG requires server
-  const deploymentConfig = getDeploymentConfig();
-  const isLightMode = deploymentConfig.mode === 'light' || deploymentConfig.mode === 'static';
-
   const {
     settings,
     loadSettings,
@@ -723,19 +719,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           >
             AI Providers
           </button>
-          {/* RAG requires server - hide in light mode */}
-          {!isLightMode && (
-            <button
-              className={`px-4 py-3 font-medium transition-colors whitespace-nowrap ${
-                activeTab === 'rag'
-                  ? 'border-b-2 border-blue-500 text-blue-500'
-                  : 'text-dark-muted hover:text-dark-text'
-              }`}
-              onClick={() => setActiveTab('rag')}
-            >
-              RAG
-            </button>
-          )}
+          <button
+            className={`px-4 py-3 font-medium transition-colors whitespace-nowrap ${
+              activeTab === 'rag'
+                ? 'border-b-2 border-blue-500 text-blue-500'
+                : 'text-dark-muted hover:text-dark-text'
+            }`}
+            onClick={() => setActiveTab('rag')}
+          >
+            RAG
+          </button>
           <button
             className={`px-4 py-3 font-medium transition-colors whitespace-nowrap ${
               activeTab === 'templates'
