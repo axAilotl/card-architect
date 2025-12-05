@@ -11,6 +11,7 @@ import type { Card, CCv2Data, CCv3Data } from '@card-architect/schemas';
 
 export interface ClientImportResult {
   card: Card;
+  imageDataUrl?: string; // PNG image as data URL for storage
   warnings?: string[];
 }
 
@@ -30,6 +31,14 @@ async function readFileAsArrayBuffer(file: File): Promise<Uint8Array> {
     reader.onerror = () => reject(reader.error);
     reader.readAsArrayBuffer(file);
   });
+}
+
+/**
+ * Convert Uint8Array to data URL
+ */
+function uint8ArrayToDataURL(buffer: Uint8Array, mimeType: string): string {
+  const base64 = btoa(String.fromCharCode(...buffer));
+  return `data:${mimeType};base64,${base64}`;
 }
 
 /**
@@ -85,13 +94,23 @@ export async function importCardClientSide(file: File): Promise<ClientImportResu
       const charxData = extractCharx(buffer);
       const card = createCard(charxData.card, 'v3');
 
-      // Note: In client-side mode, we don't persist assets to a database
-      // They would need to be stored in IndexedDB or handled differently
-      if (charxData.assets.length > 0) {
-        warnings.push(`${charxData.assets.length} embedded assets found but not imported (client-side mode)`);
+      // Try to extract icon/thumbnail from assets
+      let imageDataUrl: string | undefined;
+      const iconAsset = charxData.assets.find(
+        (a) => a.descriptor.type === 'icon' || a.path.includes('icon') || a.path.includes('avatar')
+      );
+      if (iconAsset?.buffer) {
+        const ext = iconAsset.descriptor.ext || 'png';
+        const mimeType = ext === 'webp' ? 'image/webp' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
+        imageDataUrl = uint8ArrayToDataURL(iconAsset.buffer, mimeType);
       }
 
-      return { card, warnings: warnings.length > 0 ? warnings : undefined };
+      // Note about other assets
+      if (charxData.assets.length > 1) {
+        warnings.push(`${charxData.assets.length - (iconAsset ? 1 : 0)} additional assets not imported (client-side mode)`);
+      }
+
+      return { card, imageDataUrl, warnings: warnings.length > 0 ? warnings : undefined };
     } catch (err) {
       throw new Error(`Failed to parse CHARX: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -105,7 +124,9 @@ export async function importCardClientSide(file: File): Promise<ClientImportResu
     }
 
     const card = createCard(result.data, result.spec);
-    return { card, warnings: warnings.length > 0 ? warnings : undefined };
+    // Convert PNG buffer to data URL for storage
+    const imageDataUrl = uint8ArrayToDataURL(buffer, 'image/png');
+    return { card, imageDataUrl, warnings: warnings.length > 0 ? warnings : undefined };
   }
 
   if (fileName.endsWith('.json')) {

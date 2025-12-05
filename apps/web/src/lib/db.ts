@@ -2,14 +2,21 @@ import { openDB, type IDBPDatabase } from 'idb';
 import type { Card } from '@card-architect/schemas';
 
 const DB_NAME = 'card-architect';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const DRAFTS_STORE = 'drafts';
 const CARDS_STORE = 'cards';
+const IMAGES_STORE = 'images';
 
 interface DraftCard {
   id: string;
   card: Card;
   lastSaved: string;
+}
+
+interface StoredImage {
+  cardId: string;
+  type: 'thumbnail' | 'icon' | 'background' | 'asset';
+  data: string; // base64 or data URL
 }
 
 class LocalDB {
@@ -27,6 +34,11 @@ class LocalDB {
           const store = db.createObjectStore(CARDS_STORE, { keyPath: 'meta.id' });
           store.createIndex('name', 'meta.name');
           store.createIndex('updatedAt', 'meta.updatedAt');
+        }
+        // Version 3: images store for card thumbnails/assets
+        if (oldVersion < 3 && !db.objectStoreNames.contains(IMAGES_STORE)) {
+          const store = db.createObjectStore(IMAGES_STORE, { keyPath: ['cardId', 'type'] });
+          store.createIndex('cardId', 'cardId');
         }
       },
     });
@@ -78,6 +90,30 @@ class LocalDB {
   async listDrafts(): Promise<DraftCard[]> {
     if (!this.db) await this.init();
     return this.db!.getAll(DRAFTS_STORE);
+  }
+
+  // Images store (for card thumbnails in client-side mode)
+  async saveImage(cardId: string, type: StoredImage['type'], data: string) {
+    if (!this.db) await this.init();
+    const image: StoredImage = { cardId, type, data };
+    await this.db!.put(IMAGES_STORE, image);
+  }
+
+  async getImage(cardId: string, type: StoredImage['type']): Promise<string | null> {
+    if (!this.db) await this.init();
+    const image = await this.db!.get(IMAGES_STORE, [cardId, type]);
+    return image?.data || null;
+  }
+
+  async deleteCardImages(cardId: string) {
+    if (!this.db) await this.init();
+    const tx = this.db!.transaction(IMAGES_STORE, 'readwrite');
+    const index = tx.store.index('cardId');
+    const keys = await index.getAllKeys(cardId);
+    for (const key of keys) {
+      await tx.store.delete(key);
+    }
+    await tx.done;
   }
 }
 

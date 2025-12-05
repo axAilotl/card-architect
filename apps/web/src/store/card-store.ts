@@ -306,6 +306,11 @@ export const useCardStore = create<CardStore>((set, get) => ({
         // Save to IndexedDB for persistence
         await localDB.saveCard(card);
 
+        // Save card image if available
+        if (result.imageDataUrl) {
+          await localDB.saveImage(card.meta.id, 'thumbnail', result.imageDataUrl);
+        }
+
         set({ currentCard: card, isDirty: false });
         useTokenStore.getState().updateTokenCounts(card);
         return card.meta.id;

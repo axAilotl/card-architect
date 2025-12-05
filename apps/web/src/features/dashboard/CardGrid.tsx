@@ -20,6 +20,7 @@ export function CardGrid({ onCardClick }: CardGridProps) {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
+  const [cachedImages, setCachedImages] = useState<Map<string, string>>(new Map());
   const [sortBy, setSortBy] = useState<SortOption>('edited');
   const [filterBy, setFilterBy] = useState<FilterOption>('all');
   const [showImportMenu, setShowImportMenu] = useState(false);
@@ -38,6 +39,16 @@ export function CardGrid({ onCardClick }: CardGridProps) {
       if (config.mode === 'light' || config.mode === 'static') {
         const localCards = await localDB.listCards();
         setCards(localCards);
+
+        // Load cached images for each card
+        const images = new Map<string, string>();
+        for (const card of localCards) {
+          const imageData = await localDB.getImage(card.meta.id, 'thumbnail');
+          if (imageData) {
+            images.set(card.meta.id, imageData);
+          }
+        }
+        setCachedImages(images);
       } else {
         // Server mode: load from API
         const response = await api.listCards();
@@ -280,6 +291,16 @@ export function CardGrid({ onCardClick }: CardGridProps) {
   const getCardName = (card: Card) => {
     const data = extractCardData(card);
     return data.name || 'Untitled Card';
+  };
+
+  const getCardImageSrc = (cardId: string) => {
+    const config = getDeploymentConfig();
+    if (config.mode === 'light' || config.mode === 'static') {
+      // Use cached image from IndexedDB
+      return cachedImages.get(cardId) || null;
+    }
+    // Use server API
+    return `/api/cards/${cardId}/thumbnail?size=400`;
   };
 
   const getCreator = (card: Card) => {
@@ -619,11 +640,11 @@ export function CardGrid({ onCardClick }: CardGridProps) {
                       />
                     </div>
                   )}
-                  {imageErrors.has(card.meta.id) ? (
+                  {imageErrors.has(card.meta.id) || !getCardImageSrc(card.meta.id) ? (
                     <div className="text-dark-muted text-sm">No Image</div>
                   ) : (
                     <img
-                      src={`/api/cards/${card.meta.id}/thumbnail?size=400`}
+                      src={getCardImageSrc(card.meta.id)!}
                       alt={getCardName(card)}
                       className="w-full h-full object-cover"
                       loading="lazy"
