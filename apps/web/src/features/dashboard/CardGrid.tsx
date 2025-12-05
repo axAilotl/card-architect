@@ -3,7 +3,7 @@ import { useCardStore, extractCardData } from '../../store/card-store';
 import { api } from '../../lib/api';
 import { localDB } from '../../lib/db';
 import { getDeploymentConfig } from '../../config/deployment';
-import { importCardClientSide } from '../../lib/client-import';
+import { importCardClientSide, importCardFromURLClientSide } from '../../lib/client-import';
 import { exportCard as exportCardClientSide } from '../../lib/client-export';
 import type { Card, CCv3Data } from '@card-architect/schemas';
 import { SettingsModal } from '../../components/shared/SettingsModal';
@@ -345,18 +345,33 @@ export function CardGrid({ onCardClick }: CardGridProps) {
     setShowImportMenu(false);
 
     const config = getDeploymentConfig();
-    if (config.mode === 'light' || config.mode === 'static') {
-      alert('URL import requires a server. Please use file import or the userscript instead.');
-      return;
-    }
-
     const url = prompt('Enter the URL to the character card (PNG, JSON, or CHARX file):');
-    if (url && url.trim()) {
-      const id = await importCardFromURL(url.trim());
-      await loadCards();
-      if (id) {
-        onCardClick(id);
+    if (!url || !url.trim()) return;
+
+    try {
+      if (config.mode === 'light' || config.mode === 'static') {
+        // Client-side mode: fetch and import directly in browser
+        const result = await importCardFromURLClientSide(url.trim());
+        await localDB.saveCard(result.card);
+        if (result.fullImageDataUrl) {
+          await localDB.saveImage(result.card.meta.id, 'icon', result.fullImageDataUrl);
+        }
+        if (result.thumbnailDataUrl) {
+          await localDB.saveImage(result.card.meta.id, 'thumbnail', result.thumbnailDataUrl);
+        }
+        await loadCards();
+        onCardClick(result.card.meta.id);
+      } else {
+        // Server mode: use API
+        const id = await importCardFromURL(url.trim());
+        await loadCards();
+        if (id) {
+          onCardClick(id);
+        }
       }
+    } catch (error) {
+      console.error('URL import failed:', error);
+      alert(`Import failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 

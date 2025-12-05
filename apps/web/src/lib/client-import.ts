@@ -386,3 +386,57 @@ export async function importCardsClientSide(files: File[]): Promise<{
 
   return { cards, errors };
 }
+
+/**
+ * Import a card from URL client-side
+ * Fetches the file and processes it like a local file import.
+ * Note: CORS restrictions may prevent fetching from some sites.
+ */
+export async function importCardFromURLClientSide(url: string): Promise<ClientImportResult> {
+  // Validate URL
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(url);
+  } catch {
+    throw new Error('Invalid URL');
+  }
+
+  // Fetch the file
+  let response: Response;
+  try {
+    response = await fetch(url);
+  } catch (err) {
+    throw new Error(`Failed to fetch URL (CORS may be blocking): ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch URL: ${response.status} ${response.statusText}`);
+  }
+
+  // Get the file data
+  const arrayBuffer = await response.arrayBuffer();
+  const buffer = new Uint8Array(arrayBuffer);
+
+  // Determine file type from URL or content-type
+  const contentType = response.headers.get('content-type')?.toLowerCase() || '';
+  const pathname = parsedUrl.pathname.toLowerCase();
+
+  // Determine filename for type detection
+  let filename = pathname.split('/').pop() || 'file';
+
+  // Ensure filename has extension based on content type if missing
+  if (!filename.includes('.')) {
+    if (contentType.includes('png') || isPNG(buffer)) {
+      filename += '.png';
+    } else if (contentType.includes('json')) {
+      filename += '.json';
+    } else if (contentType.includes('zip') || pathname.includes('.charx')) {
+      filename += '.charx';
+    }
+  }
+
+  // Create a File object for the existing import function
+  const file = new File([buffer], filename, { type: contentType || 'application/octet-stream' });
+
+  return importCardClientSide(file);
+}
