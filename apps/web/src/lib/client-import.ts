@@ -49,6 +49,57 @@ function uint8ArrayToDataURL(buffer: Uint8Array, mimeType: string): string {
 }
 
 /**
+ * Create a thumbnail from image data URL
+ * Resizes to max 400px and converts to WebP for smaller storage
+ */
+async function createThumbnail(imageDataUrl: string, maxSize = 400): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      // Calculate new dimensions maintaining aspect ratio
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > maxSize) {
+          height = Math.round((height * maxSize) / width);
+          width = maxSize;
+        }
+      } else {
+        if (height > maxSize) {
+          width = Math.round((width * maxSize) / height);
+          height = maxSize;
+        }
+      }
+
+      // Create canvas and draw resized image
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Failed to get canvas context'));
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // Convert to WebP (with fallback to JPEG for older browsers)
+      let dataUrl = canvas.toDataURL('image/webp', 0.8);
+      if (dataUrl.startsWith('data:image/webp')) {
+        resolve(dataUrl);
+      } else {
+        // Fallback to JPEG if WebP not supported
+        dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = () => reject(new Error('Failed to load image for thumbnail'));
+    img.src = imageDataUrl;
+  });
+}
+
+/**
  * Create a Card from parsed data
  */
 function createCard(
@@ -109,7 +160,13 @@ export async function importCardClientSide(file: File): Promise<ClientImportResu
       if (iconAsset?.buffer) {
         const ext = iconAsset.descriptor.ext || 'png';
         const mimeType = ext === 'webp' ? 'image/webp' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
-        imageDataUrl = uint8ArrayToDataURL(iconAsset.buffer, mimeType);
+        const fullImageUrl = uint8ArrayToDataURL(iconAsset.buffer, mimeType);
+        // Create smaller WebP thumbnail
+        try {
+          imageDataUrl = await createThumbnail(fullImageUrl);
+        } catch {
+          imageDataUrl = fullImageUrl; // Fallback to full image if thumbnail fails
+        }
       }
 
       // Note about other assets
@@ -131,8 +188,14 @@ export async function importCardClientSide(file: File): Promise<ClientImportResu
     }
 
     const card = createCard(result.data, result.spec);
-    // Convert PNG buffer to data URL for storage
-    const imageDataUrl = uint8ArrayToDataURL(buffer, 'image/png');
+    // Convert PNG buffer to data URL, then create smaller WebP thumbnail
+    const fullImageUrl = uint8ArrayToDataURL(buffer, 'image/png');
+    let imageDataUrl: string;
+    try {
+      imageDataUrl = await createThumbnail(fullImageUrl);
+    } catch {
+      imageDataUrl = fullImageUrl; // Fallback to full image if thumbnail fails
+    }
     return { card, imageDataUrl, warnings: warnings.length > 0 ? warnings : undefined };
   }
 

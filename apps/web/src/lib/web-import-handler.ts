@@ -45,6 +45,53 @@ function dataURLToUint8Array(dataURL: string): Uint8Array {
 }
 
 /**
+ * Create a thumbnail from image data URL
+ * Resizes to max 400px and converts to WebP for smaller storage
+ */
+async function createThumbnail(imageDataUrl: string, maxSize = 400): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > maxSize) {
+          height = Math.round((height * maxSize) / width);
+          width = maxSize;
+        }
+      } else {
+        if (height > maxSize) {
+          width = Math.round((width * maxSize) / height);
+          height = maxSize;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Failed to get canvas context'));
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, width, height);
+
+      let dataUrl = canvas.toDataURL('image/webp', 0.8);
+      if (dataUrl.startsWith('data:image/webp')) {
+        resolve(dataUrl);
+      } else {
+        dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = () => reject(new Error('Failed to load image'));
+    img.src = imageDataUrl;
+  });
+}
+
+/**
  * Create a Card from parsed data
  */
 function createCard(
@@ -125,7 +172,12 @@ export async function processPendingWebImport(): Promise<WebImportResult> {
       }
 
       card = createCard(result.data, result.spec);
-      imageDataUrl = pending.pngBase64;
+      // Create smaller WebP thumbnail from full image
+      try {
+        imageDataUrl = await createThumbnail(pending.pngBase64);
+      } catch {
+        imageDataUrl = pending.pngBase64; // Fallback to full image
+      }
 
     } else if (pending.cardData) {
       // JSON card data with optional separate avatar (Chub)
@@ -136,7 +188,12 @@ export async function processPendingWebImport(): Promise<WebImportResult> {
       card = createCard(data, isV3 ? 'v3' : 'v2');
 
       if (pending.avatarBase64) {
-        imageDataUrl = pending.avatarBase64;
+        // Create smaller WebP thumbnail from avatar
+        try {
+          imageDataUrl = await createThumbnail(pending.avatarBase64);
+        } catch {
+          imageDataUrl = pending.avatarBase64; // Fallback to full image
+        }
       }
 
     } else {
@@ -146,7 +203,7 @@ export async function processPendingWebImport(): Promise<WebImportResult> {
     // Save card to IndexedDB
     await localDB.saveCard(card);
 
-    // Save image if available
+    // Save thumbnail if available
     if (imageDataUrl) {
       await localDB.saveImage(card.meta.id, 'thumbnail', imageDataUrl);
     }

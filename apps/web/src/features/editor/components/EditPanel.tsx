@@ -419,12 +419,45 @@ export function EditPanel() {
 
                         try {
                           if (isLightMode) {
-                            // Light mode: save to IndexedDB
+                            // Light mode: create thumbnail and save to IndexedDB
                             const reader = new FileReader();
                             reader.onload = async () => {
-                              const dataUrl = reader.result as string;
-                              await localDB.saveImage(currentCard.meta.id, 'thumbnail', dataUrl);
-                              setCachedImageUrl(dataUrl);
+                              const fullDataUrl = reader.result as string;
+                              // Create smaller WebP thumbnail
+                              let thumbnailUrl = fullDataUrl;
+                              try {
+                                const img = new Image();
+                                await new Promise<void>((resolve, reject) => {
+                                  img.onload = () => resolve();
+                                  img.onerror = () => reject();
+                                  img.src = fullDataUrl;
+                                });
+                                let width = img.width;
+                                let height = img.height;
+                                const maxSize = 400;
+                                if (width > height && width > maxSize) {
+                                  height = Math.round((height * maxSize) / width);
+                                  width = maxSize;
+                                } else if (height > maxSize) {
+                                  width = Math.round((width * maxSize) / height);
+                                  height = maxSize;
+                                }
+                                const canvas = document.createElement('canvas');
+                                canvas.width = width;
+                                canvas.height = height;
+                                const ctx = canvas.getContext('2d');
+                                if (ctx) {
+                                  ctx.drawImage(img, 0, 0, width, height);
+                                  thumbnailUrl = canvas.toDataURL('image/webp', 0.8);
+                                  if (!thumbnailUrl.startsWith('data:image/webp')) {
+                                    thumbnailUrl = canvas.toDataURL('image/jpeg', 0.85);
+                                  }
+                                }
+                              } catch {
+                                // Use full image if thumbnail creation fails
+                              }
+                              await localDB.saveImage(currentCard.meta.id, 'thumbnail', thumbnailUrl);
+                              setCachedImageUrl(thumbnailUrl);
                               alert('Image updated successfully!');
                             };
                             reader.readAsDataURL(file);
