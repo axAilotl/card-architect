@@ -189,7 +189,9 @@ export function generateUserscript(
             return { site: 'wyvern', id: path.split('/characters/')[1]?.split('/')[0] };
         }
         if (host === 'character-tavern.com' && path.startsWith('/character/')) {
-            return { site: 'character_tavern', id: path.split('/character/')[1]?.split('/')[0] };
+            // Get both creator and slug for the download URL
+            const parts = path.split('/character/')[1];
+            return { site: 'character_tavern', id: parts?.replace(/\\/$/, '') };
         }
         if (host === 'realm.risuai.net' && path.startsWith('/character/')) {
             return { site: 'risu', id: path.split('/character/')[1]?.split('/')[0] };
@@ -294,60 +296,274 @@ export function generateUserscript(
         });
     }
 
-    // Fetch Wyvern gallery images via their image proxy
-    async function fetchWyvernGalleryImages(characterId) {
+    // Fetch Wyvern gallery images and sprites via their image proxy
+    async function fetchWyvernAssets(characterId) {
+        const result = { galleryImages: [], sprites: [] };
+
         try {
-            console.log('[CA] Fetching gallery data for', characterId);
+            console.log('[CA] Fetching character data for', characterId);
 
             const apiResponse = await fetch(\`https://api.wyvern.chat/characters/\${characterId}\`);
             if (!apiResponse.ok) {
-                console.log('[CA] Gallery API returned', apiResponse.status);
-                return [];
+                console.log('[CA] API returned', apiResponse.status);
+                return result;
             }
 
             const data = await apiResponse.json();
+
+            // Fetch gallery images
             const gallery = data.gallery || [];
+            if (gallery.length > 0) {
+                console.log('[CA] Found', gallery.length, 'gallery images');
 
-            if (gallery.length === 0) {
-                console.log('[CA] No gallery images found');
-                return [];
-            }
+                for (const img of gallery) {
+                    if (!img.imageURL) continue;
 
-            console.log('[CA] Found', gallery.length, 'gallery images');
+                    try {
+                        console.log('[CA] Fetching gallery image:', img.type, img.title);
+                        const proxyUrl = \`https://app.wyvern.chat/api/image-proxy?url=\${encodeURIComponent(img.imageURL)}\`;
+                        const proxyResponse = await fetch(proxyUrl, { credentials: 'include' });
 
-            const galleryImages = [];
-            for (const img of gallery) {
-                if (!img.imageURL) continue;
+                        if (!proxyResponse.ok) {
+                            console.log('[CA] Proxy returned', proxyResponse.status, 'for', img.title);
+                            continue;
+                        }
 
-                try {
-                    console.log('[CA] Fetching gallery image:', img.type, img.title);
-                    const proxyUrl = \`https://app.wyvern.chat/api/image-proxy?url=\${encodeURIComponent(img.imageURL)}\`;
-                    const proxyResponse = await fetch(proxyUrl, { credentials: 'include' });
-
-                    if (!proxyResponse.ok) {
-                        console.log('[CA] Proxy returned', proxyResponse.status, 'for', img.title);
-                        continue;
+                        const proxyData = await proxyResponse.json();
+                        if (proxyData.image) {
+                            result.galleryImages.push({
+                                type: img.type || 'other',
+                                title: img.title || 'gallery',
+                                base64: proxyData.image
+                            });
+                            console.log('[CA] Captured gallery image:', img.title);
+                        }
+                    } catch (imgErr) {
+                        console.error('[CA] Failed to fetch gallery image:', img.title, imgErr);
                     }
-
-                    const proxyData = await proxyResponse.json();
-                    if (proxyData.image) {
-                        galleryImages.push({
-                            type: img.type || 'other',
-                            title: img.title || 'gallery',
-                            base64: proxyData.image
-                        });
-                        console.log('[CA] Captured gallery image:', img.title, proxyData.image.length, 'chars');
-                    }
-                } catch (imgErr) {
-                    console.error('[CA] Failed to fetch gallery image:', img.title, imgErr);
                 }
             }
 
-            return galleryImages;
+            // Fetch emotion sprites
+            const sprites = data.sprite_set?.sprites || [];
+            if (sprites.length > 0) {
+                console.log('[CA] Found', sprites.length, 'emotion sprites');
+
+                for (const sprite of sprites) {
+                    if (!sprite.url || !sprite.emotion) continue;
+
+                    try {
+                        console.log('[CA] Fetching sprite:', sprite.emotion);
+                        const proxyUrl = \`https://app.wyvern.chat/api/image-proxy?url=\${encodeURIComponent(sprite.url)}\`;
+                        const proxyResponse = await fetch(proxyUrl, { credentials: 'include' });
+
+                        if (!proxyResponse.ok) {
+                            console.log('[CA] Proxy returned', proxyResponse.status, 'for sprite', sprite.emotion);
+                            continue;
+                        }
+
+                        const proxyData = await proxyResponse.json();
+                        if (proxyData.image) {
+                            result.sprites.push({
+                                emotion: sprite.emotion,
+                                base64: proxyData.image
+                            });
+                            console.log('[CA] Captured sprite:', sprite.emotion);
+                        }
+                    } catch (spriteErr) {
+                        console.error('[CA] Failed to fetch sprite:', sprite.emotion, spriteErr);
+                    }
+                }
+            }
+
+            console.log('[CA] Total assets:', result.galleryImages.length, 'gallery,', result.sprites.length, 'sprites');
+            return result;
         } catch (err) {
-            console.error('[CA] Failed to fetch gallery:', err);
-            return [];
+            console.error('[CA] Failed to fetch assets:', err);
+            return result;
         }
+    }
+
+    // Fetch Chub card data and assets client-side
+    async function fetchChubData(fullPath) {
+        const [creator, slug] = fullPath.split('/');
+        console.log('[CA] Fetching Chub data for', creator, slug);
+
+        // 1. Fetch metadata
+        const metaUrl = \`https://gateway.chub.ai/api/characters/\${creator}/\${slug}?full=true\`;
+        const metaResponse = await fetch(metaUrl);
+        if (!metaResponse.ok) {
+            throw new Error(\`Chub API returned \${metaResponse.status}\`);
+        }
+        const metaData = await metaResponse.json();
+        const projectId = metaData.node?.id || metaData.node?.definition?.id;
+
+        // 2. Fetch card.json
+        const cardUrl = \`https://gateway.chub.ai/api/v4/projects/\${projectId}/repository/files/card.json/raw?ref=main&response_type=blob\`;
+        const cardResponse = await fetch(cardUrl);
+        if (!cardResponse.ok) {
+            throw new Error(\`Chub card API returned \${cardResponse.status}\`);
+        }
+        const cardData = await cardResponse.json();
+
+        // 3. Fetch avatar as base64
+        let avatarBase64 = null;
+        const avatarUrl = metaData.node?.max_res_url || metaData.node?.avatar_url;
+        if (avatarUrl) {
+            try {
+                const avatarResponse = await fetch(avatarUrl);
+                if (avatarResponse.ok) {
+                    const blob = await avatarResponse.blob();
+                    avatarBase64 = await blobToBase64(blob);
+                    console.log('[CA] Avatar fetched:', avatarBase64.length, 'chars');
+                }
+            } catch (err) {
+                console.warn('[CA] Failed to fetch avatar:', err);
+            }
+        }
+
+        // 4. Fetch expressions as base64
+        const expressions = [];
+        const chubExpressions = metaData.node?.definition?.extensions?.chub?.expressions?.expressions;
+        if (chubExpressions && typeof chubExpressions === 'object') {
+            for (const [emotion, emotionUrl] of Object.entries(chubExpressions)) {
+                if (typeof emotionUrl !== 'string') continue;
+                if (emotionUrl.includes('lfs.charhub.io/lfs/88')) continue; // Skip default placeholder
+
+                try {
+                    const response = await fetch(emotionUrl);
+                    if (response.ok) {
+                        const blob = await response.blob();
+                        const base64 = await blobToBase64(blob);
+                        expressions.push({ emotion, base64 });
+                        console.log('[CA] Expression fetched:', emotion);
+                    }
+                } catch (err) {
+                    console.warn('[CA] Failed to fetch expression:', emotion, err);
+                }
+            }
+        }
+
+        // 5. Fetch gallery images
+        const galleryImages = [];
+        if (metaData.node?.hasGallery && projectId) {
+            try {
+                const galleryUrl = \`https://gateway.chub.ai/api/gallery/project/\${projectId}?limit=48\`;
+                const galleryResponse = await fetch(galleryUrl);
+                if (galleryResponse.ok) {
+                    const galleryData = await galleryResponse.json();
+                    for (const node of (galleryData.nodes || [])) {
+                        if (node.primary_image_path) {
+                            try {
+                                const imgResponse = await fetch(node.primary_image_path);
+                                if (imgResponse.ok) {
+                                    const blob = await imgResponse.blob();
+                                    const base64 = await blobToBase64(blob);
+                                    galleryImages.push({
+                                        name: node.name || node.uuid || 'gallery',
+                                        base64
+                                    });
+                                }
+                            } catch (err) {
+                                console.warn('[CA] Failed to fetch gallery image:', err);
+                            }
+                        }
+                    }
+                    console.log('[CA] Gallery fetched:', galleryImages.length, 'images');
+                }
+            } catch (err) {
+                console.warn('[CA] Failed to fetch gallery:', err);
+            }
+        }
+
+        // 6. Fetch related lorebooks
+        const relatedLorebooks = [];
+        const lorebooksData = metaData.node?.definition?.extensions?.chub?.related_lorebooks;
+        if (Array.isArray(lorebooksData)) {
+            for (const lb of lorebooksData) {
+                if (!lb.id) continue;
+                try {
+                    const lbUrl = \`https://gateway.chub.ai/api/v4/projects/\${lb.id}/repository/files/raw%252Fsillytavern_raw.json/raw?ref=main&response_type=blob\`;
+                    const lbResponse = await fetch(lbUrl);
+                    if (lbResponse.ok) {
+                        const lbData = await lbResponse.json();
+                        relatedLorebooks.push({
+                            id: lb.id,
+                            path: lb.path,
+                            data: lbData
+                        });
+                        console.log('[CA] Lorebook fetched:', lb.id);
+                    }
+                } catch (err) {
+                    console.warn('[CA] Failed to fetch lorebook:', lb.id, err);
+                }
+            }
+        }
+
+        return {
+            cardData,
+            avatarBase64,
+            expressions,
+            galleryImages,
+            relatedLorebooks,
+            meta: { creator, slug, projectId }
+        };
+    }
+
+    // Fetch Risu character data client-side
+    async function fetchRisuData(uuid) {
+        console.log('[CA] Fetching Risu data for', uuid);
+
+        // Try CHARX first
+        try {
+            const charxUrl = \`https://realm.risuai.net/api/v1/download/charx-v3/\${uuid}\`;
+            const charxResponse = await fetch(charxUrl);
+            if (charxResponse.ok) {
+                const blob = await charxResponse.blob();
+                const base64 = await blobToBase64(blob);
+                console.log('[CA] CHARX fetched:', base64.length, 'chars');
+                return { charxBase64: base64, format: 'charx' };
+            }
+        } catch (err) {
+            console.warn('[CA] CHARX failed, trying PNG:', err);
+        }
+
+        // Fallback to PNG
+        const pngUrl = \`https://realm.risuai.net/api/v1/download/png-v3/\${uuid}\`;
+        const pngResponse = await fetch(pngUrl);
+        if (!pngResponse.ok) {
+            throw new Error(\`Risu returned \${pngResponse.status}\`);
+        }
+        const blob = await pngResponse.blob();
+        const base64 = await blobToBase64(blob);
+        console.log('[CA] PNG fetched:', base64.length, 'chars');
+        return { pngBase64: base64, format: 'png' };
+    }
+
+    // Fetch Character Tavern PNG client-side
+    async function fetchCharacterTavernData(pathParts) {
+        const [creator, slug] = pathParts.split('/');
+        console.log('[CA] Fetching Character Tavern data for', creator, slug);
+
+        const pngUrl = \`https://cards.character-tavern.com/\${creator}/\${slug}.png?action=download\`;
+        const pngResponse = await fetch(pngUrl);
+        if (!pngResponse.ok) {
+            throw new Error(\`Character Tavern returned \${pngResponse.status}\`);
+        }
+        const blob = await pngResponse.blob();
+        const base64 = await blobToBase64(blob);
+        console.log('[CA] PNG fetched:', base64.length, 'chars');
+        return { pngBase64: base64 };
+    }
+
+    // Helper: Convert Blob to base64 data URL
+    function blobToBase64(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
     }
 
     async function handleImport(e) {
@@ -371,23 +587,38 @@ export function generateUserscript(
                 characterId: siteInfo.id
             };
 
-            if (siteInfo.site === 'risu') {
-                const downloadInfo = getRisuDownloadInfo();
-                payload.format = downloadInfo.format;
-            }
+            // All sites fetch client-side now - no server fetch needed!
+            btn.innerHTML = \`\${IMPORT_ICON} Fetching data...\`;
 
-            // Wyvern needs client-side fetch
-            if (siteInfo.site === 'wyvern') {
+            if (siteInfo.site === 'chub') {
+                const chubData = await fetchChubData(siteInfo.id);
+                payload.clientData = chubData;
+                console.log('[CA] Chub data ready:', Object.keys(chubData));
+            }
+            else if (siteInfo.site === 'risu') {
+                const risuData = await fetchRisuData(siteInfo.id);
+                payload.clientData = risuData;
+                console.log('[CA] Risu data ready, format:', risuData.format);
+            }
+            else if (siteInfo.site === 'character_tavern') {
+                const ctData = await fetchCharacterTavernData(siteInfo.id);
+                payload.clientData = ctData;
+                console.log('[CA] Character Tavern data ready');
+            }
+            else if (siteInfo.site === 'wyvern') {
                 btn.innerHTML = \`\${IMPORT_ICON} Fetching PNG...\`;
                 payload.pngData = await fetchWyvernPng();
 
-                btn.innerHTML = \`\${IMPORT_ICON} Fetching gallery...\`;
-                const galleryImages = await fetchWyvernGalleryImages(siteInfo.id);
-                if (galleryImages.length > 0) {
-                    payload.clientData = { galleryImages };
-                    console.log('[CA] Sending', galleryImages.length, 'gallery images');
-                }
+                btn.innerHTML = \`\${IMPORT_ICON} Fetching assets...\`;
+                const assets = await fetchWyvernAssets(siteInfo.id);
+                payload.clientData = {
+                    galleryImages: assets.galleryImages,
+                    sprites: assets.sprites
+                };
+                console.log('[CA] Wyvern data ready:', assets.galleryImages.length, 'gallery +', assets.sprites.length, 'sprites');
             }
+
+            btn.innerHTML = \`\${IMPORT_ICON} Sending to server...\`;
 
             const response = await gmFetch(\`\${apiUrl}/web-import\`, {
                 method: 'POST',

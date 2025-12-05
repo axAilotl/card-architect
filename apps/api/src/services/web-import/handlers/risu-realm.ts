@@ -3,21 +3,22 @@
  *
  * Imports character cards from realm.risuai.net
  *
- * ## Formats Supported
- * - CHARX (preferred): ZIP-based CCv3 with embedded assets
- * - PNG: Standard character card PNG with embedded data
- *
- * ## How It Works
+ * ## How It Works (Client-Side Fetch)
+ * The userscript running on Risu's domain fetches the card file directly:
  * 1. Try CHARX first (more data, includes assets)
  * 2. Fall back to PNG if CHARX unavailable
  *
- * ## URLs
- * - CHARX: https://realm.risuai.net/api/v1/download/charx-v3/{uuid}
- * - PNG: https://realm.risuai.net/api/v1/download/png-v3/{uuid}
+ * The server receives the file as base64 - no server-side API calls needed.
+ *
+ * ## clientData Structure (from userscript)
+ * {
+ *   charxBase64?: "data:...",  // CHARX file as base64 (preferred)
+ *   pngBase64?: "data:...",    // PNG file as base64 (fallback)
+ *   format: 'charx' | 'png'    // Which format was fetched
+ * }
  */
 
 import type { SiteHandler, FetchedCard } from '../types.js';
-import { APP_USER_AGENT } from '../constants.js';
 import { extractFromPNG } from '../../../utils/file-handlers.js';
 
 export const risuRealmHandler: SiteHandler = {
@@ -26,63 +27,67 @@ export const risuRealmHandler: SiteHandler = {
   patterns: [/^https?:\/\/(www\.)?realm\.risuai\.net\/character\/([^\/\?#]+)/],
 
   fetchCard: async (
-    url: string,
-    match: RegExpMatchArray
+    _url: string,
+    match: RegExpMatchArray,
+    _clientPngData?: string,
+    clientData?: unknown
   ): Promise<FetchedCard> => {
     const uuid = match[2];
     const warnings: string[] = [];
 
-    // Check for format hint in URL query
-    const urlObj = new URL(url);
-    const formatHint = urlObj.searchParams.get('format');
-
-    // Try CHARX first (it has more data, including embedded assets)
-    if (formatHint !== 'png') {
-      try {
-        const charxUrl = `https://realm.risuai.net/api/v1/download/charx-v3/${uuid}`;
-        const charxResponse = await fetch(charxUrl, {
-          headers: { 'User-Agent': APP_USER_AGENT },
-        });
-
-        if (charxResponse.ok) {
-          const charxBuffer = Buffer.from(await charxResponse.arrayBuffer());
-          return {
-            charxBuffer,
-            assets: [], // Assets are embedded in CHARX
-            warnings,
-            meta: { uuid, source: 'risu-realm', format: 'charx' },
-          };
+    // Client must provide the file data (fetched via userscript on Risu's domain)
+    const risuClientData = clientData as
+      | {
+          charxBase64?: string;
+          pngBase64?: string;
+          format?: 'charx' | 'png';
         }
-      } catch (err) {
-        warnings.push(`CharX download failed, trying PNG: ${err}`);
+      | undefined;
+
+    if (!risuClientData?.charxBase64 && !risuClientData?.pngBase64) {
+      throw new Error('RISU_NEEDS_CLIENT_DATA');
+    }
+
+    // Handle CHARX format (preferred)
+    if (risuClientData.charxBase64) {
+      const base64Part = risuClientData.charxBase64.includes(',')
+        ? risuClientData.charxBase64.split(',')[1]
+        : risuClientData.charxBase64;
+      const charxBuffer = Buffer.from(base64Part, 'base64');
+      console.log(`[Risu] CHARX: ${charxBuffer.length} bytes from client`);
+
+      return {
+        charxBuffer,
+        assets: [], // Assets are embedded in CHARX
+        warnings,
+        meta: { uuid, source: 'risu-realm', format: 'charx' },
+      };
+    }
+
+    // Handle PNG format (fallback)
+    if (risuClientData.pngBase64) {
+      const base64Part = risuClientData.pngBase64.includes(',')
+        ? risuClientData.pngBase64.split(',')[1]
+        : risuClientData.pngBase64;
+      const pngBuffer = Buffer.from(base64Part, 'base64');
+      console.log(`[Risu] PNG: ${pngBuffer.length} bytes from client`);
+
+      // Extract card from PNG (may have embedded base64 assets)
+      const extracted = await extractFromPNG(pngBuffer);
+      if (!extracted) {
+        throw new Error('No card data found in PNG');
       }
+
+      return {
+        cardData: extracted.data,
+        spec: extracted.spec,
+        pngBuffer,
+        assets: [],
+        warnings,
+        meta: { uuid, source: 'risu-realm', format: 'png' },
+      };
     }
 
-    // Try PNG format as fallback
-    const pngUrl = `https://realm.risuai.net/api/v1/download/png-v3/${uuid}`;
-    const pngResponse = await fetch(pngUrl, {
-      headers: { 'User-Agent': APP_USER_AGENT },
-    });
-
-    if (!pngResponse.ok) {
-      throw new Error(`Risu Realm returned ${pngResponse.status}`);
-    }
-
-    const pngBuffer = Buffer.from(await pngResponse.arrayBuffer());
-
-    // Extract card from PNG (may have embedded base64 assets)
-    const extracted = await extractFromPNG(pngBuffer);
-    if (!extracted) {
-      throw new Error('No card data found in PNG');
-    }
-
-    return {
-      cardData: extracted.data,
-      spec: extracted.spec,
-      pngBuffer,
-      assets: [],
-      warnings,
-      meta: { uuid, source: 'risu-realm', format: 'png' },
-    };
+    throw new Error('No valid file data provided by client');
   },
 };

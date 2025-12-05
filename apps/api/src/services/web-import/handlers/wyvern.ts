@@ -8,22 +8,26 @@
  * The userscript hooks URL.createObjectURL to intercept the blob
  * when the user clicks the download button.
  *
- * ## Data Flow
+ * ## Data Flow (100% client-fetched)
  * 1. Userscript intercepts PNG blob from Wyvern's export
  * 2. Userscript fetches gallery images via Wyvern's image proxy
- * 3. Both PNG and gallery data sent to Card Architect
- * 4. Server extracts card data from PNG tEXt chunk
- * 5. Server fetches sprite data from public API
+ * 3. Userscript fetches emotion sprites via Wyvern's image proxy
+ * 4. All data sent to Card Architect as base64
+ * 5. Server just extracts card data from PNG tEXt chunk
  *
- * ## Gallery Images
- * Wyvern gallery images must be fetched client-side via their image proxy:
- * https://app.wyvern.chat/api/image-proxy?url={encodedUrl}
+ * ## Why Client-Side?
+ * - Wyvern's API has no CORS headers
+ * - But userscript runs on Wyvern's domain, so no CORS issue
+ * - Uses their image proxy: https://app.wyvern.chat/api/image-proxy?url={encodedUrl}
  *
- * The userscript sends gallery images as base64 in clientData.
+ * ## clientData Structure
+ * {
+ *   galleryImages: [{ type, title, base64 }],
+ *   sprites: [{ emotion, base64 }]
+ * }
  */
 
 import type { SiteHandler, FetchedCard, AssetToImport } from '../types.js';
-import { APP_USER_AGENT } from '../constants.js';
 import { extractFromPNG } from '../../../utils/file-handlers.js';
 
 export const wyvernHandler: SiteHandler = {
@@ -65,37 +69,29 @@ export const wyvernHandler: SiteHandler = {
       }`
     );
 
-    // Fetch sprites from public API
-    const apiUrl = `https://api.wyvern.chat/characters/${characterId}`;
-    try {
-      const apiResponse = await fetch(apiUrl, {
-        headers: { 'User-Agent': APP_USER_AGENT },
-      });
-
-      if (apiResponse.ok) {
-        const apiData = (await apiResponse.json()) as Record<string, any>;
-
-        if (apiData.sprite_set?.sprites) {
-          for (const sprite of apiData.sprite_set.sprites) {
-            if (sprite.emotion && sprite.url) {
-              assets.push({
-                type: 'emotion',
-                name: sprite.emotion,
-                url: sprite.url,
-              });
-            }
-          }
-        }
-      }
-    } catch (err) {
-      warnings.push(`Could not fetch sprite data: ${err}`);
-    }
-
-    // Handle gallery images from client (fetched via proxy)
-    // clientData: { galleryImages: [{ type, title, base64 }] }
+    // Handle assets from client (fetched via Wyvern's image proxy)
+    // clientData: { galleryImages: [...], sprites: [...] }
     const wyvernClientData = clientData as
-      | { galleryImages?: Array<{ type: string; title: string; base64: string }> }
+      | {
+          galleryImages?: Array<{ type: string; title: string; base64: string }>;
+          sprites?: Array<{ emotion: string; base64: string }>;
+        }
       | undefined;
+
+    // Handle sprites from client
+    if (wyvernClientData?.sprites && Array.isArray(wyvernClientData.sprites)) {
+      for (const sprite of wyvernClientData.sprites) {
+        if (!sprite.base64 || !sprite.emotion) continue;
+
+        assets.push({
+          type: 'emotion',
+          name: sprite.emotion,
+          url: '',
+          base64Data: sprite.base64,
+        });
+      }
+      console.log(`Wyvern sprites: ${wyvernClientData.sprites.length} received from client`);
+    }
 
     if (
       wyvernClientData?.galleryImages &&

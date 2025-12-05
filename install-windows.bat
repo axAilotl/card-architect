@@ -16,7 +16,7 @@ if %errorlevel% neq 0 (
 )
 
 :: Set variables
-set NVM_VERSION=1.1.12
+set NVM_VERSION=1.2.2
 set NODE_VERSION=22
 set INSTALL_DIR=%USERPROFILE%
 
@@ -130,33 +130,25 @@ echo [INFO] Visual Studio Build Tools not found. Installing...
 echo [INFO] This is required to compile native Node.js modules (better-sqlite3, sharp).
 echo.
 
-:: Use npm to install windows-build-tools (includes VS Build Tools + Python)
-echo [INFO] Installing windows-build-tools via npm...
-echo [INFO] This may take 10-20 minutes. Please be patient.
-echo.
+:: Download VS Build Tools installer directly (windows-build-tools is deprecated)
+echo [INFO] Downloading Visual Studio Build Tools installer...
+powershell -Command "& {[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://aka.ms/vs/17/release/vs_buildtools.exe' -OutFile '%TEMP%\vs_buildtools.exe'}"
 
-npm install --global windows-build-tools --vs2022
-
-if %errorlevel% neq 0 (
-    echo.
-    echo [WARN] Automatic install failed. Trying alternative method...
-    echo.
-
-    :: Download VS Build Tools installer directly
-    echo [INFO] Downloading Visual Studio Build Tools installer...
-    powershell -Command "& {[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://aka.ms/vs/17/release/vs_buildtools.exe' -OutFile '%TEMP%\vs_buildtools.exe'}"
-
-    if exist "%TEMP%\vs_buildtools.exe" (
-        echo [INFO] Running Visual Studio Build Tools installer...
-        echo [INFO] Select "Desktop development with C++" workload.
-        start /wait "" "%TEMP%\vs_buildtools.exe" --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive --norestart
+if exist "%TEMP%\vs_buildtools.exe" (
+    echo [INFO] Running Visual Studio Build Tools installer...
+    echo [INFO] Installing C++ build tools (this may take 5-15 minutes)...
+    start /wait "" "%TEMP%\vs_buildtools.exe" --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive --norestart
+    if %errorlevel% equ 0 (
         echo [OK] Visual Studio Build Tools installation complete.
     ) else (
-        echo [ERROR] Failed to download VS Build Tools.
-        echo [INFO] Please install manually from: https://visualstudio.microsoft.com/visual-cpp-build-tools/
-        echo [INFO] Select "Desktop development with C++" workload.
-        pause
+        echo [WARN] VS Build Tools installer exited with code %errorlevel%
+        echo [INFO] If installation succeeded, you can continue.
     )
+) else (
+    echo [ERROR] Failed to download VS Build Tools.
+    echo [INFO] Please install manually from: https://visualstudio.microsoft.com/visual-cpp-build-tools/
+    echo [INFO] Select "Desktop development with C++" workload.
+    pause
 )
 
 :install_deps
