@@ -149,9 +149,12 @@ export function getDeploymentConfig(): DeploymentConfig {
     mode = explicitMode;
   } else {
     // Auto-detect: check if we're on localhost (likely dev with server) or a static host
-    const isLocalhost = typeof window !== 'undefined' &&
-      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-    mode = isLocalhost ? 'full' : 'light';
+    const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+    const isLocalDev = hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname.endsWith('.local') ||
+      hostname.includes('.local.');
+    mode = isLocalDev ? 'full' : 'light';
   }
 
   switch (mode) {
