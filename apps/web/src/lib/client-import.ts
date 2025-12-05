@@ -34,10 +34,17 @@ async function readFileAsArrayBuffer(file: File): Promise<Uint8Array> {
 }
 
 /**
- * Convert Uint8Array to data URL
+ * Convert Uint8Array to data URL (chunk-safe for large buffers)
  */
 function uint8ArrayToDataURL(buffer: Uint8Array, mimeType: string): string {
-  const base64 = btoa(String.fromCharCode(...buffer));
+  // Process in chunks to avoid stack overflow
+  const chunkSize = 8192;
+  let binary = '';
+  for (let i = 0; i < buffer.length; i += chunkSize) {
+    const chunk = buffer.subarray(i, Math.min(i + chunkSize, buffer.length));
+    binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+  }
+  const base64 = btoa(binary);
   return `data:${mimeType};base64,${base64}`;
 }
 

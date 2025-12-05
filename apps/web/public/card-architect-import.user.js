@@ -1,34 +1,26 @@
 // ==UserScript==
-// @name         Card Architect - Web Import
+// @name         Card Architect - Web Import (Client-Side)
 // @namespace    https://card-architect.local
-// @version      1.0.2
-// @description  Send character cards from supported sites to Card Architect
+// @version      2.0.0
+// @description  Import character cards from supported sites directly to Card Architect (works with hosted/static deployments)
 // @author       Card Architect
 // @match        https://chub.ai/characters/*
 // @match        https://www.chub.ai/characters/*
 // @match        https://venus.chub.ai/characters/*
 // @match        https://app.wyvern.chat/characters/*
-// @match        https://charactertavern.com/character/*
+// @match        https://character-tavern.com/character/*
 // @match        https://realm.risuai.net/character/*
-// @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
-// @connect      localhost
-// @connect      127.0.0.1
-// @connect      192.168.1.220
-// @connect      192.168.0.1
-// @connect      192.168.1.1
-// @connect      10.0.0.1
 // ==/UserScript==
-// NOTE: If your Card Architect server is on a different IP, edit this script
-// and add your IP to the @connect list above, then save.
 
 (function() {
     'use strict';
 
-    // Configuration
-    const DEFAULT_API_URL = 'http://localhost:3001/api';
+    // Default Card Architect URL - can be configured via menu
+    const DEFAULT_APP_URL = 'https://ca.axailotl.ai';
+
     const BUTTON_STYLES = `
         .ca-import-btn {
             display: inline-flex;
@@ -73,39 +65,25 @@
             animation: ca-slide-in 0.3s ease;
             max-width: 400px;
         }
-        .ca-toast.success {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-        }
-        .ca-toast.error {
-            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-        }
-        .ca-toast.info {
-            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-        }
-        .ca-toast a {
-            color: white;
-            text-decoration: underline;
-        }
+        .ca-toast.success { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+        .ca-toast.error { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+        .ca-toast.info { background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); }
         @keyframes ca-slide-in {
             from { transform: translateX(100%); opacity: 0; }
             to { transform: translateX(0); opacity: 1; }
         }
     `;
 
-    // Icon SVG
-    const IMPORT_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+    const IMPORT_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
 
-    // Get API URL from storage
-    function getApiUrl() {
-        return GM_getValue('cardArchitectApiUrl', DEFAULT_API_URL);
+    function getAppUrl() {
+        return GM_getValue('cardArchitectAppUrl', DEFAULT_APP_URL);
     }
 
-    // Set API URL
-    function setApiUrl(url) {
-        GM_setValue('cardArchitectApiUrl', url);
+    function setAppUrl(url) {
+        GM_setValue('cardArchitectAppUrl', url);
     }
 
-    // Show toast notification
     function showToast(message, type = 'info', duration = 5000) {
         const toast = document.createElement('div');
         toast.className = `ca-toast ${type}`;
@@ -117,14 +95,12 @@
         }, duration);
     }
 
-    // Inject styles
     function injectStyles() {
         const style = document.createElement('style');
         style.textContent = BUTTON_STYLES;
         document.head.appendChild(style);
     }
 
-    // Create import button
     function createButton() {
         const btn = document.createElement('button');
         btn.className = 'ca-import-btn';
@@ -133,19 +109,19 @@
         return btn;
     }
 
-    // Detect current site
     function detectSite() {
         const host = window.location.hostname;
         const path = window.location.pathname;
 
         if (host.includes('chub.ai')) {
-            return { site: 'chub', id: extractChubId(path) };
+            const match = path.match(/\/characters\/([^/]+\/[^/]+)/);
+            return match ? { site: 'chub', id: match[1] } : null;
         }
         if (host === 'app.wyvern.chat' && path.startsWith('/characters/')) {
             return { site: 'wyvern', id: path.split('/characters/')[1]?.split('/')[0] };
         }
-        if (host === 'charactertavern.com' && path.startsWith('/character/')) {
-            return { site: 'character_tavern', id: path.split('/character/')[1]?.split('/')[0] };
+        if (host === 'character-tavern.com' && path.startsWith('/character/')) {
+            return { site: 'character_tavern', id: path.split('/character/')[1]?.replace(/\/$/, '') };
         }
         if (host === 'realm.risuai.net' && path.startsWith('/character/')) {
             return { site: 'risu', id: path.split('/character/')[1]?.split('/')[0] };
@@ -153,28 +129,154 @@
         return null;
     }
 
-    // Extract Chub ID from path
-    function extractChubId(path) {
-        // Format: /characters/username/character-name
-        const match = path.match(/\/characters\/([^/]+\/[^/]+)/);
-        return match ? match[1] : null;
+    // Helper: Convert Blob to base64 data URL
+    function blobToBase64(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
     }
 
-    // Get Risu download info from page
-    function getRisuDownloadInfo() {
-        // Look for download button/link that indicates format
-        const downloadBtn = document.querySelector('a[href*="download"], button[data-format]');
-        if (downloadBtn) {
-            const href = downloadBtn.getAttribute('href') || '';
-            if (href.includes('.charx') || href.includes('format=charx')) {
-                return { format: 'charx' };
+    // Fetch Chub card data
+    async function fetchChubData(fullPath) {
+        const [creator, slug] = fullPath.split('/');
+        console.log('[CA] Fetching Chub data for', creator, slug);
+
+        // Fetch metadata
+        const metaUrl = `https://gateway.chub.ai/api/characters/${creator}/${slug}?full=true`;
+        const metaResponse = await fetch(metaUrl);
+        if (!metaResponse.ok) throw new Error(`Chub API returned ${metaResponse.status}`);
+        const metaData = await metaResponse.json();
+        const projectId = metaData.node?.id || metaData.node?.definition?.id;
+
+        // Fetch card.json
+        const cardUrl = `https://gateway.chub.ai/api/v4/projects/${projectId}/repository/files/card.json/raw?ref=main&response_type=blob`;
+        const cardResponse = await fetch(cardUrl);
+        if (!cardResponse.ok) throw new Error(`Chub card API returned ${cardResponse.status}`);
+        const cardData = await cardResponse.json();
+
+        // Fetch avatar as base64
+        let avatarBase64 = null;
+        const avatarUrl = metaData.node?.max_res_url || metaData.node?.avatar_url;
+        if (avatarUrl) {
+            try {
+                const avatarResponse = await fetch(avatarUrl);
+                if (avatarResponse.ok) {
+                    const blob = await avatarResponse.blob();
+                    avatarBase64 = await blobToBase64(blob);
+                }
+            } catch (err) {
+                console.warn('[CA] Failed to fetch avatar:', err);
             }
         }
-        // Default to PNG (will be determined server-side)
-        return { format: 'auto' };
+
+        return { cardData, avatarBase64, meta: { creator, slug, projectId } };
     }
 
-    // Handle import click
+    // Fetch Risu character data
+    async function fetchRisuData(uuid) {
+        console.log('[CA] Fetching Risu data for', uuid);
+
+        // Try PNG (more compatible)
+        const pngUrl = `https://realm.risuai.net/api/v1/download/png-v3/${uuid}`;
+        const pngResponse = await fetch(pngUrl);
+        if (!pngResponse.ok) throw new Error(`Risu returned ${pngResponse.status}`);
+
+        const blob = await pngResponse.blob();
+        const base64 = await blobToBase64(blob);
+        return { pngBase64: base64 };
+    }
+
+    // Fetch Character Tavern data
+    async function fetchCharacterTavernData(pathParts) {
+        const [creator, slug] = pathParts.split('/');
+        console.log('[CA] Fetching Character Tavern data for', creator, slug);
+
+        const pngUrl = `https://cards.character-tavern.com/${creator}/${slug}.png?action=download`;
+        const pngResponse = await fetch(pngUrl);
+        if (!pngResponse.ok) throw new Error(`Character Tavern returned ${pngResponse.status}`);
+
+        const blob = await pngResponse.blob();
+        const base64 = await blobToBase64(blob);
+        return { pngBase64: base64 };
+    }
+
+    // Fetch Wyvern data (intercept download)
+    async function fetchWyvernData(characterId) {
+        console.log('[CA] Fetching Wyvern data for', characterId);
+
+        return new Promise((resolve, reject) => {
+            const originalCreateObjectURL = URL.createObjectURL.bind(URL);
+            let captured = false;
+
+            URL.createObjectURL = function(blob) {
+                const url = originalCreateObjectURL(blob);
+
+                if (!captured && blob instanceof Blob && blob.type === 'image/png') {
+                    console.log('[CA] Intercepted PNG blob:', blob.size, 'bytes');
+                    captured = true;
+                    URL.createObjectURL = originalCreateObjectURL;
+
+                    const reader = new FileReader();
+                    reader.onload = () => resolve({ pngBase64: reader.result });
+                    reader.onerror = () => reject(new Error('Failed to read blob'));
+                    reader.readAsDataURL(blob);
+                }
+
+                return url;
+            };
+
+            // Find and click download button
+            const findAndClickDownload = () => {
+                const selectors = [
+                    'button[aria-label*="download" i]',
+                    'button[aria-label*="export" i]',
+                    'a[download]',
+                ];
+
+                for (const sel of selectors) {
+                    const btn = document.querySelector(sel);
+                    if (btn) {
+                        btn.click();
+                        return true;
+                    }
+                }
+
+                const buttons = document.querySelectorAll('button');
+                for (const btn of buttons) {
+                    const text = btn.textContent?.toLowerCase() || '';
+                    if (text.includes('download') || text.includes('export') || text.includes('png')) {
+                        btn.click();
+                        return true;
+                    }
+                }
+
+                return false;
+            };
+
+            let attempts = 0;
+            const tryClick = () => {
+                if (findAndClickDownload()) {
+                    setTimeout(() => {
+                        if (!captured) {
+                            URL.createObjectURL = originalCreateObjectURL;
+                            reject(new Error('Timeout waiting for PNG blob'));
+                        }
+                    }, 10000);
+                } else if (++attempts < 10) {
+                    setTimeout(tryClick, 500);
+                } else {
+                    URL.createObjectURL = originalCreateObjectURL;
+                    reject(new Error('Could not find download button'));
+                }
+            };
+
+            tryClick();
+        });
+    }
+
     async function handleImport(e) {
         const btn = e.target.closest('.ca-import-btn');
         if (!btn || btn.disabled) return;
@@ -186,42 +288,44 @@
         }
 
         btn.disabled = true;
-        btn.innerHTML = `${IMPORT_ICON} Importing...`;
+        btn.innerHTML = `${IMPORT_ICON} Fetching data...`;
 
         try {
-            const apiUrl = getApiUrl();
-            const payload = {
-                url: window.location.href,
+            let importData = {
                 site: siteInfo.site,
-                characterId: siteInfo.id
+                url: window.location.href,
+                timestamp: Date.now()
             };
 
-            // Add Risu format info if applicable
-            if (siteInfo.site === 'risu') {
-                const downloadInfo = getRisuDownloadInfo();
-                payload.format = downloadInfo.format;
+            // Fetch data based on site
+            if (siteInfo.site === 'chub') {
+                const data = await fetchChubData(siteInfo.id);
+                importData.cardData = data.cardData;
+                importData.avatarBase64 = data.avatarBase64;
+            } else if (siteInfo.site === 'risu') {
+                const data = await fetchRisuData(siteInfo.id);
+                importData.pngBase64 = data.pngBase64;
+            } else if (siteInfo.site === 'character_tavern') {
+                const data = await fetchCharacterTavernData(siteInfo.id);
+                importData.pngBase64 = data.pngBase64;
+            } else if (siteInfo.site === 'wyvern') {
+                btn.innerHTML = `${IMPORT_ICON} Click download...`;
+                const data = await fetchWyvernData(siteInfo.id);
+                importData.pngBase64 = data.pngBase64;
             }
 
-            const response = await gmFetch(`${apiUrl}/web-import`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
+            // Store in localStorage for the web app to pick up
+            localStorage.setItem('ca-pending-import', JSON.stringify(importData));
 
-            const result = JSON.parse(response);
+            // Open Card Architect
+            const appUrl = getAppUrl();
+            btn.innerHTML = `${IMPORT_ICON} Opening app...`;
 
-            if (result.success) {
-                const cardUrl = `${apiUrl.replace('/api', '')}/#/cards/${result.cardId}`;
-                showToast(
-                    `Successfully imported "${result.name}"!<br><a href="${cardUrl}" target="_blank">Open in Card Architect</a>`,
-                    'success',
-                    8000
-                );
-            } else {
-                throw new Error(result.error || 'Import failed');
-            }
+            showToast('Opening Card Architect...', 'success', 3000);
+            window.open(`${appUrl}/#/import-pending`, '_blank');
+
         } catch (err) {
-            console.error('Card Architect import error:', err);
+            console.error('[CA] Import error:', err);
             showToast(`Import failed: ${err.message}`, 'error');
         } finally {
             btn.disabled = false;
@@ -229,33 +333,9 @@
         }
     }
 
-    // GM_xmlhttpRequest wrapper that returns a promise
-    function gmFetch(url, options = {}) {
-        return new Promise((resolve, reject) => {
-            GM_xmlhttpRequest({
-                method: options.method || 'GET',
-                url: url,
-                headers: options.headers || {},
-                data: options.body,
-                onload: (response) => {
-                    if (response.status >= 200 && response.status < 300) {
-                        resolve(response.responseText);
-                    } else {
-                        reject(new Error(`HTTP ${response.status}: ${response.statusText}`));
-                    }
-                },
-                onerror: (error) => reject(new Error('Network error')),
-                ontimeout: () => reject(new Error('Request timeout'))
-            });
-        });
-    }
-
-    // Site-specific button injection
     const siteInjectors = {
         chub: () => {
-            // Wait for the page to load and find a good insertion point
             const observer = new MutationObserver((mutations, obs) => {
-                // Look for the action buttons area (download, etc.)
                 const actionArea = document.querySelector('.flex.gap-2, [class*="actions"], [class*="buttons"]');
                 if (actionArea && !document.querySelector('.ca-import-btn')) {
                     actionArea.appendChild(createButton());
@@ -264,30 +344,19 @@
             });
             observer.observe(document.body, { childList: true, subtree: true });
 
-            // Fallback: inject after 3 seconds if not found
             setTimeout(() => {
                 if (!document.querySelector('.ca-import-btn')) {
-                    const fallback = document.querySelector('main, article, .container') || document.body;
                     const btn = createButton();
                     btn.style.position = 'fixed';
                     btn.style.top = '80px';
                     btn.style.right = '20px';
                     btn.style.zIndex = '9999';
-                    fallback.appendChild(btn);
+                    document.body.appendChild(btn);
                 }
             }, 3000);
         },
 
         wyvern: () => {
-            const observer = new MutationObserver((mutations, obs) => {
-                const actionArea = document.querySelector('[class*="action"], [class*="button-group"], .flex.gap');
-                if (actionArea && !document.querySelector('.ca-import-btn')) {
-                    actionArea.appendChild(createButton());
-                    obs.disconnect();
-                }
-            });
-            observer.observe(document.body, { childList: true, subtree: true });
-
             setTimeout(() => {
                 if (!document.querySelector('.ca-import-btn')) {
                     const btn = createButton();
@@ -297,19 +366,10 @@
                     btn.style.zIndex = '9999';
                     document.body.appendChild(btn);
                 }
-            }, 3000);
+            }, 2000);
         },
 
         character_tavern: () => {
-            const observer = new MutationObserver((mutations, obs) => {
-                const downloadBtn = document.querySelector('a[download], button[class*="download"]');
-                if (downloadBtn && !document.querySelector('.ca-import-btn')) {
-                    downloadBtn.parentElement.appendChild(createButton());
-                    obs.disconnect();
-                }
-            });
-            observer.observe(document.body, { childList: true, subtree: true });
-
             setTimeout(() => {
                 if (!document.querySelector('.ca-import-btn')) {
                     const btn = createButton();
@@ -319,19 +379,10 @@
                     btn.style.zIndex = '9999';
                     document.body.appendChild(btn);
                 }
-            }, 3000);
+            }, 2000);
         },
 
         risu: () => {
-            const observer = new MutationObserver((mutations, obs) => {
-                const actionArea = document.querySelector('[class*="download"], [class*="action"], .flex.gap');
-                if (actionArea && !document.querySelector('.ca-import-btn')) {
-                    actionArea.appendChild(createButton());
-                    obs.disconnect();
-                }
-            });
-            observer.observe(document.body, { childList: true, subtree: true });
-
             setTimeout(() => {
                 if (!document.querySelector('.ca-import-btn')) {
                     const btn = createButton();
@@ -341,21 +392,20 @@
                     btn.style.zIndex = '9999';
                     document.body.appendChild(btn);
                 }
-            }, 3000);
+            }, 2000);
         }
     };
 
-    // Register menu command for settings
-    GM_registerMenuCommand('Configure Card Architect API URL', () => {
-        const current = getApiUrl();
-        const newUrl = prompt('Enter Card Architect API URL:', current);
+    // Menu command to configure URL
+    GM_registerMenuCommand('Configure Card Architect URL', () => {
+        const current = getAppUrl();
+        const newUrl = prompt('Enter Card Architect URL:', current);
         if (newUrl && newUrl.trim()) {
-            setApiUrl(newUrl.trim());
-            showToast(`API URL updated to: ${newUrl.trim()}`, 'success');
+            setAppUrl(newUrl.trim());
+            showToast(`App URL updated to: ${newUrl.trim()}`, 'success');
         }
     });
 
-    // Initialize
     function init() {
         const siteInfo = detectSite();
         if (!siteInfo) return;
@@ -368,7 +418,6 @@
         }
     }
 
-    // Run on page load
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {
