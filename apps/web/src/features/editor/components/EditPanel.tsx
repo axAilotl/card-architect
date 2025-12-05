@@ -3,6 +3,8 @@ import { useCardStore, extractCardData } from '../../../store/card-store';
 import { useSettingsStore } from '../../../store/settings-store';
 import { useTokenStore } from '../../../store/token-store';
 import { useLLMStore } from '../../../store/llm-store';
+import { localDB } from '../../../lib/db';
+import { getDeploymentConfig } from '../../../config/deployment';
 import type { CCFieldName, FocusField, Template, Snippet } from '@card-architect/schemas';
 import { FieldEditor } from './FieldEditor';
 import { LorebookEditor } from './LorebookEditor';
@@ -35,6 +37,19 @@ export function EditPanel() {
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [templatesField, setTemplatesField] = useState<FocusField>('description');
   const [templatesValue, setTemplatesValue] = useState('');
+
+  const [cachedImageUrl, setCachedImageUrl] = useState<string | null>(null);
+  const config = getDeploymentConfig();
+  const isLightMode = config.mode === 'light' || config.mode === 'static';
+
+  // Load cached image from IndexedDB in light mode
+  useEffect(() => {
+    if (isLightMode && currentCard?.meta?.id) {
+      localDB.getImage(currentCard.meta.id, 'thumbnail').then((imageData) => {
+        setCachedImageUrl(imageData);
+      });
+    }
+  }, [isLightMode, currentCard?.meta?.id]);
 
   if (!currentCard) return null;
 
@@ -361,21 +376,29 @@ export function EditPanel() {
               <div className="flex gap-6 items-start">
                 {/* Image Preview - larger with proper aspect ratio */}
                 <div className="w-64 bg-dark-bg border border-dark-border rounded overflow-hidden flex-shrink-0">
-                  <img
-                    src={`/api/cards/${currentCard.meta.id}/image?t=${Date.now()}`}
-                    alt="Character Avatar"
-                    className="w-full h-auto object-contain"
-                    style={{ minHeight: '256px', maxHeight: '384px' }}
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                      const parent = e.currentTarget.parentElement;
-                      if (parent) {
-                        parent.classList.add('flex', 'items-center', 'justify-center');
-                        parent.style.height = '256px';
-                        parent.innerHTML = '<div class="text-dark-muted text-sm">No Image</div>';
-                      }
-                    }}
-                  />
+                  {(isLightMode ? cachedImageUrl : true) ? (
+                    <img
+                      src={isLightMode ? (cachedImageUrl || '') : `/api/cards/${currentCard.meta.id}/image?t=${Date.now()}`}
+                      alt="Character Avatar"
+                      className="w-full h-auto object-contain"
+                      style={{ minHeight: '256px', maxHeight: '384px', display: (isLightMode && !cachedImageUrl) ? 'none' : 'block' }}
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        const parent = e.currentTarget.parentElement;
+                        if (parent && !parent.querySelector('.no-image-placeholder')) {
+                          const placeholder = document.createElement('div');
+                          placeholder.className = 'no-image-placeholder flex items-center justify-center text-dark-muted text-sm';
+                          placeholder.style.height = '256px';
+                          placeholder.textContent = 'No Image';
+                          parent.appendChild(placeholder);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center text-dark-muted text-sm" style={{ height: '256px' }}>
+                      No Image
+                    </div>
+                  )}
                 </div>
 
                 {/* Upload Controls */}
@@ -395,25 +418,38 @@ export function EditPanel() {
                         if (!file) return;
 
                         try {
-                          const formData = new FormData();
-                          formData.append('file', file);
+                          if (isLightMode) {
+                            // Light mode: save to IndexedDB
+                            const reader = new FileReader();
+                            reader.onload = async () => {
+                              const dataUrl = reader.result as string;
+                              await localDB.saveImage(currentCard.meta.id, 'thumbnail', dataUrl);
+                              setCachedImageUrl(dataUrl);
+                              alert('Image updated successfully!');
+                            };
+                            reader.readAsDataURL(file);
+                          } else {
+                            // Server mode: upload via API
+                            const formData = new FormData();
+                            formData.append('file', file);
 
-                          const response = await fetch(`/api/cards/${currentCard.meta.id}/image`, {
-                            method: 'POST',
-                            body: formData,
-                          });
+                            const response = await fetch(`/api/cards/${currentCard.meta.id}/image`, {
+                              method: 'POST',
+                              body: formData,
+                            });
 
-                          if (!response.ok) {
-                            throw new Error('Failed to upload image');
+                            if (!response.ok) {
+                              throw new Error('Failed to upload image');
+                            }
+
+                            // Force image reload by updating the timestamp in the src
+                            const img = document.querySelector(`img[src*="/api/cards/${currentCard.meta.id}/image"]`) as HTMLImageElement;
+                            if (img) {
+                              img.src = `/api/cards/${currentCard.meta.id}/image?t=${Date.now()}`;
+                            }
+
+                            alert('Image updated successfully!');
                           }
-
-                          // Force image reload by updating the timestamp in the src
-                          const img = document.querySelector(`img[src*="/api/cards/${currentCard.meta.id}/image"]`) as HTMLImageElement;
-                          if (img) {
-                            img.src = `/api/cards/${currentCard.meta.id}/image?t=${Date.now()}`;
-                          }
-
-                          alert('Image updated successfully!');
                         } catch (error) {
                           console.error('Failed to upload image:', error);
                           alert('Failed to upload image. Please try again.');

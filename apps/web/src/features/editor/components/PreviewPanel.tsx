@@ -1,7 +1,9 @@
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { useCardStore, extractCardData } from '../../../store/card-store';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { localDB } from '../../../lib/db';
+import { getDeploymentConfig } from '../../../config/deployment';
 
 // Custom marked extension to support image sizing syntax: ![alt](url =widthxheight)
 // This handles syntax like: ![image](url =100%x100%) or ![image](url =400x300)
@@ -64,6 +66,19 @@ export function PreviewPanel() {
   const currentCard = useCardStore((state) => state.currentCard);
   const [viewMode, setViewMode] = useState<'preview' | 'raw'>('preview');
   const [copied, setCopied] = useState(false);
+  const [cachedImageUrl, setCachedImageUrl] = useState<string | null>(null);
+
+  const config = getDeploymentConfig();
+  const isLightMode = config.mode === 'light' || config.mode === 'static';
+
+  // Load cached image from IndexedDB in light mode
+  useEffect(() => {
+    if (isLightMode && currentCard?.meta?.id) {
+      localDB.getImage(currentCard.meta.id, 'thumbnail').then((imageData) => {
+        setCachedImageUrl(imageData);
+      });
+    }
+  }, [isLightMode, currentCard?.meta?.id]);
 
   if (!currentCard) return null;
   const cardId = currentCard.meta.id;
@@ -126,21 +141,29 @@ export function PreviewPanel() {
             {/* Large centered thumbnail */}
             <div className="flex justify-center mb-6">
               <div className="w-64 bg-dark-bg border border-dark-border rounded-lg overflow-hidden shadow-lg">
-                <img
-                  src={`/api/cards/${cardId}/image?t=${Date.now()}`}
-                  alt="Character Avatar"
-                  className="w-full h-auto object-contain"
-                  style={{ minHeight: '256px', maxHeight: '384px' }}
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                    const parent = e.currentTarget.parentElement;
-                    if (parent) {
-                      parent.classList.add('flex', 'items-center', 'justify-center');
-                      parent.style.height = '256px';
-                      parent.innerHTML = '<div class="text-dark-muted text-sm">No Image</div>';
-                    }
-                  }}
-                />
+                {(isLightMode ? cachedImageUrl : true) ? (
+                  <img
+                    src={isLightMode ? (cachedImageUrl || '') : `/api/cards/${cardId}/image?t=${Date.now()}`}
+                    alt="Character Avatar"
+                    className="w-full h-auto object-contain"
+                    style={{ minHeight: '256px', maxHeight: '384px', display: (isLightMode && !cachedImageUrl) ? 'none' : 'block' }}
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                      const parent = e.currentTarget.parentElement;
+                      if (parent && !parent.querySelector('.no-image-placeholder')) {
+                        const placeholder = document.createElement('div');
+                        placeholder.className = 'no-image-placeholder flex items-center justify-center text-dark-muted text-sm';
+                        placeholder.style.height = '256px';
+                        placeholder.textContent = 'No Image';
+                        parent.appendChild(placeholder);
+                      }
+                    }}
+                  />
+                ) : (
+                  <div className="flex items-center justify-center text-dark-muted text-sm" style={{ height: '256px' }}>
+                    No Image
+                  </div>
+                )}
               </div>
             </div>
 

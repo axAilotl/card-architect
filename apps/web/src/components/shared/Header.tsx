@@ -4,6 +4,8 @@ import { useTokenStore } from '../../store/token-store';
 import { useSettingsStore } from '../../store/settings-store';
 import { SettingsModal } from './SettingsModal';
 import { api } from '../../lib/api';
+import { localDB } from '../../lib/db';
+import { getDeploymentConfig } from '../../config/deployment';
 import { useNavigate } from 'react-router-dom';
 import { SillyTavernClient, shouldUseClientSidePush, type SillyTavernSettings } from '../../lib/sillytavern-client';
 
@@ -22,17 +24,32 @@ export function Header({ onBack }: HeaderProps) {
   const [showImportMenu, setShowImportMenu] = useState(false);
   const [pushStatus, setPushStatus] = useState<{type: 'success' | 'error'; message: string} | null>(null);
   const [stSettings, setStSettings] = useState<SillyTavernSettings | null>(null);
+  const [cachedAvatarUrl, setCachedAvatarUrl] = useState<string | null>(null);
 
-  // Load SillyTavern settings for client-side push
+  const config = getDeploymentConfig();
+  const isLightMode = config.mode === 'light' || config.mode === 'static';
+
+  // Load SillyTavern settings for client-side push (server mode only)
   useEffect(() => {
-    if (sillytavernEnabled) {
+    if (sillytavernEnabled && !isLightMode) {
       api.getSillyTavernSettings().then((result) => {
         if (result.data?.settings) {
           setStSettings(result.data.settings as SillyTavernSettings);
         }
       });
     }
-  }, [sillytavernEnabled]);
+  }, [sillytavernEnabled, isLightMode]);
+
+  // Load cached avatar from IndexedDB in light mode
+  useEffect(() => {
+    if (isLightMode && currentCard?.meta?.id) {
+      localDB.getImage(currentCard.meta.id, 'thumbnail').then((imageData) => {
+        setCachedAvatarUrl(imageData);
+      });
+    } else {
+      setCachedAvatarUrl(null);
+    }
+  }, [isLightMode, currentCard?.meta?.id]);
 
   // Calculate permanent tokens (name + description + personality + scenario)
   const getPermanentTokens = () => {
@@ -54,6 +71,10 @@ export function Header({ onBack }: HeaderProps) {
   // Get character avatar URL - use thumbnail endpoint for fast loading
   const getAvatarUrl = () => {
     if (!currentCard?.meta?.id) return null;
+    // In light mode, use cached avatar from IndexedDB
+    if (isLightMode) {
+      return cachedAvatarUrl;
+    }
     const timestamp = currentCard.meta.updatedAt || '';
     return `/api/cards/${currentCard.meta.id}/thumbnail?size=96&t=${timestamp}`;
   };
@@ -85,6 +106,10 @@ export function Header({ onBack }: HeaderProps) {
 
   const handleImportURL = async () => {
     setShowImportMenu(false);
+    if (isLightMode) {
+      alert('URL import requires a server. Please use file import or the userscript instead.');
+      return;
+    }
     const url = prompt('Enter the URL to the character card (PNG, JSON, or CHARX file):');
     if (url && url.trim()) {
       const id = await useCardStore.getState().importCardFromURL(url.trim());
@@ -122,29 +147,25 @@ export function Header({ onBack }: HeaderProps) {
       return;
     }
 
-    // Check if we should use client-side push (localhost ST)
-    const useClientSide = stSettings && shouldUseClientSidePush(stSettings);
-    console.log('[pushToST] Using client-side push:', useClientSide);
+    // Check if we should use client-side push (localhost ST or light mode)
+    const useClientSide = stSettings && (shouldUseClientSidePush(stSettings) || isLightMode);
+    console.log('[pushToST] Using client-side push:', useClientSide, 'isLightMode:', isLightMode);
 
     if (useClientSide && stSettings) {
       // Client-side push: fetch image, generate PNG, push directly to ST
       try {
-        // Fetch original image from server
-        const imageResponse = await fetch(`/api/cards/${currentCard.meta.id}/original-image`);
         let imageBuffer: Uint8Array;
 
-        if (imageResponse.ok) {
-          const arrayBuffer = await imageResponse.arrayBuffer();
-          imageBuffer = new Uint8Array(arrayBuffer);
-        } else {
-          // Create a placeholder image if none exists
-          console.log('[pushToST] No image found, using placeholder');
-          // Use a simple 1x1 transparent PNG as placeholder
-          // Real PNG generation happens in createCardPNG
-          const placeholderResponse = await fetch('/placeholder-avatar.png');
-          if (placeholderResponse.ok) {
-            const arrayBuffer = await placeholderResponse.arrayBuffer();
-            imageBuffer = new Uint8Array(arrayBuffer);
+        if (isLightMode) {
+          // Light mode: use cached image from IndexedDB
+          const imageData = await localDB.getImage(currentCard.meta.id, 'thumbnail');
+          if (imageData) {
+            const base64 = imageData.split(',')[1];
+            const binary = atob(base64);
+            imageBuffer = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+              imageBuffer[i] = binary.charCodeAt(i);
+            }
           } else {
             // Minimal valid PNG (1x1 gray pixel)
             imageBuffer = new Uint8Array([
@@ -158,6 +179,35 @@ export function Header({ onBack }: HeaderProps) {
               0xA2, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, // IEND chunk
               0x44, 0xAE, 0x42, 0x60, 0x82
             ]);
+          }
+        } else {
+          // Server mode: fetch original image from server
+          const imageResponse = await fetch(`/api/cards/${currentCard.meta.id}/original-image`);
+
+          if (imageResponse.ok) {
+            const arrayBuffer = await imageResponse.arrayBuffer();
+            imageBuffer = new Uint8Array(arrayBuffer);
+          } else {
+            // Create a placeholder image if none exists
+            console.log('[pushToST] No image found, using placeholder');
+            const placeholderResponse = await fetch('/placeholder-avatar.png');
+            if (placeholderResponse.ok) {
+              const arrayBuffer = await placeholderResponse.arrayBuffer();
+              imageBuffer = new Uint8Array(arrayBuffer);
+            } else {
+              // Minimal valid PNG (1x1 gray pixel)
+              imageBuffer = new Uint8Array([
+                0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
+                0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
+                0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+                0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+                0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41, // IDAT chunk
+                0x54, 0x08, 0xD7, 0x63, 0x60, 0x60, 0x60, 0x00,
+                0x00, 0x00, 0x04, 0x00, 0x01, 0x5C, 0xCD, 0xFF,
+                0xA2, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, // IEND chunk
+                0x44, 0xAE, 0x42, 0x60, 0x82
+              ]);
+            }
           }
         }
 
@@ -188,6 +238,16 @@ export function Header({ onBack }: HeaderProps) {
       }
     } else {
       // Server-side push (fallback for non-localhost or when settings not loaded)
+      if (isLightMode) {
+        // Light mode requires SillyTavern settings for client-side push
+        setPushStatus({
+          type: 'error',
+          message: 'SillyTavern push requires configuring SillyTavern settings first'
+        });
+        setTimeout(() => setPushStatus(null), 8000);
+        return;
+      }
+
       try {
         const result = await api.pushToSillyTavern(currentCard.meta.id);
 

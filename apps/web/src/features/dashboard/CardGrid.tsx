@@ -3,6 +3,8 @@ import { useCardStore, extractCardData } from '../../store/card-store';
 import { api } from '../../lib/api';
 import { localDB } from '../../lib/db';
 import { getDeploymentConfig } from '../../config/deployment';
+import { importCardClientSide } from '../../lib/client-import';
+import { exportCard as exportCardClientSide } from '../../lib/client-export';
 import type { Card, CCv3Data } from '@card-architect/schemas';
 import { SettingsModal } from '../../components/shared/SettingsModal';
 
@@ -138,18 +140,26 @@ export function CardGrid({ onCardClick }: CardGridProps) {
 
     if (!confirm(`Are you sure you want to delete ${selectedCards.size} card(s)?`)) return;
 
-    const deletePromises = Array.from(selectedCards).map(cardId => api.deleteCard(cardId));
+    const config = getDeploymentConfig();
 
     try {
-      const results = await Promise.allSettled(deletePromises);
+      if (config.mode === 'light' || config.mode === 'static') {
+        // Client-side mode: delete from IndexedDB
+        const deletePromises = Array.from(selectedCards).map(cardId => localDB.deleteCard(cardId));
+        await Promise.all(deletePromises);
+      } else {
+        // Server mode: delete via API
+        const deletePromises = Array.from(selectedCards).map(cardId => api.deleteCard(cardId));
+        const results = await Promise.allSettled(deletePromises);
 
-      const failedDeletes = results
-        .map((result, index) => ({ result, cardId: Array.from(selectedCards)[index] }))
-        .filter(({ result }) => result.status === 'rejected');
+        const failedDeletes = results
+          .map((result, index) => ({ result, cardId: Array.from(selectedCards)[index] }))
+          .filter(({ result }) => result.status === 'rejected');
 
-      if (failedDeletes.length > 0) {
-        console.error('Some deletes failed:', failedDeletes);
-        alert(`${selectedCards.size - failedDeletes.length} cards deleted, ${failedDeletes.length} failed`);
+        if (failedDeletes.length > 0) {
+          console.error('Some deletes failed:', failedDeletes);
+          alert(`${selectedCards.size - failedDeletes.length} cards deleted, ${failedDeletes.length} failed`);
+        }
       }
 
       // Reload cards, clear selection, and exit selection mode
@@ -170,14 +180,27 @@ export function CardGrid({ onCardClick }: CardGridProps) {
   const handleExport = async (cardId: string, format: 'json' | 'png', e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const response = await fetch(`/api/cards/${cardId}/export?format=${format}`);
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `card.${format}`;
-      a.click();
-      URL.revokeObjectURL(url);
+      const config = getDeploymentConfig();
+
+      if (config.mode === 'light' || config.mode === 'static') {
+        // Client-side mode: export from IndexedDB
+        const card = cards.find(c => c.meta.id === cardId);
+        if (!card) {
+          console.error('Card not found');
+          return;
+        }
+        await exportCardClientSide(card, format);
+      } else {
+        // Server mode: export via API
+        const response = await fetch(`/api/cards/${cardId}/export?format=${format}`);
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `card.${format}`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
     } catch (error) {
       console.error('Failed to export card:', error);
     }
@@ -188,17 +211,25 @@ export function CardGrid({ onCardClick }: CardGridProps) {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
+    const config = getDeploymentConfig();
+
     try {
       // Single file import - use existing store method
       if (files.length === 1) {
         const file = files[0];
         let id = null;
+
         if (file.name.endsWith('.voxpkg')) {
+          if (config.mode === 'light' || config.mode === 'static') {
+            alert('Voxta package import is not supported in light mode');
+            e.target.value = '';
+            return;
+          }
           id = await useCardStore.getState().importVoxtaPackage(file);
         } else {
           id = await importCard(file);
         }
-        
+
         await loadCards();
         if (id) {
           onCardClick(id);
@@ -208,6 +239,55 @@ export function CardGrid({ onCardClick }: CardGridProps) {
       }
 
       // Multiple file import
+      if (config.mode === 'light' || config.mode === 'static') {
+        // Client-side mode: import each file individually
+        let successCount = 0;
+        let failCount = 0;
+        const failures: Array<{ filename: string; error: string }> = [];
+
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          try {
+            if (file.name.endsWith('.voxpkg')) {
+              failures.push({ filename: file.name, error: 'Voxta packages not supported in light mode' });
+              failCount++;
+              continue;
+            }
+
+            const result = await importCardClientSide(file);
+            await localDB.saveCard(result.card);
+            if (result.imageDataUrl) {
+              await localDB.saveImage(result.card.meta.id, 'thumbnail', result.imageDataUrl);
+            }
+            successCount++;
+          } catch (err) {
+            failures.push({
+              filename: file.name,
+              error: err instanceof Error ? err.message : String(err),
+            });
+            failCount++;
+          }
+        }
+
+        let message = `Import complete: ${successCount} succeeded`;
+        if (failCount > 0) {
+          message += `, ${failCount} failed`;
+          console.group('Failed card imports');
+          for (const failure of failures) {
+            console.error(`${failure.filename}: ${failure.error}`);
+          }
+          console.groupEnd();
+          const failedNames = failures.map(f => f.filename).join(', ');
+          message += `\n\nFailed files: ${failedNames}\n\nCheck browser console for error details.`;
+        }
+
+        alert(message);
+        await loadCards();
+        e.target.value = '';
+        return;
+      }
+
+      // Server mode: multiple file import via API
       const formData = new FormData();
       for (let i = 0; i < files.length; i++) {
         formData.append('files', files[i]);
@@ -257,6 +337,13 @@ export function CardGrid({ onCardClick }: CardGridProps) {
 
   const handleImportURL = async () => {
     setShowImportMenu(false);
+
+    const config = getDeploymentConfig();
+    if (config.mode === 'light' || config.mode === 'static') {
+      alert('URL import requires a server. Please use file import or the userscript instead.');
+      return;
+    }
+
     const url = prompt('Enter the URL to the character card (PNG, JSON, or CHARX file):');
     if (url && url.trim()) {
       const id = await importCardFromURL(url.trim());

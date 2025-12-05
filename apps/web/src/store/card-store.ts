@@ -6,6 +6,7 @@ import { extractCardData } from '../lib/card-utils';
 import { useTokenStore } from './token-store';
 import { getDeploymentConfig } from '../config/deployment';
 import { importCardClientSide } from '../lib/client-import';
+import { exportCard as exportCardClientSide } from '../lib/client-export';
 
 export { extractCardData };
 
@@ -389,6 +390,19 @@ export const useCardStore = create<CardStore>((set, get) => ({
       return;
     }
 
+    const config = getDeploymentConfig();
+
+    // Client-side mode: use client export
+    if (config.mode === 'light' || config.mode === 'static') {
+      if (format === 'charx' || format === 'voxta') {
+        alert(`${format.toUpperCase()} export requires a server. Only JSON and PNG are available in light mode.`);
+        return;
+      }
+      await exportCardClientSide(currentCard, format as 'json' | 'png');
+      return;
+    }
+
+    // Server mode: use API
     const { data, error } = await api.exportCard(currentCard.meta.id, format);
     if (error) {
       return;
@@ -399,12 +413,12 @@ export const useCardStore = create<CardStore>((set, get) => ({
       const url = URL.createObjectURL(data);
       const a = document.createElement('a');
       a.href = url;
-      
+
       let ext: string = format;
       if (format === 'voxta') {
           ext = 'voxpkg';
       }
-      
+
       a.download = `${currentCard.meta.name}.${ext}`;
       a.click();
       URL.revokeObjectURL(url);
