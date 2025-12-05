@@ -88,7 +88,7 @@ export function getDiscoveredModules(): Array<{
  * Modules that should be hidden in light/static modes
  * These require server-side functionality that's not available in client-only deployments
  */
-const SERVER_ONLY_MODULES = ['comfyui'];
+const SERVER_ONLY_MODULES = ['comfyui', 'webimport', 'charx-optimizer'];
 
 /**
  * Register all module metadata from discovered modules

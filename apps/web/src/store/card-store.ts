@@ -337,6 +337,36 @@ export const useCardStore = create<CardStore>((set, get) => ({
           console.log('[importCard] Saved thumbnail, size:', result.thumbnailDataUrl.length);
         }
 
+        // Save extracted assets (from CHARX/Voxta) to IndexedDB
+        if (result.assets && result.assets.length > 0) {
+          console.log(`[importCard] Saving ${result.assets.length} extracted assets`);
+          for (const asset of result.assets) {
+            const assetId = crypto.randomUUID();
+            // Map string type to valid StoredAsset type
+            const validTypes = ['icon', 'background', 'emotion', 'sound', 'workflow', 'lorebook', 'custom'] as const;
+            const assetType = validTypes.includes(asset.type as any) ? asset.type as typeof validTypes[number] : 'custom';
+
+            await localDB.saveAsset({
+              id: assetId,
+              cardId: card.meta.id,
+              name: asset.name,
+              type: assetType,
+              ext: asset.ext,
+              mimetype: asset.mimetype,
+              data: asset.data,
+              size: asset.size,
+              width: asset.width,
+              height: asset.height,
+              isMain: asset.isMain ?? false,
+              actorIndex: asset.actorIndex,
+              tags: [],
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            });
+          }
+          console.log('[importCard] All assets saved to IndexedDB');
+        }
+
         set({ currentCard: card, isDirty: false });
         useTokenStore.getState().updateTokenCounts(card);
         return card.meta.id;

@@ -8,6 +8,7 @@
 import { lazy } from 'react';
 import { registry } from '../../lib/registry';
 import { useSettingsStore } from '../../store/settings-store';
+import { getModuleDefault } from '../../config/deployment';
 import type { ModuleDefinition } from '../../lib/registry/types';
 
 /**
@@ -42,7 +43,11 @@ export function registerSillytavernModule(): void {
     row: 'modules',
     color: 'pink',
     order: 70,
-    condition: () => useSettingsStore.getState().features?.sillytavernEnabled ?? false,
+    condition: () => {
+      const featureFlag = useSettingsStore.getState().features?.sillytavernEnabled;
+      // If user has explicitly set the flag, use that; otherwise use deployment default
+      return featureFlag !== undefined ? featureFlag : getModuleDefault('sillytavern');
+    },
   });
 
   console.log('[sillytavern] Module registered (settings panel)');

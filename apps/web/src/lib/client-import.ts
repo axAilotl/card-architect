@@ -10,10 +10,25 @@ import { extractCharx } from '@card-architect/charx';
 import { extractVoxtaPackage, voxtaToCCv3 } from '@card-architect/voxta';
 import type { Card, CCv2Data, CCv3Data } from '@card-architect/schemas';
 
+// Asset extracted from CHARX/Voxta for storing in IndexedDB
+export interface ExtractedAsset {
+  name: string;
+  type: string;
+  ext: string;
+  mimetype: string;
+  data: string; // data URL
+  size: number;
+  width?: number;
+  height?: number;
+  isMain?: boolean;
+  actorIndex?: number;
+}
+
 export interface ClientImportResult {
   card: Card;
   fullImageDataUrl?: string; // Original PNG for export
   thumbnailDataUrl?: string; // Small WebP for display
+  assets?: ExtractedAsset[]; // Additional assets from CHARX/Voxta
   warnings?: string[];
 }
 
@@ -266,7 +281,7 @@ export async function importCardClientSide(file: File): Promise<ClientImportResu
       const charxData = extractCharx(buffer);
       const card = createCard(charxData.card, 'v3');
 
-      // Try to extract icon from assets
+      // Try to extract icon from assets for thumbnail
       let fullImageDataUrl: string | undefined;
       let thumbnailDataUrl: string | undefined;
       const iconAsset = charxData.assets.find(
@@ -284,12 +299,46 @@ export async function importCardClientSide(file: File): Promise<ClientImportResu
         }
       }
 
-      // Note about other assets
-      if (charxData.assets.length > 1) {
-        warnings.push(`${charxData.assets.length - (iconAsset ? 1 : 0)} additional assets not imported (client-side mode)`);
+      // Extract ALL assets for storing in IndexedDB
+      const extractedAssets: ExtractedAsset[] = [];
+      for (const asset of charxData.assets) {
+        if (asset.buffer) {
+          const ext = asset.descriptor.ext || 'png';
+          let mimeType = 'application/octet-stream';
+          if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) {
+            mimeType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+          } else if (['mp3', 'wav', 'ogg', 'webm'].includes(ext)) {
+            mimeType = `audio/${ext}`;
+          } else if (['mp4'].includes(ext)) {
+            mimeType = 'video/mp4';
+          } else if (ext === 'json') {
+            mimeType = 'application/json';
+          }
+
+          // Determine if this is the main asset based on type being 'icon' or name
+          const isIcon = asset.descriptor.type === 'icon';
+
+          extractedAssets.push({
+            name: asset.descriptor.name || asset.path.split('/').pop()?.replace(/\.[^.]+$/, '') || 'asset',
+            type: asset.descriptor.type || 'custom',
+            ext,
+            mimetype: mimeType,
+            data: uint8ArrayToDataURL(asset.buffer, mimeType),
+            size: asset.buffer.length,
+            isMain: isIcon, // Icons are the main asset
+          });
+        }
       }
 
-      return { card, fullImageDataUrl, thumbnailDataUrl, warnings: warnings.length > 0 ? warnings : undefined };
+      console.log(`[client-import] Extracted ${extractedAssets.length} assets from CHARX`);
+
+      return {
+        card,
+        fullImageDataUrl,
+        thumbnailDataUrl,
+        assets: extractedAssets.length > 0 ? extractedAssets : undefined,
+        warnings: warnings.length > 0 ? warnings : undefined,
+      };
     } catch (err) {
       throw new Error(`Failed to parse CHARX: ${err instanceof Error ? err.message : String(err)}`);
     }

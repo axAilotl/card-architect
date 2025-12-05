@@ -117,17 +117,6 @@ export function Header({ onBack }: HeaderProps) {
     input.click();
   };
 
-  const handleImportURL = async () => {
-    setShowImportMenu(false);
-    const url = prompt('Enter the URL to the character card (PNG, JSON, or CHARX file):');
-    if (url && url.trim()) {
-      const id = await useCardStore.getState().importCardFromURL(url.trim());
-      if (id) {
-        navigate(`/cards/${id}`);
-      }
-    }
-  };
-
   const handleExport = async (format: 'json' | 'png' | 'charx' | 'voxta') => {
     setShowExportMenu(false);
     await useCardStore.getState().exportCard(format);
@@ -166,8 +155,8 @@ export function Header({ onBack }: HeaderProps) {
         let imageBuffer: Uint8Array;
 
         if (isLightMode) {
-          // Light mode: use cached image from IndexedDB
-          const imageData = await localDB.getImage(currentCard.meta.id, 'thumbnail');
+          // Light mode: use full PNG icon from IndexedDB (not thumbnail which is WebP)
+          const imageData = await localDB.getImage(currentCard.meta.id, 'icon');
           if (imageData) {
             const base64 = imageData.split(',')[1];
             const binary = atob(base64);
@@ -358,17 +347,10 @@ export function Header({ onBack }: HeaderProps) {
               <div className="absolute right-0 mt-1 bg-dark-surface border border-dark-border rounded shadow-lg z-50 min-w-[150px]">
                 <button
                   onClick={handleImportFile}
-                  className="block w-full px-4 py-2 text-left hover:bg-slate-700 rounded-t"
+                  className="block w-full px-4 py-2 text-left hover:bg-slate-700 rounded"
                   title="Import from local file (JSON, PNG, CHARX, or VOXPKG)"
                 >
                   From File
-                </button>
-                <button
-                  onClick={handleImportURL}
-                  className="block w-full px-4 py-2 text-left hover:bg-slate-700 rounded-b"
-                  title="Import from URL (direct link to PNG, JSON, or CHARX)"
-                >
-                  From URL
                 </button>
               </div>
             </>

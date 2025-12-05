@@ -8,6 +8,7 @@
 import { lazy } from 'react';
 import { registry } from '../../lib/registry';
 import { useSettingsStore } from '../../store/settings-store';
+import { getModuleDefault } from '../../config/deployment';
 import type { ModuleDefinition } from '../../lib/registry/types';
 
 /**
@@ -41,7 +42,12 @@ const WwwyzzerddSettings = lazy(() =>
  * Works in all modes - uses client-side LLM in light/static mode
  */
 function isWwwyzzerddAvailable(): boolean {
-  return useSettingsStore.getState().features?.wwwyzzerddEnabled ?? false;
+  const featureFlag = useSettingsStore.getState().features?.wwwyzzerddEnabled;
+  // If user has explicitly set the flag, use that; otherwise use deployment default
+  if (featureFlag !== undefined) {
+    return featureFlag;
+  }
+  return getModuleDefault('wwwyzzerdd');
 }
 
 /**
