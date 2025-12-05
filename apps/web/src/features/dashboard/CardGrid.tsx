@@ -36,10 +36,12 @@ export function CardGrid({ onCardClick }: CardGridProps) {
     setLoading(true);
     try {
       const config = getDeploymentConfig();
+      console.log('[CardGrid] Loading cards, mode:', config.mode);
 
       // Client-side mode: load from IndexedDB
       if (config.mode === 'light' || config.mode === 'static') {
         const localCards = await localDB.listCards();
+        console.log('[CardGrid] Found', localCards.length, 'cards in IndexedDB');
         setCards(localCards);
 
         // Load cached images for each card
@@ -50,6 +52,7 @@ export function CardGrid({ onCardClick }: CardGridProps) {
             images.set(card.meta.id, imageData);
           }
         }
+        console.log('[CardGrid] Loaded', images.size, 'cached images');
         setCachedImages(images);
       } else {
         // Server mode: load from API

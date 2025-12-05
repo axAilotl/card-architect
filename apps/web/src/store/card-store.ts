@@ -297,26 +297,33 @@ export const useCardStore = create<CardStore>((set, get) => ({
   // Import card
   importCard: async (file) => {
     const config = getDeploymentConfig();
+    console.log('[importCard] Mode:', config.mode, 'File:', file.name);
 
     // Use client-side import for light/static modes
     if (config.mode === 'light' || config.mode === 'static') {
       try {
+        console.log('[importCard] Using client-side import');
         const result = await importCardClientSide(file);
         const card = result.card;
+        console.log('[importCard] Parsed card:', card.meta.name, 'hasImage:', !!result.imageDataUrl);
 
         // Save to IndexedDB for persistence
         await localDB.saveCard(card);
+        console.log('[importCard] Saved card to IndexedDB');
 
         // Save card image if available
         if (result.imageDataUrl) {
           await localDB.saveImage(card.meta.id, 'thumbnail', result.imageDataUrl);
+          console.log('[importCard] Saved thumbnail to IndexedDB, size:', result.imageDataUrl.length);
+        } else {
+          console.warn('[importCard] No image data available for card');
         }
 
         set({ currentCard: card, isDirty: false });
         useTokenStore.getState().updateTokenCounts(card);
         return card.meta.id;
       } catch (err) {
-        console.error('Client-side import failed:', err);
+        console.error('[importCard] Client-side import failed:', err);
         return null;
       }
     }
