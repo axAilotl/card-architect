@@ -19,15 +19,23 @@
     "build:api": "npm run build --workspace=@card-architect/api",
     "build:web": "npm run build --workspace=@card-architect/web",
     "test": "npm run test --workspaces --if-present",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:export": "playwright test card-export.spec.ts",
+    "test:e2e:ui-elements": "playwright test ui-elements.spec.ts",
+    "test:e2e:parity": "playwright test parity.spec.ts",
+    "test:e2e:report": "playwright show-report",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
     "clean": "rm -rf node_modules apps/*/node_modules packages/*/node_modules apps/*/dist packages/*/dist"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
+    "@playwright/test": "^1.57.0",
     "@types/node": "^20.11.0",
     "concurrently": "^8.2.2",
     "eslint": "^9.17.0",
+    "playwright": "^1.57.0",
     "prettier": "^3.2.4",
     "typescript": "^5.3.3",
     "typescript-eslint": "^8.18.2"
