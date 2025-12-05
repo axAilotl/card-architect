@@ -140,7 +140,19 @@ const STATIC_CONFIG: DeploymentConfig = {
  * Get deployment configuration based on environment
  */
 export function getDeploymentConfig(): DeploymentConfig {
-  const mode = (import.meta.env.VITE_DEPLOYMENT_MODE as DeploymentMode) || 'full';
+  // Check for explicit mode setting
+  const explicitMode = import.meta.env.VITE_DEPLOYMENT_MODE as DeploymentMode;
+
+  // If no explicit mode, auto-detect: if running on a static host (not localhost with API), use light mode
+  let mode: DeploymentMode;
+  if (explicitMode) {
+    mode = explicitMode;
+  } else {
+    // Auto-detect: check if we're on localhost (likely dev with server) or a static host
+    const isLocalhost = typeof window !== 'undefined' &&
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    mode = isLocalhost ? 'full' : 'light';
+  }
 
   switch (mode) {
     case 'light':
