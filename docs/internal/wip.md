@@ -1,6 +1,43 @@
-# Federation WIP - What Still Needs To Be Done
+# Work In Progress - Current Status
 
-## Current State
+## Recent Fixes (2024-12-07)
+
+### 1. Defaults Package Consolidation - FIXED
+All shared default data now lives in `@card-architect/defaults`:
+- `packages/defaults/assets/templates.json` - Character card templates
+- `packages/defaults/assets/snippets.json` - Reusable text snippets
+- `packages/defaults/assets/presets.json` - LLM assist presets
+- `packages/defaults/assets/wwwyzzerdd-prompts.json` - AI wizard prompts (NEW)
+
+**Web app files now import from defaults:**
+- `default-presets.ts` - imports from `@card-architect/defaults`
+- `default-wwwyzzerdd.ts` - imports from `@card-architect/defaults`
+- `default-templates.ts` - already was importing correctly
+
+### 2. Deployment Mode Fixes - FIXED
+**Web Import disabled in LITE/static modes:**
+- `deployment.ts` LIGHT_CONFIG: `webImport: false`, `webimport: false`
+- `deployment.ts` STATIC_CONFIG: already had it disabled
+
+**Deployment modes:**
+- **Full**: All features, self-hosted with API backend
+- **Light**: Minimal server, client-side processing, Web Import DISABLED
+- **Static**: No server (Cloudflare/GitHub Pages), Web Import DISABLED
+
+### 3. Asset Storage in LITE Mode - FIXED
+Assets from CHARX/Voxta imports were not being saved to IndexedDB.
+
+**Fixed locations:**
+- `client-import.ts`: Voxta imports now extract assets (was just showing warning)
+- `card-store.ts` `importVoxtaPackage`: Now saves assets to IndexedDB
+- `card-store.ts` `importCardFromURL`: Now saves assets to IndexedDB
+- `card-store.ts` `importCard`: Already was saving assets (confirmed working)
+
+---
+
+## Federation WIP - What Still Needs To Be Done
+
+### Current State
 
 Federation is partially implemented:
 - Server endpoints exist at `/api/federation/*`
@@ -9,7 +46,7 @@ Federation is partially implemented:
 - Badges show sync state on cards
 - Push to ST works (federation-first, fallback to direct)
 
-## What's Working
+### What's Working
 
 - [x] Federation API endpoints on Card Architect server
 - [x] LocalEditorAdapter dual-mode (IndexedDB vs API)
@@ -18,9 +55,9 @@ Federation is partially implemented:
 - [x] ST/AR/HUB badges on cards
 - [x] Federation-first push to SillyTavern
 
-## What's NOT Working / Needs Implementation
+### What's NOT Working / Needs Implementation
 
-### Critical
+#### Critical
 
 1. **Pull from Platforms**
    - Currently only PUSH is implemented
@@ -43,7 +80,7 @@ Federation is partially implemented:
    - Currently no conflict detection or resolution
    - Need UI for user to choose which version to keep
 
-### Important
+#### Important
 
 5. **Periodic Polling**
    - Currently only polls on CardGrid mount
@@ -65,80 +102,42 @@ Federation is partially implemented:
    - Need user-visible error messages
    - Need offline queue for pending syncs
 
-### Nice to Have
+#### Nice to Have
 
-9. **Sync History**
-   - Show when each card was last synced
-   - Show sync direction (push/pull)
-   - File: New SyncHistory component
+9. **Sync History** - Show when each card was last synced
+10. **Selective Sync** - Let user choose which cards to sync
+11. **Sync Status Indicator** - Show overall sync status in header
+12. **Federation Settings UI** - Full settings UI with connection tests
 
-10. **Selective Sync**
-    - Let user choose which cards to sync
-    - Don't auto-sync everything
-    - Per-card sync settings
+---
 
-11. **Sync Status Indicator**
-    - Show overall sync status in header
-    - "Syncing...", "All synced", "3 pending"
-    - Show when last full sync happened
+## Known Issues
 
-12. **Federation Settings UI**
-    - Currently settings are probably broken
-    - Need proper UI for:
-      - Enable/disable per platform
-      - Set base URLs
-      - API keys for AR/HUB
-      - Test connection button
+### Templates/Snippets/Presets
+- [x] FIXED: Now all import from `@card-architect/defaults` package
+- [x] FIXED: Parity between LITE and FULL modes
 
-## Files That Need Work
+### Asset Display
+- [x] FIXED: CHARX assets are extracted and stored
+- [x] FIXED: Voxta assets are now extracted and stored
+- [ ] TODO: Verify CCv3 cards with `data.assets` array display in Assets tab
 
-| File | What's Needed |
-|------|---------------|
-| `Header.tsx` | Pull buttons, sync dropdown, status indicator |
-| `federation-store.ts` | Use SyncEngine, add pull methods, periodic poll |
-| `CardGrid.tsx` | More sync actions on cards, sync indicators |
-| `FederationSettings.tsx` | Full settings UI with connection tests |
-| `adapters.ts` | Asset sync implementation |
-| `api/federation.ts` | Asset upload endpoint, WebSocket support |
+### Settings Modal
+- [ ] TODO: Consider breaking 2289-line SettingsModal into smaller components
+- The modal works but is quite large
 
-## Test Plan
+---
 
-1. Start Card Architect full mode
-2. Connect to SillyTavern (with CForge plugin)
-3. Create card in CA, push to ST
-4. Verify card appears in ST
-5. Edit card in ST, poll from CA
-6. Verify changes appear in CA
-7. Delete card in ST, poll from CA
-8. Verify card shows as deleted/removed
+## Files Changed Today
 
-## Known Bugs
-
-- Polling may not work if platform returns different card structure
-- Name matching is fragile (case-sensitive, exact match)
-- Sync state stored in IndexedDB even in full mode (should be server-side?)
-- federatedId generation may not be unique enough
-
-## Architecture Questions
-
-1. Should sync state live on server or client?
-   - Currently: Client (IndexedDB)
-   - Maybe: Server for persistence across devices
-
-2. Should we use SyncEngine or keep manual sync?
-   - SyncEngine handles conflicts, ordering, etc.
-   - But adds complexity
-
-3. How to handle large card collections?
-   - Pagination in outbox
-   - Incremental sync (since parameter)
-   - Currently: Fetch everything every time
-
-## Priority Order
-
-1. Push to AR/HUB (easy, just copy ST pattern)
-2. Pull from all platforms (medium, needs UI)
-3. Use SyncEngine (hard, needs architecture changes)
-4. Periodic polling (easy, just setInterval)
-5. Asset sync (medium)
-6. Everything else (as needed)
+| File | Change |
+|------|--------|
+| `apps/web/src/config/deployment.ts` | Disabled webimport in LIGHT_CONFIG |
+| `packages/defaults/src/index.ts` | Added WwwyzzerddPromptSet type and export |
+| `packages/defaults/assets/wwwyzzerdd-prompts.json` | NEW - wizard prompts |
+| `apps/web/src/lib/default-presets.ts` | Now imports from defaults |
+| `apps/web/src/lib/default-wwwyzzerdd.ts` | Now imports from defaults |
+| `apps/web/src/lib/client-import.ts` | Fixed Voxta asset extraction |
+| `apps/web/src/store/card-store.ts` | Fixed asset saving in all import paths |
+| `AGENTS.md` | Updated with defaults package info |
+| `docs/internal/CLAUDE.md` | Updated architecture section |
