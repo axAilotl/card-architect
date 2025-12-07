@@ -9,16 +9,6 @@
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
-    "@card-architect/defaults": "^1.0.0",
-    "@character-foundry/charx": "file:../../../card-ecosystem/character-foundry/packages/charx",
-    "@character-foundry/core": "file:../../../card-ecosystem/character-foundry/packages/core",
-    "@character-foundry/exporter": "file:../../../card-ecosystem/character-foundry/packages/exporter",
-    "@character-foundry/federation": "file:../../../card-ecosystem/character-foundry/packages/federation",
-    "@character-foundry/loader": "file:../../../card-ecosystem/character-foundry/packages/loader",
-    "@character-foundry/normalizer": "file:../../../card-ecosystem/character-foundry/packages/normalizer",
-    "@character-foundry/png": "file:../../../card-ecosystem/character-foundry/packages/png",
-    "@character-foundry/schemas": "file:../../../card-ecosystem/character-foundry/packages/schemas",
-    "@character-foundry/tokenizers": "file:../../../card-ecosystem/character-foundry/packages/tokenizers",
     "@character-foundry/voxta": "file:../../../card-ecosystem/character-foundry/packages/voxta",
     "@codemirror/lang-html": "^6.4.11",
     "@codemirror/lang-markdown": "^6.2.4",
