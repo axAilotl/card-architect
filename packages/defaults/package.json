@@ -15,7 +15,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@character-foundry/schemas": "file:../../../card-ecosystem/character-foundry/packages/schemas"
+    "@character-foundry/schemas": "^0.0.1"
   },
   "devDependencies": {
     "typescript": "^5.3.3"
