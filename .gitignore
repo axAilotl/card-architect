@@ -49,6 +49,7 @@ testing/
 
 # Documentation (keep local only)
 # docs/
+docs/internal/
 AGENTS.md
 
 # Temporary
