@@ -9,7 +9,8 @@
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
-    "@character-foundry/voxta": "file:../../../card-ecosystem/character-foundry/packages/voxta",
+    "@card-architect/defaults": "^1.0.0",
+    "@character-foundry/charx": "file:../../../card-ecosystem/character-foundry/packages/charx",
     "@codemirror/lang-html": "^6.4.11",
     "@codemirror/lang-markdown": "^6.2.4",
     "@dnd-kit/core": "^6.3.1",
