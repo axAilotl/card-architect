@@ -152,6 +152,7 @@ Card Architect is a monorepo with:
 /apps/api              # Fastify backend (Node 20 + SQLite)
 /apps/web              # React frontend (Vite + TypeScript + Tailwind)
 /packages/schemas      # Shared TypeScript types + Zod schemas
+/packages/defaults     # Shared default templates, snippets, and presets (Single Source of Truth)
 /packages/charx        # CHARX format reader/writer/validator
 /packages/png          # PNG tEXt/zTXt chunk reading/writing
 /packages/utils        # Binary, base64, ZIP, URI, macro utilities
