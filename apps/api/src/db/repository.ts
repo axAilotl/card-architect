@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
 import { nanoid } from 'nanoid';
-import type { Card, CardMeta, CardVersion, Spec, CardAsset, CardAssetWithDetails, Asset } from '@card-architect/schemas';
+import type { Card, CardMeta, CardVersion, Spec, CardAsset, CardAssetWithDetails, Asset } from '../types/index.js';
 
 export class CardRepository {
   constructor(private db: Database.Database) {}
@@ -285,7 +285,7 @@ export class CardRepository {
 export class AssetRepository {
   constructor(private db: Database.Database) {}
 
-  create(asset: Omit<import('@card-architect/schemas').Asset, 'id' | 'createdAt'>): import('@card-architect/schemas').Asset {
+  create(asset: Omit<Asset, 'id' | 'createdAt'>): Asset {
     const id = nanoid();
     const now = new Date().toISOString();
 
@@ -308,7 +308,7 @@ export class AssetRepository {
     return { ...asset, id, createdAt: now };
   }
 
-  get(id: string): import('@card-architect/schemas').Asset | null {
+  get(id: string): Asset | null {
     const stmt = this.db.prepare('SELECT * FROM assets WHERE id = ?');
     const row = stmt.get(id) as unknown;
 

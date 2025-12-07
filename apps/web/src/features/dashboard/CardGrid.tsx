@@ -5,8 +5,11 @@ import { localDB } from '../../lib/db';
 import { getDeploymentConfig } from '../../config/deployment';
 import { importCardClientSide, importCardFromURLClientSide, importVoxtaPackageClientSide } from '../../lib/client-import';
 import { exportCard as exportCardClientSide } from '../../lib/client-export';
-import type { Card, CCv3Data } from '@card-architect/schemas';
+import type { Card } from '../../lib/types';
+import type { CCv3Data } from '../../lib/types';
 import { SettingsModal } from '../../components/shared/SettingsModal';
+import { useFederationStore } from '../../modules/federation/lib/federation-store';
+import type { CardSyncState } from '../../modules/federation/lib/types';
 
 interface CardGridProps {
   onCardClick: (cardId: string) => void;
@@ -28,9 +31,61 @@ export function CardGrid({ onCardClick }: CardGridProps) {
   const [showImportMenu, setShowImportMenu] = useState(false);
   const { importCard, importCardFromURL, createNewCard } = useCardStore();
 
+  // Federation sync states (only for full mode)
+  const { syncStates, initialize: initFederation, initialized: federationInitialized, pollPlatformSyncState, settings: federationSettings } = useFederationStore();
+  const [cardSyncMap, setCardSyncMap] = useState<Map<string, CardSyncState>>(new Map());
+
   useEffect(() => {
     loadCards();
   }, []);
+
+  // Initialize federation and track sync states (only for full mode)
+  useEffect(() => {
+    const config = getDeploymentConfig();
+    if (config.mode === 'full' && !federationInitialized) {
+      initFederation();
+    }
+  }, [federationInitialized, initFederation]);
+
+  // Poll connected platforms to get actual sync state
+  useEffect(() => {
+    const config = getDeploymentConfig();
+    if (config.mode !== 'full' || !federationInitialized) return;
+
+    // Poll each connected platform
+    const pollPlatforms = async () => {
+      const platforms = federationSettings?.platforms || {};
+
+      // Poll SillyTavern if connected
+      if (platforms.sillytavern?.enabled && platforms.sillytavern?.connected) {
+        await pollPlatformSyncState('sillytavern');
+      }
+
+      // Poll Character Archive if connected
+      if (platforms.archive?.enabled && platforms.archive?.connected) {
+        await pollPlatformSyncState('archive');
+      }
+
+      // Poll CardsHub if connected
+      if (platforms.hub?.enabled && platforms.hub?.connected) {
+        await pollPlatformSyncState('hub');
+      }
+    };
+
+    pollPlatforms();
+  }, [federationInitialized, federationSettings, pollPlatformSyncState]);
+
+  // Build a map of cardId -> syncState for quick lookup
+  useEffect(() => {
+    const map = new Map<string, CardSyncState>();
+    for (const state of syncStates) {
+      // Map by localId (our local card ID)
+      if (state.localId) {
+        map.set(state.localId, state);
+      }
+    }
+    setCardSyncMap(map);
+  }, [syncStates]);
 
   const loadCards = async () => {
     setLoading(true);
@@ -506,6 +561,24 @@ export function CardGrid({ onCardClick }: CardGridProps) {
     return data.assets?.length ?? 0;
   };
 
+  // Check if card is synced to SillyTavern
+  const isSyncedToST = (cardId: string): boolean => {
+    const syncState = cardSyncMap.get(cardId);
+    return !!syncState?.platformIds.sillytavern;
+  };
+
+  // Check if card is synced to Character Archive
+  const isSyncedToAR = (cardId: string): boolean => {
+    const syncState = cardSyncMap.get(cardId);
+    return !!syncState?.platformIds.archive;
+  };
+
+  // Check if card is synced to CardsHub
+  const isSyncedToHub = (cardId: string): boolean => {
+    const syncState = cardSyncMap.get(cardId);
+    return !!syncState?.platformIds.hub;
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -807,6 +880,22 @@ export function CardGrid({ onCardClick }: CardGridProps) {
                       {getCardName(card)}
                     </h3>
                     <div className="flex gap-1 flex-shrink-0">
+                      {/* Federation Sync Badges (only in full mode) */}
+                      {getDeploymentConfig().mode === 'full' && isSyncedToST(card.meta.id) && (
+                        <span className="px-2 py-0.5 rounded text-xs font-semibold bg-orange-600/20 text-orange-300" title="Synced to SillyTavern">
+                          ST
+                        </span>
+                      )}
+                      {getDeploymentConfig().mode === 'full' && isSyncedToAR(card.meta.id) && (
+                        <span className="px-2 py-0.5 rounded text-xs font-semibold bg-pink-600/20 text-pink-300" title="Synced to Character Archive">
+                          AR
+                        </span>
+                      )}
+                      {getDeploymentConfig().mode === 'full' && isSyncedToHub(card.meta.id) && (
+                        <span className="px-2 py-0.5 rounded text-xs font-semibold bg-violet-600/20 text-violet-300" title="Synced to CardsHub">
+                          HUB
+                        </span>
+                      )}
                       {/* Voxta Badge */}
                       {card.meta.tags?.includes('voxta') && (
                         <span className="px-2 py-0.5 rounded text-xs font-semibold bg-indigo-600/20 text-indigo-300" title="Imported from Voxta Package">

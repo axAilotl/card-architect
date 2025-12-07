@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Card, CCv2Data, CCv3Data, CardMeta } from '@card-architect/schemas';
+import type { Card, CCv2Data, CCv3Data, CardMeta } from '../lib/types';
 import { api } from '../lib/api';
 import { localDB } from '../lib/db';
 import { extractCardData } from '../lib/card-utils';

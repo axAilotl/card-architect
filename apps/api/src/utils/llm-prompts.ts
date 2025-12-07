@@ -7,7 +7,7 @@ import type {
   LLMMessage,
   FieldContext,
   PresetConfig,
-} from '@card-architect/schemas';
+} from '../types/index.js';
 
 /**
  * Build system message for LLM
@@ -151,10 +151,12 @@ Format: ["greeting 1 text", "greeting 2 text", ...]`;
 export function buildPrompt(
   instruction: string,
   context: FieldContext,
-  preset?: PresetConfig
+  preset?: PresetConfig | string
 ): { system: string; messages: LLMMessage[] } {
-  const system = buildSystemMessage(context.spec);
-  const userPrompt = buildUserPrompt(instruction, context, preset);
+  const system = buildSystemMessage(context.spec || 'v2');
+  // If preset is a string (ID), we can't use it directly - only PresetConfig objects are used
+  const presetConfig = typeof preset === 'object' ? preset : undefined;
+  const userPrompt = buildUserPrompt(instruction, context, presetConfig);
 
   return {
     system,
@@ -173,7 +175,7 @@ export function buildPrompt(
 export function buildPromptForTokenEstimate(
   instruction: string,
   context: FieldContext,
-  preset?: PresetConfig
+  preset?: PresetConfig | string
 ): string {
   const { system, messages } = buildPrompt(instruction, context, preset);
   return `${system}\n\n${messages.map((m) => m.content).join('\n\n')}`;

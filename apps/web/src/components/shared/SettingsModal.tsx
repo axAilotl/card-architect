@@ -7,7 +7,7 @@ import { useLLMStore } from '../../store/llm-store';
 import { useCardStore } from '../../store/card-store';
 import { useSettingsStore, THEMES } from '../../store/settings-store';
 import { extractCardData } from '../../lib/card-utils';
-import type { ProviderConfig, ProviderKind, OpenAIMode, UserPreset, CreatePresetRequest } from '@card-architect/schemas';
+import type { ProviderConfig, ProviderKind, OpenAIMode, UserPreset, CreatePresetRequest } from '../../lib/types';
 import { TemplateSnippetPanel } from '../../features/editor/components/TemplateSnippetPanel';
 import { api } from '../../lib/api';
 import { getDeploymentConfig } from '../../config/deployment';
@@ -15,6 +15,7 @@ import { SearchableSelect } from '../ui/SearchableSelect';
 import { useSettingsPanels, useModules } from '../../lib/registry/hooks';
 import { registry } from '../../lib/registry';
 import type { SettingsPanelDefinition, ModuleDefinition } from '../../lib/registry/types';
+import { defaultPresets } from '../../lib/default-presets';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -195,15 +196,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   const selectedDatabase = selectedDbId ? ragDatabaseDetails[selectedDbId] : null;
 
-  // Default presets for client-side use
-  const now = new Date().toISOString();
-  const DEFAULT_PRESETS: UserPreset[] = [
-    { id: 'rewrite', name: 'Rewrite', instruction: 'Rewrite this text to be clearer and more engaging while preserving the meaning.', category: 'rewrite', description: 'Improve clarity and engagement', isBuiltIn: true, createdAt: now, updatedAt: now },
-    { id: 'expand', name: 'Expand', instruction: 'Expand this text with more detail and description while maintaining the original tone and style.', category: 'rewrite', description: 'Add more detail', isBuiltIn: true, createdAt: now, updatedAt: now },
-    { id: 'condense', name: 'Condense', instruction: 'Condense this text while keeping the key information and essential meaning.', category: 'rewrite', description: 'Make it shorter', isBuiltIn: true, createdAt: now, updatedAt: now },
-    { id: 'format-jed', name: 'Format as JED', instruction: 'Reformat this text using JED (JSON-Enhanced Description) format with sections like [Character], [Personality], [Background], etc.', category: 'format', description: 'Convert to JED format', isBuiltIn: true, createdAt: now, updatedAt: now },
-    { id: 'proofread', name: 'Proofread', instruction: 'Fix grammar, spelling, and punctuation errors in this text while preserving the original style.', category: 'rewrite', description: 'Fix errors', isBuiltIn: true, createdAt: now, updatedAt: now },
-  ];
+  // Use shared default presets
+  const DEFAULT_PRESETS = defaultPresets;
 
   // Preset handlers
   const loadPresets = async () => {
@@ -1604,7 +1598,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <input
                     type="checkbox"
                     id="ragEnabled"
-                    checked={settings.rag.enabled}
+                    checked={settings.rag?.enabled ?? false}
                     onChange={(e) =>
                       useLLMStore
                         .getState()
@@ -1622,7 +1616,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <label className="block text-sm font-medium mb-1">Top-K Snippets</label>
                     <input
                       type="number"
-                      value={settings.rag.topK}
+                      value={settings.rag?.topK ?? 5}
                       min={1}
                       onChange={(e) =>
                         useLLMStore
@@ -1636,7 +1630,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <label className="block text-sm font-medium mb-1">Token Cap</label>
                     <input
                       type="number"
-                      value={settings.rag.tokenCap}
+                      value={settings.rag?.tokenCap ?? 2000}
                       min={200}
                       onChange={(e) =>
                         useLLMStore

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { PromptSimulator, type PromptProfile, type TokenBudgetConfig } from '../services/prompt-simulator.js';
-import { tokenizerRegistry } from '@card-architect/tokenizers';
-import type { CCv2Data, CCv3Data } from '@card-architect/schemas';
+import { registry } from '@character-foundry/tokenizers';
+import type { CCv2Data, CCv3Data } from '@character-foundry/schemas';
 
 /**
  * Prompt Simulator Routes
@@ -34,7 +34,7 @@ export async function promptSimulatorRoutes(fastify: FastifyInstance) {
       };
     };
   }>('/prompt-simulator/simulate', async (request, reply) => {
-    const { card, profile, tokenizerModel = 'gpt2-bpe-approx', budget } = request.body;
+    const { card, profile, tokenizerModel = 'gpt-4', budget } = request.body;
 
     if (!card) {
       reply.code(400);
@@ -47,17 +47,10 @@ export async function promptSimulatorRoutes(fastify: FastifyInstance) {
     }
 
     // Get tokenizer
-    const tokenizer = tokenizerRegistry.get(tokenizerModel);
-    if (!tokenizer) {
-      reply.code(400);
-      return {
-        error: `Unknown tokenizer model: ${tokenizerModel}`,
-        available: tokenizerRegistry.list().map(t => t.id)
-      };
-    }
+    const tokenizer = registry.get(tokenizerModel);
 
     // Create simulator
-    const simulator = new PromptSimulator((text: string) => tokenizer.estimate(text));
+    const simulator = new PromptSimulator((text: string) => tokenizer.count(text));
 
     // Compose prompt
     const budgetConfig: TokenBudgetConfig | undefined = budget ? {
@@ -102,7 +95,7 @@ export async function promptSimulatorRoutes(fastify: FastifyInstance) {
     const {
       card,
       profiles = ['generic-ccv3', 'strict-ccv3', 'ccv2-compat'] as PromptProfile[],
-      tokenizerModel = 'gpt2-bpe-approx',
+      tokenizerModel = 'gpt-4',
       budget
     } = request.body;
 
@@ -112,17 +105,10 @@ export async function promptSimulatorRoutes(fastify: FastifyInstance) {
     }
 
     // Get tokenizer
-    const tokenizer = tokenizerRegistry.get(tokenizerModel);
-    if (!tokenizer) {
-      reply.code(400);
-      return {
-        error: `Unknown tokenizer model: ${tokenizerModel}`,
-        available: tokenizerRegistry.list().map(t => t.id)
-      };
-    }
+    const tokenizer = registry.get(tokenizerModel);
 
     // Create simulator
-    const simulator = new PromptSimulator((text: string) => tokenizer.estimate(text));
+    const simulator = new PromptSimulator((text: string) => tokenizer.count(text));
 
     // Compose for each profile
     const budgetConfig: TokenBudgetConfig | undefined = budget ? {
@@ -170,7 +156,7 @@ export async function promptSimulatorRoutes(fastify: FastifyInstance) {
       fieldName,
       newValue,
       profile,
-      tokenizerModel = 'gpt2-bpe-approx'
+      tokenizerModel = 'gpt-4'
     } = request.body;
 
     if (!card || !fieldName || newValue === undefined || !profile) {
@@ -179,17 +165,10 @@ export async function promptSimulatorRoutes(fastify: FastifyInstance) {
     }
 
     // Get tokenizer
-    const tokenizer = tokenizerRegistry.get(tokenizerModel);
-    if (!tokenizer) {
-      reply.code(400);
-      return {
-        error: `Unknown tokenizer model: ${tokenizerModel}`,
-        available: tokenizerRegistry.list().map(t => t.id)
-      };
-    }
+    const tokenizer = registry.get(tokenizerModel);
 
     // Create simulator
-    const simulator = new PromptSimulator((text: string) => tokenizer.estimate(text));
+    const simulator = new PromptSimulator((text: string) => tokenizer.count(text));
 
     try {
       // Compose with original card

@@ -4,7 +4,7 @@
  * Docs: https://docs.anthropic.com/en/api/messages
  */
 
-import type { LLMMessage, LLMResponse, LLMStreamChunk } from '@card-architect/schemas';
+import type { LLMMessage, LLMResponse, LLMStreamChunk } from '../types/index.js';
 
 export interface AnthropicConfig {
   baseURL: string;

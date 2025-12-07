@@ -1,5 +1,5 @@
 import { openDB, type IDBPDatabase } from 'idb';
-import type { Card } from '@card-architect/schemas';
+import type { Card } from './types';
 
 const DB_NAME = 'card-architect';
 const DB_VERSION = 5;

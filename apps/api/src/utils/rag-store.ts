@@ -8,7 +8,7 @@ import type {
   RagDocumentType,
   RagSnippet,
   RagSource,
-} from '@card-architect/schemas';
+} from '../types/index.js';
 import { estimateTokensMany } from './tokenizer.js';
 import { embedPassages, embedQuery, cosineSimilarity } from './embedding.js';
 
@@ -228,6 +228,7 @@ export async function createDatabase(
 
   const manifest: RagDatabaseDetail = {
     id,
+    name: input.label,
     label: input.label,
     description: input.description,
     tags: input.tags,
@@ -325,11 +326,13 @@ export async function addDocument(
   const source: RagSource = {
     id: sourceId,
     databaseId: manifest.id,
+    name: input.filename,
     title: input.title || input.filename,
     filename: input.filename,
     path: relativePath,
     type,
     size: input.buffer.length,
+    createdAt: now,
     indexed: true,
     indexedAt: now,
     chunkCount: chunkRecords.length,
@@ -339,7 +342,7 @@ export async function addDocument(
 
   manifest.sources.push(source);
   manifest.chunkCount += chunkRecords.length;
-  manifest.tokenCount += totalTokens;
+  manifest.tokenCount = (manifest.tokenCount ?? 0) + totalTokens;
   manifest.updatedAt = now;
 
   await saveManifest(indexPath, manifest);
@@ -367,8 +370,8 @@ export async function removeDocument(
   await saveChunks(indexPath, dbId, remaining);
 
   manifest.sources = manifest.sources.filter((s) => s.id !== sourceId);
-  manifest.chunkCount = Math.max(0, manifest.chunkCount - source.chunkCount);
-  manifest.tokenCount = Math.max(0, manifest.tokenCount - source.tokenCount);
+  manifest.chunkCount = Math.max(0, manifest.chunkCount - (source.chunkCount ?? 0));
+  manifest.tokenCount = Math.max(0, (manifest.tokenCount ?? 0) - (source.tokenCount ?? 0));
   manifest.updatedAt = new Date().toISOString();
 
   await saveManifest(indexPath, manifest);
@@ -428,6 +431,7 @@ export async function searchDocuments(
       id: entry.chunk.id,
       databaseId: manifest.id,
       sourceId: source.id,
+      sourceName: source.name,
       sourceTitle: source.title,
       content: entry.chunk.content,
       tokenCount: entry.chunk.tokenCount,
@@ -493,11 +497,13 @@ export async function addFreeText(
   const source: RagSource = {
     id: sourceId,
     databaseId: manifest.id,
+    name: filename,
     title: input.title,
     filename,
     path: relativePath,
     type: 'freetext',
     size: Buffer.byteLength(content, 'utf-8'),
+    createdAt: now,
     indexed: true,
     indexedAt: now,
     chunkCount: chunkRecords.length,
@@ -507,7 +513,7 @@ export async function addFreeText(
 
   manifest.sources.push(source);
   manifest.chunkCount += chunkRecords.length;
-  manifest.tokenCount += totalTokens;
+  manifest.tokenCount = (manifest.tokenCount ?? 0) + totalTokens;
   manifest.updatedAt = now;
 
   await saveManifest(indexPath, manifest);
@@ -583,11 +589,13 @@ export async function addLorebook(
   const source: RagSource = {
     id: sourceId,
     databaseId: manifest.id,
+    name: filename,
     title: `${characterName} - Lorebook (${entries.length} entries)`,
     filename,
     path: relativePath,
     type: 'lorebook',
     size: JSON.stringify(lorebook).length,
+    createdAt: now,
     indexed: true,
     indexedAt: now,
     chunkCount: chunkRecords.length,
@@ -597,7 +605,7 @@ export async function addLorebook(
 
   manifest.sources.push(source);
   manifest.chunkCount += chunkRecords.length;
-  manifest.tokenCount += totalTokens;
+  manifest.tokenCount = (manifest.tokenCount ?? 0) + totalTokens;
   manifest.updatedAt = now;
 
   await saveManifest(indexPath, manifest);

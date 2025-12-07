@@ -1,0 +1,16 @@
+{
+  "name": "@card-architect/defaults",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@character-foundry/schemas": "file:../../../card-ecosystem/character-foundry/packages/schemas"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}

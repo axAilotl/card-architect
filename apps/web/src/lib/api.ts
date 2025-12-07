@@ -13,7 +13,7 @@ import type {
   CardAssetWithDetails,
   UserPreset,
   CreatePresetRequest,
-} from '@card-architect/schemas';
+} from './types';
 
 const API_BASE = '/api';
 

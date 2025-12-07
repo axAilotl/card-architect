@@ -7,16 +7,11 @@
 import { useState, useEffect } from 'react';
 import { useSettingsStore } from '../../../store/settings-store';
 import { getDeploymentConfig } from '../../../config/deployment';
-
-interface WwwyzzerddPromptSet {
-  id: string;
-  name: string;
-  description?: string;
-  characterPrompt: string;
-  lorePrompt: string;
-  personality: string;
-  isDefault?: boolean;
-}
+import {
+  type WwwyzzerddPromptSet,
+  defaultWwwyzzerddPrompts,
+  WWWYZZERDD_STORAGE_KEY,
+} from '../../../lib/default-wwwyzzerdd';
 
 export function WwwyzzerddSettings() {
   const [promptSets, setPromptSets] = useState<WwwyzzerddPromptSet[]>([]);
@@ -36,27 +31,13 @@ export function WwwyzzerddSettings() {
     if (config.mode === 'light' || config.mode === 'static') {
       // Load from localStorage in light mode
       try {
-        const stored = localStorage.getItem('ca-wwwyzzerdd-prompts');
+        const stored = localStorage.getItem(WWWYZZERDD_STORAGE_KEY);
         if (stored) {
           setPromptSets(JSON.parse(stored));
         } else {
-          // Initialize with default prompt set
-          const defaults: WwwyzzerddPromptSet[] = [{
-            id: 'default',
-            name: 'Default Assistant',
-            description: 'Default character creation assistant',
-            characterPrompt: `You are wwwyzzerdd, an AI assistant helping users create character cards for roleplay.
-You specialize in creating engaging, detailed character profiles with rich personalities and backstories.
-Help the user develop their character by asking clarifying questions and providing creative suggestions.
-When you have enough information, output character data in JSON format.`,
-            lorePrompt: `You are wwwyzzerdd, an AI assistant helping users create world lore and settings.
-Help develop detailed worldbuilding elements like locations, factions, history, and culture.
-When you have enough information, output lore data in JSON format.`,
-            personality: `I'm friendly, creative, and enthusiastic about helping you bring your characters to life!`,
-            isDefault: true,
-          }];
-          localStorage.setItem('ca-wwwyzzerdd-prompts', JSON.stringify(defaults));
-          setPromptSets(defaults);
+          // Initialize with shared defaults
+          localStorage.setItem(WWWYZZERDD_STORAGE_KEY, JSON.stringify(defaultWwwyzzerddPrompts));
+          setPromptSets(defaultWwwyzzerddPrompts);
         }
       } catch {
         setStatus('Failed to load prompt sets');
@@ -100,7 +81,7 @@ When you have enough information, output lore data in JSON format.`,
           ? promptSets.map(p => p.id === editingPromptSet.id ? newPromptSet : p)
           : [...promptSets, newPromptSet];
 
-        localStorage.setItem('ca-wwwyzzerdd-prompts', JSON.stringify(updated));
+        localStorage.setItem(WWWYZZERDD_STORAGE_KEY, JSON.stringify(updated));
         setPromptSets(updated);
         setEditingPromptSet(null);
         setStatus(editingPromptSet.id ? 'Prompt set updated.' : 'Prompt set created.');
@@ -149,7 +130,7 @@ When you have enough information, output lore data in JSON format.`,
     const config = getDeploymentConfig();
     if (config.mode === 'light' || config.mode === 'static') {
       const updated = promptSets.filter(p => p.id !== id);
-      localStorage.setItem('ca-wwwyzzerdd-prompts', JSON.stringify(updated));
+      localStorage.setItem(WWWYZZERDD_STORAGE_KEY, JSON.stringify(updated));
       setPromptSets(updated);
       setStatus('Prompt set deleted.');
       return;
@@ -181,7 +162,7 @@ When you have enough information, output lore data in JSON format.`,
         isDefault: false,
       };
       const updated = [...promptSets, copy];
-      localStorage.setItem('ca-wwwyzzerdd-prompts', JSON.stringify(updated));
+      localStorage.setItem(WWWYZZERDD_STORAGE_KEY, JSON.stringify(updated));
       setPromptSets(updated);
       setStatus('Prompt set copied.');
       return;
@@ -256,7 +237,7 @@ When you have enough information, output lore data in JSON format.`,
           isDefault: false,
         }));
         const updated = [...existing, ...newSets];
-        localStorage.setItem('ca-wwwyzzerdd-prompts', JSON.stringify(updated));
+        localStorage.setItem(WWWYZZERDD_STORAGE_KEY, JSON.stringify(updated));
         setPromptSets(updated);
         setStatus(`Imported ${imported.length} prompt set(s).`);
         e.target.value = '';

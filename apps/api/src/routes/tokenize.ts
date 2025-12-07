@@ -1,12 +1,12 @@
 import type { FastifyInstance } from 'fastify';
-import { tokenizerRegistry } from '@card-architect/tokenizers';
-import type { TokenizeRequest, TokenizeResponse } from '@card-architect/schemas';
+import { registry } from '@character-foundry/tokenizers';
+import type { TokenizeRequest, TokenizeResponse } from '../types/index.js';
 
 export async function tokenizeRoutes(fastify: FastifyInstance) {
   // List available tokenizers
   fastify.get('/tokenizers', async (_request, _reply) => {
-    const tokenizers = tokenizerRegistry.list();
-    return tokenizers.map((t) => ({ id: t.id }));
+    const tokenizers = registry.list();
+    return tokenizers.map((t) => ({ id: t.id, name: t.name }));
   });
 
   // Tokenize text
@@ -18,17 +18,13 @@ export async function tokenizeRoutes(fastify: FastifyInstance) {
       return { error: 'Missing model or payload' };
     }
 
-    const tokenizer = tokenizerRegistry.get(body.model);
-    if (!tokenizer) {
-      reply.code(404);
-      return { error: 'Tokenizer not found' };
-    }
+    const tokenizer = registry.get(body.model);
 
     const fields: Record<string, number> = {};
     let total = 0;
 
     for (const [key, value] of Object.entries(body.payload)) {
-      const count = tokenizer.estimate(value);
+      const count = tokenizer.count(value);
       fields[key] = count;
       total += count;
     }

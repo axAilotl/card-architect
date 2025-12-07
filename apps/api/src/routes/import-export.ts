@@ -16,7 +16,9 @@ import {
   findZipStart,
 } from '../utils/file-handlers.js';
 import { validateCharxExport, applyExportFixes } from '../utils/charx-validator.js';
-import { detectSpec, validateV2, validateV3, type CCv2Data, type CCv3Data, type CharxExportSettings } from '@card-architect/schemas';
+import { detectSpec, type CCv2Data, type CCv3Data } from '@character-foundry/schemas';
+import { validateV2, validateV3 } from '../utils/validation.js';
+import type { CharxExportSettings } from '../types/index.js';
 import { config } from '../config.js';
 import { getSettings } from '../utils/settings.js';
 import { DEFAULT_CHARX_EXPORT_SETTINGS } from './charx-optimizer.js';
@@ -1537,7 +1539,7 @@ export async function importExportRoutes(fastify: FastifyInstance) {
           const result = await buildCharx(charxData, assets, {
             storagePath: config.storagePath,
             optimization: {
-              enabled: charxExportSettings.convertToWebp || charxExportSettings.convertMp4ToWebm,
+              enabled: !!(charxExportSettings.convertToWebp || charxExportSettings.convertMp4ToWebm),
               convertToWebp: charxExportSettings.convertToWebp,
               webpQuality: charxExportSettings.webpQuality,
               maxMegapixels: charxExportSettings.maxMegapixels,
@@ -1575,7 +1577,7 @@ export async function importExportRoutes(fastify: FastifyInstance) {
           let voxtaData = convertCardMacros(
             card.data as unknown as Record<string, unknown>,
             standardToVoxta
-          ) as unknown as import('@card-architect/schemas').CCv3Data;
+          ) as unknown as import('@character-foundry/schemas').CCv3Data;
           fastify.log.info({ cardId: request.params.id }, 'Converted standard macros to Voxta format for Voxta export');
 
           // Convert local /user/images/ URLs to embeded:// URLs for archived images
@@ -1595,7 +1597,7 @@ export async function importExportRoutes(fastify: FastifyInstance) {
               archivedAssets,
               characterName
             );
-            voxtaData = convertedData as unknown as import('@card-architect/schemas').CCv3Data;
+            voxtaData = convertedData as unknown as import('@character-foundry/schemas').CCv3Data;
 
             // Add embedded archived images to the assets list
             for (const embedded of embeddedAssets) {
@@ -1650,7 +1652,7 @@ export async function importExportRoutes(fastify: FastifyInstance) {
             {
               storagePath: config.storagePath,
               optimization: {
-                enabled: voxtaExportSettings.convertToWebp || voxtaExportSettings.convertMp4ToWebm,
+                enabled: !!(voxtaExportSettings.convertToWebp || voxtaExportSettings.convertMp4ToWebm),
                 convertToWebp: voxtaExportSettings.convertToWebp,
                 webpQuality: voxtaExportSettings.webpQuality,
                 maxMegapixels: voxtaExportSettings.maxMegapixels,
@@ -1837,8 +1839,8 @@ export async function importExportRoutes(fastify: FastifyInstance) {
     // Convert
     if (body.from === 'v2' && body.to === 'v3') {
       // v2 to v3 conversion
-      const v2 = body.card as import('@card-architect/schemas').CCv2Data;
-      const v3: import('@card-architect/schemas').CCv3Data = {
+      const v2 = body.card as import('@character-foundry/schemas').CCv2Data;
+      const v3: import('@character-foundry/schemas').CCv3Data = {
         spec: 'chara_card_v3',
         spec_version: '3.0',
         data: {
@@ -1863,8 +1865,8 @@ export async function importExportRoutes(fastify: FastifyInstance) {
       return v3;
     } else if (body.from === 'v3' && body.to === 'v2') {
       // v3 to v2 conversion
-      const v3 = body.card as import('@card-architect/schemas').CCv3Data;
-      const v2: import('@card-architect/schemas').CCv2Data = {
+      const v3 = body.card as import('@character-foundry/schemas').CCv3Data;
+      const v2: import('@character-foundry/schemas').CCv2Data = {
         name: v3.data.name,
         description: v3.data.description,
         personality: v3.data.personality,
@@ -1878,7 +1880,7 @@ export async function importExportRoutes(fastify: FastifyInstance) {
         system_prompt: v3.data.system_prompt,
         post_history_instructions: v3.data.post_history_instructions,
         alternate_greetings: v3.data.alternate_greetings,
-        character_book: v3.data.character_book as import('@card-architect/schemas').CCv2CharacterBook,
+        character_book: v3.data.character_book as import('@character-foundry/schemas').CCv2CharacterBook,
         extensions: v3.data.extensions,
       };
       return v2;

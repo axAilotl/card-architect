@@ -1,4 +1,4 @@
-import type { CCFieldName, FocusField } from '@card-architect/schemas';
+import type { CCFieldName, FocusField } from '../../../lib/types';
 
 interface FieldEditorProps {
   label: string;

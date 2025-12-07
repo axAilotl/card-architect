@@ -2,8 +2,8 @@ import { create } from 'zustand';
 import { api } from '../lib/api';
 import { extractCardData } from '../lib/card-utils';
 import { getDeploymentConfig } from '../config/deployment';
-import { tokenizerRegistry } from '@card-architect/tokenizers';
-import type { Card } from '@card-architect/schemas';
+import { registry } from '@character-foundry/tokenizers';
+import type { Card } from '../lib/types';
 
 interface TokenCounts {
   [field: string]: number;
@@ -20,7 +20,7 @@ interface TokenStore {
 
 export const useTokenStore = create<TokenStore>((set, get) => ({
   tokenCounts: { total: 0 },
-  tokenizerModel: 'gpt2-bpe-approx',
+  tokenizerModel: 'gpt-4',
 
   updateTokenCounts: async (card) => {
     const { tokenizerModel } = get();
@@ -72,17 +72,13 @@ export const useTokenStore = create<TokenStore>((set, get) => ({
 
     // Client-side tokenization for light/static modes
     if (config.mode === 'light' || config.mode === 'static') {
-      const tokenizer = tokenizerRegistry.get(tokenizerModel);
-      if (!tokenizer) {
-        console.error('Tokenizer not found:', tokenizerModel);
-        return;
-      }
+      const tokenizer = registry.get(tokenizerModel);
 
       const fields: Record<string, number> = {};
       let total = 0;
 
       for (const [key, value] of Object.entries(payload)) {
-        const count = tokenizer.estimate(value);
+        const count = tokenizer.count(value);
         fields[key] = count;
         total += count;
       }

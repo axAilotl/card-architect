@@ -3,7 +3,7 @@
  * Uses a simple word-level diff algorithm
  */
 
-import type { DiffOperation } from '@card-architect/schemas';
+import type { DiffOperation } from '../types/index.js';
 
 /**
  * Normalize text for diffing (remove extra whitespace)

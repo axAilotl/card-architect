@@ -4,7 +4,7 @@ import { api } from '../../../lib/api';
 import { localDB, type StoredVersion } from '../../../lib/db';
 import { DiffViewer } from '../../../components/ui/DiffViewer';
 import { getDeploymentConfig } from '../../../config/deployment';
-import type { DiffOperation } from '@card-architect/schemas';
+import type { DiffOperation } from '../../../lib/types';
 
 // Simple diff computation on the client
 function computeSimpleDiff(original: string, revised: string): DiffOperation[] {

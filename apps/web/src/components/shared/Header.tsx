@@ -8,6 +8,7 @@ import { localDB } from '../../lib/db';
 import { getDeploymentConfig } from '../../config/deployment';
 import { useNavigate } from 'react-router-dom';
 import { SillyTavernClient, shouldUseClientSidePush, type SillyTavernSettings } from '../../lib/sillytavern-client';
+import { useFederationStore } from '../../modules/federation/lib/federation-store';
 
 interface HeaderProps {
   onBack: () => void;
@@ -99,6 +100,7 @@ export function Header({ onBack }: HeaderProps) {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json,.png,.charx,.voxpkg';
+    input.style.display = 'none'; // Hidden but in DOM for Playwright compatibility
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) {
@@ -108,12 +110,15 @@ export function Header({ onBack }: HeaderProps) {
         } else {
           id = await useCardStore.getState().importCard(file);
         }
-        
+
         if (id) {
           navigate(`/cards/${id}`);
         }
       }
+      // Clean up the input element after processing
+      input.remove();
     };
+    document.body.appendChild(input);
     input.click();
   };
 
@@ -144,6 +149,44 @@ export function Header({ onBack }: HeaderProps) {
       setTimeout(() => setPushStatus(null), 8000);
       return;
     }
+
+    // Check if federation is enabled and connected to SillyTavern
+    const federationState = useFederationStore.getState();
+    const stFederationEnabled = federationState.settings?.platforms?.sillytavern?.enabled &&
+                                 federationState.settings?.platforms?.sillytavern?.connected;
+
+    if (stFederationEnabled) {
+      // Use federation to push to SillyTavern
+      console.log('[pushToST] Using FEDERATION to push to SillyTavern');
+      try {
+        const result = await federationState.pushToST(currentCard.meta.id);
+
+        if (result.success) {
+          setPushStatus({
+            type: 'success',
+            message: `Successfully synced ${getCharacterName()} to SillyTavern via federation!`
+          });
+          setTimeout(() => setPushStatus(null), 5000);
+        } else {
+          setPushStatus({
+            type: 'error',
+            message: result.error || 'Federation sync failed'
+          });
+          setTimeout(() => setPushStatus(null), 8000);
+        }
+      } catch (error: any) {
+        console.error('[pushToST] Federation push failed:', error);
+        setPushStatus({
+          type: 'error',
+          message: error?.message || 'Federation sync failed'
+        });
+        setTimeout(() => setPushStatus(null), 8000);
+      }
+      return;
+    }
+
+    // Fall back to direct SillyTavern push (non-federation)
+    console.log('[pushToST] Federation not enabled, using DIRECT push');
 
     // Check if we should use client-side push (localhost ST or light mode)
     const useClientSide = stSettings && (shouldUseClientSidePush(stSettings) || isLightMode);
@@ -214,6 +257,10 @@ export function Header({ onBack }: HeaderProps) {
         const result = await client.push(currentCard, imageBuffer);
 
         if (result.success) {
+          // Record the sync state for badge display
+          const { recordManualSync } = useFederationStore.getState();
+          await recordManualSync(currentCard.meta.id, 'sillytavern', result.fileName);
+
           setPushStatus({
             type: 'success',
             message: `Successfully pushed ${getCharacterName()} to SillyTavern!`
@@ -250,6 +297,10 @@ export function Header({ onBack }: HeaderProps) {
         const result = await api.pushToSillyTavern(currentCard.meta.id);
 
         if (result.data?.success) {
+          // Record the sync state for badge display
+          const { recordManualSync } = useFederationStore.getState();
+          await recordManualSync(currentCard.meta.id, 'sillytavern', result.data.fileName);
+
           setPushStatus({
             type: 'success',
             message: `Successfully pushed ${getCharacterName()} to SillyTavern!`

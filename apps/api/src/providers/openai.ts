@@ -5,7 +5,7 @@
  *       https://platform.openai.com/docs/guides/chat-completions
  */
 
-import type { LLMMessage, LLMResponse, LLMStreamChunk } from '@card-architect/schemas';
+import type { LLMMessage, LLMResponse, LLMStreamChunk } from '../types/index.js';
 
 export interface OpenAIConfig {
   baseURL: string;

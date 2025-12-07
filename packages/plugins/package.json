@@ -15,9 +15,7 @@
     "dev": "tsc --watch",
     "clean": "rm -rf dist"
   },
-  "dependencies": {
-    "@card-architect/schemas": "*"
-  },
+  "dependencies": {},
   "devDependencies": {
     "typescript": "^5.3.3"
   }

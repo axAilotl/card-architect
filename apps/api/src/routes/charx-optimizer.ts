@@ -7,7 +7,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { getSettings, saveSettings } from '../utils/settings.js';
-import type { CharxExportSettings } from '@card-architect/schemas';
+import type { CharxExportSettings } from '../types/index.js';
 
 /**
  * Default package export optimization settings

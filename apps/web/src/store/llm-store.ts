@@ -12,7 +12,7 @@ import type {
   ProviderConfig,
   RagDatabase,
   RagDatabaseDetail,
-} from '@card-architect/schemas';
+} from '../lib/types';
 import { api } from '../lib/api';
 import { getDeploymentConfig } from '../config/deployment';
 import {
@@ -157,7 +157,7 @@ export const useLLMStore = create<LLMStore>((set, get) => ({
       // Convert ProviderConfig back to ClientLLMProvider format
       const clientProviders: ClientLLMProvider[] = newSettings.providers.map(p => ({
         id: p.id,
-        name: p.label,
+        name: p.label || p.name,
         kind: (p as any).clientKind || (p.kind === 'anthropic' ? 'anthropic' : 'openai-compatible'),
         baseURL: p.baseURL || '',
         apiKey: p.apiKey || '',
@@ -235,7 +235,7 @@ export const useLLMStore = create<LLMStore>((set, get) => ({
     if (config.mode === 'light' || config.mode === 'static') {
       const clientProvider: ClientLLMProvider = {
         id: provider.id,
-        name: provider.label,
+        name: provider.label || provider.name,
         kind: (provider as any).clientKind || (provider.kind === 'anthropic' ? 'anthropic' : 'openai-compatible'),
         baseURL: provider.baseURL || '',
         apiKey: provider.apiKey || '',
@@ -278,7 +278,7 @@ export const useLLMStore = create<LLMStore>((set, get) => ({
     }
 
     set((state) => {
-      const nextActive = data.activeDatabaseId ?? state.settings.rag.activeDatabaseId;
+      const nextActive = data.activeDatabaseId ?? state.settings.rag?.activeDatabaseId;
       const filteredDetails: Record<string, RagDatabaseDetail> = {};
       Object.entries(state.ragDatabaseDetails).forEach(([id, detail]) => {
         if (data.databases.some((db) => db.id === id)) {
@@ -346,7 +346,7 @@ export const useLLMStore = create<LLMStore>((set, get) => ({
             ...state.settings.rag,
             activeDatabaseId: shouldSetActive
               ? data.database.id
-              : state.settings.rag.activeDatabaseId,
+              : state.settings.rag?.activeDatabaseId,
           },
         },
       };
@@ -378,9 +378,9 @@ export const useLLMStore = create<LLMStore>((set, get) => ({
           rag: {
             ...state.settings.rag,
             activeDatabaseId:
-              state.settings.rag.activeDatabaseId === id
+              state.settings.rag?.activeDatabaseId === id
                 ? undefined
-                : state.settings.rag.activeDatabaseId,
+                : state.settings.rag?.activeDatabaseId,
           },
         },
       };
@@ -439,7 +439,7 @@ export const useLLMStore = create<LLMStore>((set, get) => ({
     if (config.mode === 'light' || config.mode === 'static') {
       const clientProvider: ClientLLMProvider = {
         id: provider.id,
-        name: provider.label,
+        name: provider.label || provider.name,
         kind: (provider as any).clientKind || (provider.kind === 'anthropic' ? 'anthropic' : 'openai-compatible'),
         baseURL: provider.baseURL || '',
         apiKey: provider.apiKey || '',

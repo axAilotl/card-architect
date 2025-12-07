@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { Snippet, SnippetCategory } from '@card-architect/schemas';
+import type { Snippet, SnippetCategory } from '../../../lib/types';
 
 interface SnippetEditorProps {
   isOpen: boolean;
@@ -17,8 +17,8 @@ export function SnippetEditor({ isOpen, onClose, onSave, snippet }: SnippetEdito
   useEffect(() => {
     if (snippet) {
       setName(snippet.name);
-      setDescription(snippet.description);
-      setCategory(snippet.category);
+      setDescription(snippet.description || '');
+      setCategory(snippet.category || 'custom');
       setContent(snippet.content);
     } else {
       // Reset for new snippet

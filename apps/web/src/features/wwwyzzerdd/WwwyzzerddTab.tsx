@@ -9,6 +9,11 @@ import { useSettingsStore } from '../../store/settings-store';
 import { useLLMStore } from '../../store/llm-store';
 import { getDeploymentConfig } from '../../config/deployment';
 import { invokeClientLLM, type ClientLLMProvider } from '../../lib/client-llm';
+import {
+  type WwwyzzerddPromptSet,
+  defaultWwwyzzerddPrompts,
+  initializeWwwyzzerddPrompts,
+} from '../../lib/default-wwwyzzerdd';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -28,27 +33,8 @@ interface CharacterFields {
   tags: string[];
 }
 
-interface WwwyzzerddPromptSet {
-  id: string;
-  name: string;
-  characterPrompt: string;
-  lorePrompt: string;
-  personality: string;
-}
-
-// Default prompt set for client-side use
-const DEFAULT_PROMPT_SET: WwwyzzerddPromptSet = {
-  id: 'default',
-  name: 'Default Assistant',
-  characterPrompt: `You are wwwyzzerdd, an AI assistant helping users create character cards for roleplay.
-You specialize in creating engaging, detailed character profiles with rich personalities and backstories.
-Help the user develop their character by asking clarifying questions and providing creative suggestions.
-When you have enough information, output character data in JSON format.`,
-  lorePrompt: `You are wwwyzzerdd, an AI assistant helping users create world lore and settings.
-Help develop detailed worldbuilding elements like locations, factions, history, and culture.
-When you have enough information, output lore data in JSON format.`,
-  personality: `I'm friendly, creative, and enthusiastic about helping you bring your characters to life!`,
-};
+// Default prompt set fallback
+const DEFAULT_PROMPT_SET = defaultWwwyzzerddPrompts[0];
 
 // Persist messages across component remounts
 let persistedMessages: ChatMessage[] = [];
@@ -142,16 +128,11 @@ export function WwwyzzerddTab() {
     const isLightMode = config.mode === 'light' || config.mode === 'static';
 
     if (isLightMode) {
-      // In light mode, load from localStorage or use default
+      // In light mode, load from localStorage or initialize with all defaults
       try {
-        const stored = localStorage.getItem('ca-wwwyzzerdd-prompts');
-        if (stored) {
-          const prompts = JSON.parse(stored);
-          const active = prompts.find((p: WwwyzzerddPromptSet) => p.id === activePromptSetId) || prompts[0] || DEFAULT_PROMPT_SET;
-          setPromptSet(active);
-        } else {
-          setPromptSet(DEFAULT_PROMPT_SET);
-        }
+        const prompts = initializeWwwyzzerddPrompts();
+        const active = prompts.find((p: WwwyzzerddPromptSet) => p.id === activePromptSetId) || prompts[0] || DEFAULT_PROMPT_SET;
+        setPromptSet(active);
       } catch {
         setPromptSet(DEFAULT_PROMPT_SET);
       }
@@ -290,7 +271,7 @@ Only include fields you want to update. The user can then apply these to the cha
         // Use client-side LLM invocation
         const clientProvider: ClientLLMProvider = {
           id: activeProvider.id,
-          name: activeProvider.label,
+          name: activeProvider.label || activeProvider.name,
           kind: (activeProvider as any).clientKind || (activeProvider.kind === 'anthropic' ? 'anthropic' : 'openai-compatible'),
           baseURL: activeProvider.baseURL || '',
           apiKey: activeProvider.apiKey || '',

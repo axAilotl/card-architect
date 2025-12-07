@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { RedundancyKiller, type ConsolidationSuggestion } from '../services/redundancy-killer.js';
-import { tokenizerRegistry } from '@card-architect/tokenizers';
-import type { CCv2Data, CCv3Data } from '@card-architect/schemas';
+import { registry } from '@character-foundry/tokenizers';
+import type { CCv2Data, CCv3Data } from '@character-foundry/schemas';
 
 /**
  * Redundancy Detection Routes
@@ -17,7 +17,7 @@ export async function redundancyRoutes(fastify: FastifyInstance) {
       tokenizerModel?: string;
     };
   }>('/redundancy/analyze', async (request, reply) => {
-    const { card, tokenizerModel = 'gpt2-bpe-approx' } = request.body;
+    const { card, tokenizerModel = 'gpt-4' } = request.body;
 
     if (!card) {
       reply.code(400);
@@ -25,17 +25,10 @@ export async function redundancyRoutes(fastify: FastifyInstance) {
     }
 
     // Get tokenizer
-    const tokenizer = tokenizerRegistry.get(tokenizerModel);
-    if (!tokenizer) {
-      reply.code(400);
-      return {
-        error: `Unknown tokenizer model: ${tokenizerModel}`,
-        available: tokenizerRegistry.list().map((t) => t.id),
-      };
-    }
+    const tokenizer = registry.get(tokenizerModel);
 
     // Create redundancy killer
-    const killer = new RedundancyKiller((text: string) => tokenizer.estimate(text));
+    const killer = new RedundancyKiller((text: string) => tokenizer.count(text));
 
     try {
       const report = killer.analyzeCard(card);

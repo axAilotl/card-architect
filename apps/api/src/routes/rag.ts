@@ -320,14 +320,14 @@ export async function ragRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: 'databaseId is required' });
       }
 
-      const topK = k ? parseInt(k, 10) : settings.rag.topK;
-      const maxTokens = tokenCap ? parseInt(tokenCap, 10) : settings.rag.tokenCap;
+      const topK = k ? parseInt(k, 10) : (settings.rag.topK ?? 5);
+      const maxTokens = tokenCap ? parseInt(tokenCap, 10) : (settings.rag.tokenCap ?? 1500);
 
       const snippets = await searchDocuments(settings.rag.indexPath, {
         dbId: databaseId,
         query: q,
-        topK: Number.isFinite(topK) ? topK : settings.rag.topK,
-        tokenCap: Number.isFinite(maxTokens) ? maxTokens : settings.rag.tokenCap,
+        topK: Number.isFinite(topK) ? topK : (settings.rag.topK ?? 5),
+        tokenCap: Number.isFinite(maxTokens) ? maxTokens : (settings.rag.tokenCap ?? 1500),
       });
 
       reply.send({ snippets });
@@ -350,9 +350,9 @@ export async function ragRoutes(fastify: FastifyInstance) {
       const databases = await listDatabases(settings.rag.indexPath);
       const totals = databases.reduce(
         (acc, db) => {
-          acc.sources += db.sourceCount;
-          acc.chunks += db.chunkCount;
-          acc.tokens += db.tokenCount;
+          acc.sources += db.sourceCount ?? 0;
+          acc.chunks += db.chunkCount ?? 0;
+          acc.tokens += db.tokenCount ?? 0;
           return acc;
         },
         { sources: 0, chunks: 0, tokens: 0 }

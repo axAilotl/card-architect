@@ -6,8 +6,8 @@
  * picks it up and creates the card in IndexedDB.
  */
 
-import { extractFromPNG, isPNG } from '@card-architect/png';
-import type { Card, CCv2Data, CCv3Data } from '@card-architect/schemas';
+import { extractFromPNG, isPNG } from '@character-foundry/png';
+import type { Card, CCv2Data, CCv3Data } from './types';
 import { localDB } from './db';
 
 interface PendingImport {

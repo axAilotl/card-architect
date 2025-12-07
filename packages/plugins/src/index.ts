@@ -1,4 +1,36 @@
-import type { Plugin, PluginContext, PluginCapability } from '@card-architect/schemas';
+/**
+ * Plugin capability types
+ */
+export type PluginCapability =
+  | 'format'
+  | 'transform'
+  | 'validate'
+  | 'generate'
+  | 'import'
+  | 'export';
+
+/**
+ * Plugin context for runtime
+ */
+export interface PluginContext {
+  logger: {
+    info: (msg: string) => void;
+    warn: (msg: string) => void;
+    error: (msg: string) => void;
+  };
+  config: Record<string, unknown>;
+}
+
+/**
+ * Plugin interface
+ */
+export interface Plugin {
+  name: string;
+  version: string;
+  description?: string;
+  capabilities: PluginCapability[];
+  run(input: unknown, ctx: PluginContext): Promise<unknown>;
+}
 
 /**
  * Plugin manager for Card Architect
@@ -68,6 +100,3 @@ export class PluginManager {
 
 // Export singleton instance
 export const pluginManager = new PluginManager();
-
-// Re-export types
-export type { Plugin, PluginContext, PluginCapability };

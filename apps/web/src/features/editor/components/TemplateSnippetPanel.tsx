@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTemplateStore } from '../../../store/template-store';
-import type { Template, Snippet, TemplateCategory, SnippetCategory, FocusField } from '@card-architect/schemas';
+import type { Template, Snippet, TemplateCategory, SnippetCategory, FocusField } from '../../../lib/types';
 import { TemplateEditor } from './TemplateEditor';
 import { SnippetEditor } from './SnippetEditor';
 import { getDeploymentConfig } from '../../../config/deployment';
@@ -190,7 +190,7 @@ export function TemplateSnippetPanel({
   // Filter templates
   const filteredTemplates = templates.filter((t) => {
     const matchesSearch = t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         t.description.toLowerCase().includes(searchQuery.toLowerCase());
+                         (t.description || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = categoryFilter === 'all' || t.category === categoryFilter;
     return matchesSearch && matchesCategory;
   });
@@ -198,7 +198,7 @@ export function TemplateSnippetPanel({
   // Filter snippets
   const filteredSnippets = snippets.filter((s) => {
     const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         s.description.toLowerCase().includes(searchQuery.toLowerCase());
+                         (s.description || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = categoryFilter === 'all' || s.category === categoryFilter;
     return matchesSearch && matchesCategory;
   });
@@ -601,7 +601,9 @@ export function TemplateSnippetPanel({
                   <span className="text-sm">
                     {selectedTemplate.targetFields === 'all'
                       ? 'All fields'
-                      : selectedTemplate.targetFields.join(', ')}
+                      : Array.isArray(selectedTemplate.targetFields)
+                        ? selectedTemplate.targetFields.join(', ')
+                        : selectedTemplate.targetFields}
                   </span>
                 </div>
                 <div className="bg-dark-bg border border-dark-border rounded p-4 mb-4">

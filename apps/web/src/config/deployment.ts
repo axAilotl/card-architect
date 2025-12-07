@@ -49,6 +49,7 @@ export interface DeploymentConfig {
     sillytavern: boolean;
     webimport: boolean;
     charxOptimizer: boolean;
+    federation: boolean;
   };
 }
 
@@ -77,6 +78,7 @@ const FULL_CONFIG: DeploymentConfig = {
     sillytavern: true,
     webimport: true,
     charxOptimizer: true,
+    federation: true,
   },
 };
 
@@ -105,6 +107,7 @@ const LIGHT_CONFIG: DeploymentConfig = {
     sillytavern: true,
     webimport: true,
     charxOptimizer: true,
+    federation: true, // Works client-side
   },
 };
 
@@ -133,6 +136,7 @@ const STATIC_CONFIG: DeploymentConfig = {
     sillytavern: true,
     webimport: false, // No server
     charxOptimizer: true,
+    federation: true, // Works client-side
   },
 };
 

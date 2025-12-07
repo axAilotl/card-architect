@@ -1,0 +1,112 @@
+[
+  {
+    "id": "tighten-200",
+    "name": "Tighten (200 tokens)",
+    "description": "Reduce text to approximately 200 tokens while preserving meaning",
+    "instruction": "Rewrite to approximately 200 tokens. Preserve meaning, voice, and key details. Remove redundancy and filler. Keep formatting rules intact. Output only the rewritten text.",
+    "category": "rewrite",
+    "isBuiltIn": true,
+    "isHidden": false,
+    "createdAt": "2023-01-01T00:00:00.000Z",
+    "updatedAt": "2023-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "tighten-150",
+    "name": "Tighten (150 tokens)",
+    "description": "Reduce text to approximately 150 tokens while preserving meaning",
+    "instruction": "Rewrite to approximately 150 tokens. Preserve meaning, voice, and key details. Remove redundancy and filler. Keep formatting rules intact. Output only the rewritten text.",
+    "category": "rewrite",
+    "isBuiltIn": true,
+    "isHidden": false,
+    "createdAt": "2023-01-01T00:00:00.000Z",
+    "updatedAt": "2023-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "convert-structured",
+    "name": "Convert to Structured",
+    "description": "Reformat into structured style with labeled sections and bullets",
+    "instruction": "Reformat into structured style with labeled sections and nested bullets. Do not invent new facts. Keep {{char}}/{{user}} placeholders. Output only the reformatted text.",
+    "category": "format",
+    "isBuiltIn": true,
+    "isHidden": false,
+    "createdAt": "2023-01-01T00:00:00.000Z",
+    "updatedAt": "2023-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "convert-prose",
+    "name": "Convert to Prose",
+    "description": "Convert to flowing prose with natural paragraphs",
+    "instruction": "Convert to flowing prose style with natural paragraphs. Maintain all information but make it read smoothly. Output only the prose version.",
+    "category": "format",
+    "isBuiltIn": true,
+    "isHidden": false,
+    "createdAt": "2023-01-01T00:00:00.000Z",
+    "updatedAt": "2023-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "convert-hybrid",
+    "name": "Convert to Hybrid",
+    "description": "Mix prose paragraphs with bulleted key facts",
+    "instruction": "Convert to hybrid style: prose paragraphs for narrative, bullets for key facts. Balance readability with information density. Output only the hybrid format.",
+    "category": "format",
+    "isBuiltIn": true,
+    "isHidden": false,
+    "createdAt": "2023-01-01T00:00:00.000Z",
+    "updatedAt": "2023-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "enforce-style",
+    "name": "Enforce Style Rules",
+    "description": "Fix formatting: quoted dialogue, italic actions, consistent tense",
+    "instruction": "Enforce consistent formatting:\n- Dialogue: \"quoted speech\"\n- Actions: *italic actions*\n- Present tense for descriptions\n- Proper {{char}}/{{user}} placeholder usage\nOutput only the corrected text.",
+    "category": "format",
+    "isBuiltIn": true,
+    "isHidden": false,
+    "createdAt": "2023-01-01T00:00:00.000Z",
+    "updatedAt": "2023-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "format-jed",
+    "name": "Format to JED",
+    "description": "Reformat character card content to JED template structure",
+    "instruction": "Reformat the provided character content into the JED (JSON Enhanced Definition) template format. Use these section headers and structure:\n\n# Setting\n- Time Period:\n- World Details:\n- Main Characters: {{user}}, {{char}}\n\n## Lore\n[Worldbuilding information]\n\n# {{char}}\n\n## Overview\n[Brief character concept]\n\n## Appearance Details\n- Race:\n- Height:\n- Age:\n- Hair:\n- Eyes:\n- Body:\n- Face:\n- Features:\n\n## Starting Outfit\n[Clothing items as bullet list]\n\n## Personality\n- Archetype:\n- Tags:\n- Likes:\n- Dislikes:\n- Details:\n- With {{user}}:\n\n## Behaviour and Habits\n[Bullet list of behaviors]\n\n## Speech\n- Style:\n- Quirks:\n- Ticks:\n\nExtract and organize the existing content into these sections. Do not invent new facts. Keep {{char}}/{{user}} placeholders. Output only the reformatted text.",
+    "category": "format",
+    "isBuiltIn": true,
+    "isHidden": false,
+    "createdAt": "2023-01-01T00:00:00.000Z",
+    "updatedAt": "2023-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "format-jed-plus",
+    "name": "Format to JED+",
+    "description": "Reformat character card content to comprehensive JED+ template with Q&A sections",
+    "instruction": "Reformat the provided character content into the JED+ (Extended JSON Enhanced Definition) template format with Q&A sections. Use this structure:\n\n# [SETTING]\n- Time/Period:\n- World Details:\n- Main Characters: {{user}}, {{char}}\n\n## LORE\n[Worldbuilding]\n\n## SCENARIO OVERVIEW\n[Main scenario description]\n\n<{{char}}>\n\n# [{{char}}]\n\n## CHARACTER OVERVIEW\n[Brief concept]\n\n## [APPEARANCE]\n\n### APPEARANCE DETAILS\n- Full Name, Alias:\n- Race:\n- Sex/Gender:\n- Height:\n- Age:\n- Hair:\n- Eyes:\n- Body:\n- Face:\n- Features:\n\n- Appearance Trait:\n  ↳ Details:\n  ↳ Effect:\n\n### STARTING OUTFIT\n[Detailed outfit as nested list]\n\n## [BASIC_INFO]\n\n### ORIGIN (BACKSTORY)\n[Character history]\n\n### ABILITIES\n- Ability:\n  ↳ Details:\n\n## [PERSONALITY_AND_TRAITS]\n\n### PERSONALITY\n- Archetype:\n  ↳ Archetype Details:\n  ↳ Reasoning:\n\n- Personality Tags:\n\n<Q&A>\nQ: How {{char}} behaves with {{user}}? What is their relationship?\nA: [Answer based on content]\n\nQ: What is {{char}}'s most favorite thing?\nA: [Answer based on content]\n</Q&A>\n\n## [BEHAVIOR_NOTES]\n[Bullet list]\n\n## [SPEECH]\n\n### GENERAL SPEECH INFO\n- Style:\n- Quirks:\n- Ticks:\n\n</{{char}}>\n\nExtract and organize the existing content into these sections. Add Q&A entries where information is available. Do not invent new facts. Keep {{char}}/{{user}} placeholders. Output only the reformatted text.",
+    "category": "format",
+    "isBuiltIn": true,
+    "isHidden": false,
+    "createdAt": "2023-01-01T00:00:00.000Z",
+    "updatedAt": "2023-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "gen-greetings",
+    "name": "Generate Alternate Greetings (3)",
+    "description": "Create 3 alternate opening messages",
+    "instruction": "Create 3 alternate greetings, each a complete opening in the card's format. Vary mood, setting, and hook. Keep voice consistent. Return as a JSON array of strings, each greeting on one element. Format: [\"greeting 1 text\", \"greeting 2 text\", \"greeting 3 text\"]",
+    "category": "generate",
+    "isBuiltIn": true,
+    "isHidden": false,
+    "createdAt": "2023-01-01T00:00:00.000Z",
+    "updatedAt": "2023-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "gen-lorebook",
+    "name": "Generate Lorebook Entry",
+    "description": "Propose a lorebook entry for this content",
+    "instruction": "Propose a lorebook entry for this content. Return as JSON:\n{\n  \"keys\": [\"key1\", \"key2\"],\n  \"secondaryKeys\": [],\n  \"content\": \"entry content\",\n  \"priority\": 10,\n  \"insertionOrder\": 100,\n  \"position\": \"after_char\"\n}",
+    "category": "generate",
+    "isBuiltIn": true,
+    "isHidden": false,
+    "createdAt": "2023-01-01T00:00:00.000Z",
+    "updatedAt": "2023-01-01T00:00:00.000Z"
+  }
+]

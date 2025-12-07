@@ -6,7 +6,7 @@ import { useLLMStore } from '../../../store/llm-store';
 import { localDB } from '../../../lib/db';
 import { getDeploymentConfig } from '../../../config/deployment';
 import { invokeClientLLM, type ClientLLMProvider } from '../../../lib/client-llm';
-import type { CCFieldName, FocusField, Template, Snippet } from '@card-architect/schemas';
+import { normalizeSpec, type CCFieldName, type FocusField, type Template, type Snippet } from '../../../lib/types';
 import { FieldEditor } from './FieldEditor';
 import { LorebookEditor } from './LorebookEditor';
 import { ElaraVossPanel } from './ElaraVossPanel';
@@ -167,7 +167,7 @@ export function EditPanel() {
         // Client-side LLM call
         const clientProvider: ClientLLMProvider = {
           id: activeProvider.id,
-          name: activeProvider.label,
+          name: activeProvider.label || activeProvider.name,
           kind: (activeProvider as any).clientKind || (activeProvider.kind === 'anthropic' ? 'anthropic' : 'openai-compatible'),
           baseURL: activeProvider.baseURL || '',
           apiKey: activeProvider.apiKey || '',
@@ -252,7 +252,7 @@ export function EditPanel() {
         // Client-side LLM call
         const clientProvider: ClientLLMProvider = {
           id: activeProvider.id,
-          name: activeProvider.label,
+          name: activeProvider.label || activeProvider.name,
           kind: (activeProvider as any).clientKind || (activeProvider.kind === 'anthropic' ? 'anthropic' : 'openai-compatible'),
           baseURL: activeProvider.baseURL || '',
           apiKey: activeProvider.apiKey || '',
@@ -1184,7 +1184,7 @@ export function EditPanel() {
             fieldName={llmAssistField}
             currentValue={llmAssistValue}
             onApply={handleLLMApply}
-            cardSpec={currentCard.meta.spec}
+            cardSpec={normalizeSpec(currentCard.meta.spec)}
           />
         )}
       </div>

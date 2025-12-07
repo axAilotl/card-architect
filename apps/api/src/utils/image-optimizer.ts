@@ -11,7 +11,7 @@ import { promisify } from 'util';
 import { promises as fs } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import type { CharxExportSettings } from '@card-architect/schemas';
+import type { CharxExportSettings } from '../types/index.js';
 
 const execAsync = promisify(exec);
 

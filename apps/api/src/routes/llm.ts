@@ -8,7 +8,7 @@ import type {
   LLMInvokeRequest,
   LLMAssistRequest,
   LLMSettings,
-} from '@card-architect/schemas';
+} from '../types/index.js';
 import { openaiResponses, openaiChat } from '../providers/openai.js';
 import { anthropicMessages } from '../providers/anthropic.js';
 import { getSettings, saveSettings } from '../utils/settings.js';
@@ -298,8 +298,8 @@ export async function llmRoutes(fastify: FastifyInstance) {
         // Send final assist response with diff
         const tokenizer = getTokenizer();
         const diff = computeDiff(context.currentValue, accumulated);
-        const beforeTokens = tokenizer.estimate(context.currentValue);
-        const afterTokens = tokenizer.estimate(accumulated);
+        const beforeTokens = tokenizer.count(context.currentValue);
+        const afterTokens = tokenizer.count(accumulated);
 
         const finalChunk = {
           done: true,
@@ -323,8 +323,8 @@ export async function llmRoutes(fastify: FastifyInstance) {
         const response = result as any;
         const tokenizer = getTokenizer();
         const diff = computeDiff(context.currentValue, response.content);
-        const beforeTokens = tokenizer.estimate(context.currentValue);
-        const afterTokens = tokenizer.estimate(response.content);
+        const beforeTokens = tokenizer.count(context.currentValue);
+        const afterTokens = tokenizer.count(response.content);
 
         reply.send({
           original: context.currentValue,

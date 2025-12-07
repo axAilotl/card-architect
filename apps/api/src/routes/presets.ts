@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { PresetRepository } from '../db/preset-repository.js';
-import type { CreatePresetRequest } from '@card-architect/schemas';
+import type { CreatePresetRequest } from '../types/index.js';
 
 export async function presetRoutes(fastify: FastifyInstance) {
   const presetRepo = new PresetRepository(fastify.db);

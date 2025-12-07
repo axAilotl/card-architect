@@ -5,10 +5,10 @@
  * Parses PNG, CHARX, and Voxta files directly in the browser.
  */
 
-import { extractFromPNG, isPNG } from '@card-architect/png';
-import { extractCharx } from '@card-architect/charx';
-import { extractVoxtaPackage, voxtaToCCv3 } from '@card-architect/voxta';
-import type { Card, CCv2Data, CCv3Data } from '@card-architect/schemas';
+import { extractFromPNG, isPNG } from '@character-foundry/png';
+import { readCharX as extractCharx } from '@character-foundry/charx';
+import { readVoxta as extractVoxtaPackage, voxtaToCCv3 } from '@character-foundry/voxta';
+import type { Card, CCv2Data, CCv3Data } from './types';
 
 // Asset extracted from CHARX/Voxta for storing in IndexedDB
 export interface ExtractedAsset {

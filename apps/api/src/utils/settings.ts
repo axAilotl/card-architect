@@ -6,7 +6,7 @@
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
-import type { LLMSettings } from '@card-architect/schemas';
+import type { LLMSettings } from '../types/index.js';
 
 const CONFIG_DIR = join(homedir(), '.card-architect');
 const CONFIG_FILE = join(CONFIG_DIR, 'config.json');

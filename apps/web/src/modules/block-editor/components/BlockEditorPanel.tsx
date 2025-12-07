@@ -18,7 +18,7 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useBlockEditorStore } from '../store';
 import { BlockComponent } from './BlockComponent';
 import { useCardStore } from '../../../store/card-store';
-import type { CCv3Data } from '@card-architect/schemas';
+import type { CCv3Data } from '../../../lib/types';
 import { V2_FIELDS, type TargetField } from '../types';
 
 export function BlockEditorPanel() {

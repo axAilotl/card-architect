@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { Template, TemplateCategory, FocusField } from '@card-architect/schemas';
+import type { Template, TemplateCategory, FocusField } from '../../../lib/types';
 
 interface TemplateEditorProps {
   isOpen: boolean;
@@ -26,9 +26,9 @@ export function TemplateEditor({ isOpen, onClose, onSave, template }: TemplateEd
   useEffect(() => {
     if (template) {
       setName(template.name);
-      setDescription(template.description);
-      setCategory(template.category);
-      setTargetFields(template.targetFields);
+      setDescription(template.description || '');
+      setCategory(template.category || 'custom');
+      setTargetFields(template.targetFields as FocusField[] | 'all');
       setContent(template.content);
     } else {
       // Reset for new template

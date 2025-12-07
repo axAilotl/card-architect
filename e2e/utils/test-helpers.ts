@@ -421,6 +421,42 @@ export async function getDeploymentMode(page: Page): Promise<string> {
 }
 
 /**
+ * Import a card file into the editor
+ */
+export async function importCardFile(page: Page, filePath: string) {
+  // Click Import dropdown
+  const importButton = page.locator('button:has-text("Import")');
+  await expect(importButton).toBeVisible({ timeout: 10000 });
+  await importButton.click();
+
+  // Wait for dropdown menu to appear
+  await page.waitForTimeout(300);
+
+  // Click "From File" button and handle filechooser in parallel
+  // The button creates a dynamic file input and triggers click immediately
+  const fromFileButton = page.locator('button:has-text("From File"), button:has-text("File"), [role="menuitem"]:has-text("File")').first();
+
+  const [fileChooser] = await Promise.all([
+    page.waitForEvent('filechooser', { timeout: 10000 }),
+    fromFileButton.click(),
+  ]);
+
+  await fileChooser.setFiles(filePath);
+
+  // Wait for import to complete and navigation to happen
+  await page.waitForURL(/\/cards\//, { timeout: 15000 });
+  await waitForAppLoad(page);
+}
+
+/**
+ * Load test fixture card data
+ */
+export function loadTestCard(): any {
+  const fixturePath = path.join(__dirname, '..', 'fixtures', 'test-card.json');
+  return JSON.parse(fs.readFileSync(fixturePath, 'utf-8'));
+}
+
+/**
  * Compare features between two pages (parity test)
  */
 export async function compareFeatures(fullModePage: Page, lightModePage: Page) {

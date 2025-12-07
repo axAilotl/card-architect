@@ -22,6 +22,7 @@ import { comfyuiRoutes } from './routes/comfyui.js';
 import { webImportRoutes } from './routes/web-import.js';
 import { imageArchivalRoutes, userImagesRoutes } from './routes/image-archival.js';
 import { charxOptimizerRoutes } from './routes/charx-optimizer.js';
+import { federationRoutes } from './routes/federation.js';
 import type Database from 'better-sqlite3';
 
 // Extend Fastify instance type
@@ -90,6 +91,9 @@ export async function build(opts: FastifyServerOptions = {}) {
   // Register user images route at root level (SillyTavern compatibility)
   // This serves archived images at /user/images/:characterName/:filename
   await fastify.register(userImagesRoutes);
+
+  // Federation routes (no prefix - routes define their own /api/federation paths)
+  await fastify.register(federationRoutes);
 
   // Add hook to close database when server closes
   fastify.addHook('onClose', async () => {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useCardStore, extractCardData } from '../../../store/card-store';
 import { useSettingsStore } from '../../../store/settings-store';
-import type { CCv2Data, CCv3Data, Template, Snippet, CCFieldName, FocusField } from '@card-architect/schemas';
+import { normalizeSpec, type CCv2Data, type CCv3Data, type Template, type Snippet, type CCFieldName, type FocusField } from '../../../lib/types';
 import { MilkdownProvider } from '@milkdown/react';
 import { Crepe } from '@milkdown/crepe';
 import '@milkdown/crepe/theme/common/style.css';
@@ -233,7 +233,7 @@ function FocusedEditorInner() {
         return (cardData as any).extensions?.depth_prompt?.prompt || '';
       }
 
-      const raw = (cardData as Record<string, unknown>)[field];
+      const raw = (cardData as unknown as Record<string, unknown>)[field];
       return typeof raw === 'string' ? raw : '';
     },
     [cardData, alternateGreetingIndex]
@@ -841,7 +841,7 @@ function FocusedEditorInner() {
               fieldName={selectedField as CCFieldName}
               currentValue={currentValue}
               onApply={handleLLMApply}
-              cardSpec={currentCard?.meta.spec || 'v3'}
+              cardSpec={currentCard?.meta.spec ? normalizeSpec(currentCard.meta.spec) : 'v3'}
             />
           )}
         </div>

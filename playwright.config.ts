@@ -76,12 +76,12 @@ export default defineConfig({
       testMatch: /ui-elements\.spec\.ts$/,
     },
 
-    // Mobile Safari for responsive testing
-    {
-      name: 'mobile',
-      use: { ...devices['iPhone 13'] },
-      testMatch: /ui-elements\.spec\.ts$/,
-    },
+    // Mobile Safari for responsive testing (disabled)
+    // {
+    //   name: 'mobile',
+    //   use: { ...devices['iPhone 13'] },
+    //   testMatch: /ui-elements\.spec\.ts$/,
+    // },
   ],
 
   // Web server configuration

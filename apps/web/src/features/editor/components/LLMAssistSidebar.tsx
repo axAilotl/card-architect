@@ -15,17 +15,9 @@ import type {
   LLMStreamChunk,
   RagSnippet,
   UserPreset,
-} from '@card-architect/schemas';
+} from '../../../lib/types';
 import { DiffViewer } from '../../../components/ui/DiffViewer';
-
-// Default presets for client-side use
-const defaultNow = new Date().toISOString();
-const DEFAULT_PRESETS: UserPreset[] = [
-  { id: 'rewrite', name: 'Rewrite', instruction: 'Rewrite this text to be clearer and more engaging while preserving the meaning.', category: 'rewrite', description: '', isBuiltIn: true, createdAt: defaultNow, updatedAt: defaultNow },
-  { id: 'expand', name: 'Expand', instruction: 'Expand this text with more detail and description.', category: 'rewrite', description: '', isBuiltIn: true, createdAt: defaultNow, updatedAt: defaultNow },
-  { id: 'condense', name: 'Condense', instruction: 'Condense this text while keeping the key information.', category: 'rewrite', description: '', isBuiltIn: true, createdAt: defaultNow, updatedAt: defaultNow },
-  { id: 'format-jed', name: 'Format as JED', instruction: 'Reformat this text using JED (JSON-Enhanced Description) format with sections like [Character], [Personality], [Background], etc.', category: 'format', description: '', isBuiltIn: true, createdAt: defaultNow, updatedAt: defaultNow },
-];
+import { defaultPresets as DEFAULT_PRESETS } from '../../../lib/default-presets';
 
 interface LLMAssistSidebarProps {
   isOpen: boolean;
@@ -133,9 +125,9 @@ export function LLMAssistSidebar({
 
   useEffect(() => {
     if (!ragToggleTouched) {
-      setUseKnowledgeBase(settings.rag.enabled && ragDatabases.length > 0);
+      setUseKnowledgeBase(!!(settings.rag?.enabled && ragDatabases.length > 0));
     }
-  }, [settings.rag.enabled, ragDatabases.length, ragToggleTouched]);
+  }, [settings.rag?.enabled, ragDatabases.length, ragToggleTouched]);
 
   useEffect(() => {
     if (!useKnowledgeBase) {
@@ -190,7 +182,7 @@ export function LLMAssistSidebar({
 
       const clientProvider: ClientLLMProvider = {
         id: activeProvider.id,
-        name: activeProvider.label,
+        name: activeProvider.label || activeProvider.name,
         kind: (activeProvider as any).clientKind || (activeProvider.kind === 'anthropic' ? 'anthropic' : 'openai-compatible'),
         baseURL: activeProvider.baseURL || '',
         apiKey: activeProvider.apiKey || '',
@@ -225,13 +217,16 @@ Respond with ONLY the revised text. Do not include explanations or markdown form
 
         const revised = result.content || '';
         setAssistResponse({
+          content: revised,
+          model: activeProvider?.defaultModel || 'unknown',
+          usage: { promptTokens: 0, completionTokens: 0 },
           original: selection || currentValue,
           revised,
           diff: [],
           tokenDelta: { before: 0, after: 0, delta: 0 },
           metadata: {
             model: activeProvider?.defaultModel || 'unknown',
-            provider: activeProvider?.label || 'unknown',
+            provider: activeProvider?.label || activeProvider?.name || 'unknown',
             temperature: 0.7,
             promptTokens: 0,
             completionTokens: 0,
@@ -251,7 +246,7 @@ Respond with ONLY the revised text. Do not include explanations or markdown form
     let ragSnippets: RagSnippet[] | undefined;
 
     if (useKnowledgeBase) {
-      if (!settings.rag.enabled) {
+      if (!settings.rag?.enabled) {
         setError('Enable RAG in Settings to use knowledge bases.');
         setIsProcessing(false);
         return;
@@ -346,7 +341,7 @@ Respond with ONLY the revised text. Do not include explanations or markdown form
 
   const handleApply = (action: 'replace' | 'append' | 'insert') => {
     if (assistResponse) {
-      onApply(assistResponse.revised, action);
+      onApply(assistResponse.revised || assistResponse.content, action);
       onClose();
     }
   };
@@ -453,7 +448,7 @@ Respond with ONLY the revised text. Do not include explanations or markdown form
           <div className="flex items-center justify-between">
             <label className="text-sm font-medium">Knowledge Base</label>
             <span className="text-xs text-dark-muted">
-              {settings.rag.enabled ? `${ragDatabases.length} available` : 'Disabled'}
+              {settings.rag?.enabled ? `${ragDatabases.length} available` : 'Disabled'}
             </span>
           </div>
           <div className="mt-2 flex items-center gap-2">
@@ -461,7 +456,7 @@ Respond with ONLY the revised text. Do not include explanations or markdown form
               type="checkbox"
               id="useRag"
               checked={useKnowledgeBase}
-              disabled={!settings.rag.enabled || ragDatabases.length === 0}
+              disabled={!settings.rag?.enabled || ragDatabases.length === 0}
               onChange={(e) => {
                 setUseKnowledgeBase(e.target.checked);
                 setRagToggleTouched(true);
@@ -469,7 +464,7 @@ Respond with ONLY the revised text. Do not include explanations or markdown form
               className="rounded"
             />
             <label htmlFor="useRag" className="text-xs text-dark-muted">
-              {settings.rag.enabled
+              {settings.rag?.enabled
                 ? ragDatabases.length === 0
                   ? 'Add knowledge bases in Settings to enable.'
                   : 'Retrieve lore and guide snippets before prompting.'
@@ -477,7 +472,7 @@ Respond with ONLY the revised text. Do not include explanations or markdown form
             </label>
           </div>
 
-          {useKnowledgeBase && settings.rag.enabled && ragDatabases.length > 0 && (
+          {useKnowledgeBase && settings.rag?.enabled && ragDatabases.length > 0 && (
             <div className="mt-3 space-y-2">
               <select
                 value={selectedKnowledgeBase}
@@ -659,11 +654,13 @@ Respond with ONLY the revised text. Do not include explanations or markdown form
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-semibold">Result</h4>
-              <div className="text-xs text-dark-muted">
-                {assistResponse.tokenDelta.delta > 0 ? '+' : ''}
-                {assistResponse.tokenDelta.delta} tokens ({assistResponse.tokenDelta.before} →{' '}
-                {assistResponse.tokenDelta.after})
-              </div>
+              {assistResponse.tokenDelta && (
+                <div className="text-xs text-dark-muted">
+                  {assistResponse.tokenDelta.delta > 0 ? '+' : ''}
+                  {assistResponse.tokenDelta.delta} tokens ({assistResponse.tokenDelta.before} →{' '}
+                  {assistResponse.tokenDelta.after})
+                </div>
+              )}
             </div>
 
             {assistResponse.diff && (

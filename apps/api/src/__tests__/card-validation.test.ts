@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { validateV2, validateV3, detectSpec } from '@card-architect/schemas';
-import type { CCv2Data, CCv3Data } from '@card-architect/schemas';
+import { detectSpec, type CCv2Data, type CCv3Data } from '@character-foundry/schemas';
+import { validateV2, validateV3 } from '../utils/validation.js';
 
 describe('Card Validation', () => {
   describe('V2 Cards', () => {

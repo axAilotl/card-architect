@@ -9,8 +9,8 @@ import type {
   AssetTag,
   AssetValidationError,
   CardAssetWithDetails,
-} from '@card-architect/schemas';
-import { parseActorIndex, hasTag, addTag, removeTag } from '@card-architect/schemas';
+} from '../types/index.js';
+import { parseActorIndex, hasTag, addTag, removeTag } from '../types/index.js';
 import { CardAssetRepository } from '../db/repository.js';
 
 export class AssetGraphService {
@@ -64,7 +64,7 @@ export class AssetGraphService {
   getMainPortrait(graph: AssetNode[]): AssetNode | null {
     // First, look for portrait-override tag
     const portraitOverride = graph.find((node) =>
-      hasTag(node.metadata, 'portrait-override')
+      hasTag(node.metadata.tags, 'portrait-override')
     );
     if (portraitOverride) return portraitOverride;
 
@@ -111,7 +111,7 @@ export class AssetGraphService {
   getMainBackground(graph: AssetNode[]): AssetNode | null {
     // Look for main-background tag
     const mainBg = graph.find((node) =>
-      hasTag(node.metadata, 'main-background')
+      hasTag(node.metadata.tags, 'main-background')
     );
     if (mainBg) return mainBg;
 
@@ -198,7 +198,7 @@ export class AssetGraphService {
 
     // Rule: Only one portrait-override
     const portraitOverrides = graph.filter((node) =>
-      hasTag(node.metadata, 'portrait-override')
+      hasTag(node.metadata.tags, 'portrait-override')
     );
     if (portraitOverrides.length > 1) {
       portraitOverrides.forEach((node) => {
@@ -213,7 +213,7 @@ export class AssetGraphService {
 
     // Rule: Only one main-background
     const mainBackgrounds = graph.filter((node) =>
-      hasTag(node.metadata, 'main-background')
+      hasTag(node.metadata.tags, 'main-background')
     );
     if (mainBackgrounds.length > 1) {
       mainBackgrounds.forEach((node) => {
@@ -285,19 +285,25 @@ export class AssetGraphService {
   setPortraitOverride(graph: AssetNode[], assetId: string): AssetNode[] {
     return graph.map((node) => {
       const isIcon = node.metadata.type === 'icon';
-      
+
       if (node.id === assetId) {
         // Add portrait-override tag and set isMain if it's an icon
         return {
           ...node,
-          metadata: addTag(node.metadata, 'portrait-override'),
+          metadata: {
+            ...node.metadata,
+            tags: addTag(node.metadata.tags, 'portrait-override'),
+          },
           isMain: isIcon ? true : node.isMain,
         };
       } else {
         // Remove portrait-override tag from others and unset isMain if it's an icon
         return {
           ...node,
-          metadata: removeTag(node.metadata, 'portrait-override'),
+          metadata: {
+            ...node.metadata,
+            tags: removeTag(node.metadata.tags, 'portrait-override'),
+          },
           isMain: isIcon ? false : node.isMain,
         };
       }
@@ -313,12 +319,18 @@ export class AssetGraphService {
       if (node.id === assetId) {
         return {
           ...node,
-          metadata: addTag(node.metadata, 'main-background'),
+          metadata: {
+            ...node.metadata,
+            tags: addTag(node.metadata.tags, 'main-background'),
+          },
         };
       } else {
         return {
           ...node,
-          metadata: removeTag(node.metadata, 'main-background'),
+          metadata: {
+            ...node.metadata,
+            tags: removeTag(node.metadata.tags, 'main-background'),
+          },
         };
       }
     });
@@ -332,20 +344,23 @@ export class AssetGraphService {
     return graph.map((node) => {
       if (node.id === assetId) {
         // Remove existing actor tags
-        let newMetadata = node.metadata;
+        let newTags = node.metadata.tags;
         node.metadata.tags.forEach((tag) => {
           if (typeof tag === 'string' && tag.startsWith('actor-')) {
-            newMetadata = removeTag(newMetadata, tag);
+            newTags = removeTag(newTags, tag);
           }
         });
 
         // Add new actor tag
-        newMetadata = addTag(newMetadata, `actor-${actorIndex}` as AssetTag);
-        newMetadata.actorIndex = actorIndex;
+        newTags = addTag(newTags, `actor-${actorIndex}` as AssetTag);
 
         return {
           ...node,
-          metadata: newMetadata,
+          metadata: {
+            ...node.metadata,
+            tags: newTags,
+            actorIndex,
+          },
         };
       }
       return node;
@@ -358,17 +373,20 @@ export class AssetGraphService {
   unbindFromActor(graph: AssetNode[], assetId: string): AssetNode[] {
     return graph.map((node) => {
       if (node.id === assetId) {
-        let newMetadata = node.metadata;
+        let newTags = node.metadata.tags;
         node.metadata.tags.forEach((tag) => {
           if (typeof tag === 'string' && tag.startsWith('actor-')) {
-            newMetadata = removeTag(newMetadata, tag);
+            newTags = removeTag(newTags, tag);
           }
         });
-        newMetadata.actorIndex = undefined;
 
         return {
           ...node,
-          metadata: newMetadata,
+          metadata: {
+            ...node.metadata,
+            tags: newTags,
+            actorIndex: undefined,
+          },
         };
       }
       return node;

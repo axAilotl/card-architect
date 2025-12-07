@@ -2,34 +2,27 @@
  * Tokenizer utility for token counting
  */
 
-import { tokenizerRegistry } from '@card-architect/tokenizers';
-import type { TokenizerAdapter } from '@card-architect/schemas';
+import { registry, type TokenizerAdapter } from '@character-foundry/tokenizers';
 
 /**
- * Get default tokenizer (GPT-2 BPE approximation)
+ * Get tokenizer (defaults to GPT-4)
  */
 export function getTokenizer(id?: string): TokenizerAdapter {
-  const tokenizer = id ? tokenizerRegistry.get(id) : tokenizerRegistry.get('gpt2-bpe-approx');
-
-  if (!tokenizer) {
-    throw new Error(`Tokenizer not found: ${id}`);
-  }
-
-  return tokenizer;
+  return registry.get(id);
 }
 
 /**
- * Estimate tokens for a single text
+ * Count tokens for a single text
  */
 export function estimateTokens(text: string, tokenizerId?: string): number {
   const tokenizer = getTokenizer(tokenizerId);
-  return tokenizer.estimate(text);
+  return tokenizer.count(text);
 }
 
 /**
- * Estimate tokens for multiple texts
+ * Count tokens for multiple texts
  */
 export function estimateTokensMany(texts: string[], tokenizerId?: string): number[] {
   const tokenizer = getTokenizer(tokenizerId);
-  return tokenizer.estimateMany(texts);
+  return tokenizer.countMany(texts);
 }

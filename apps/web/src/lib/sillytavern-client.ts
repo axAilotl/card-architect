@@ -10,8 +10,8 @@
  * - Reduces server load
  */
 
-import type { Card } from '@card-architect/schemas';
-import { createCardPNG } from '@card-architect/png';
+import type { Card } from './types';
+import { embedIntoPNG as createCardPNG } from '@character-foundry/png';
 
 export interface SillyTavernSettings {
   enabled: boolean;
@@ -93,7 +93,7 @@ export class SillyTavernClient {
 
     try {
       // Step 1: Generate PNG with embedded card data
-      const pngBuffer = createCardPNG(imageBuffer, card);
+      const pngBuffer = createCardPNG(imageBuffer, card.data);
 
       // Step 2: Get CSRF token
       const csrfToken = await this.getCsrfToken();

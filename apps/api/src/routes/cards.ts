@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { CardRepository, CardAssetRepository } from '../db/repository.js';
-import { validateV2, validateV3, type CCv2Data, type CCv3Data, type CardMeta } from '@card-architect/schemas';
+import { type CCv2Data, type CCv3Data } from '@character-foundry/schemas';
+import { validateV2, validateV3 } from '../utils/validation.js';
+import type { CardMeta } from '../types/index.js';
 import { normalizeLorebookEntries } from './import-export.js';
 
 export async function cardRoutes(fastify: FastifyInstance) {

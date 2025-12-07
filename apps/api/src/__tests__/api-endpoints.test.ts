@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { build } from '../app.js';
 import type { FastifyInstance } from 'fastify';
-import type { CCv2Data, CCv3Data } from '@card-architect/schemas';
+import type { CCv2Data, CCv3Data } from '@character-foundry/schemas';
 
 describe('API Endpoints', () => {
   let app: FastifyInstance;

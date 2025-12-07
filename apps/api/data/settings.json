@@ -1,7 +1,7 @@
 {
   "sillyTavern": {
     "enabled": true,
-    "baseUrl": "http://purrsephone.local.vega.nyc:8100/",
+    "baseUrl": "https://silly.local.vega.nyc",
     "importEndpoint": "/api/characters/import",
     "sessionCookie": ""
   }

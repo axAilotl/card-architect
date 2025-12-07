@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useCardStore, extractCardData } from '../../../store/card-store';
 import type {
   CCv3LorebookEntry,
-} from '@card-architect/schemas';
+} from '../../../lib/types';
 
 export function LorebookEditor() {
   const { currentCard, updateCardData } = useCardStore();

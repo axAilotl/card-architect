@@ -1,74 +1,11 @@
 import { create } from 'zustand';
-import type { Template, Snippet, UUID } from '@card-architect/schemas';
+import type { Template, Snippet } from '../lib/types';
 import { api } from '../lib/api';
 import { getDeploymentConfig } from '../config/deployment';
+import { defaultTemplates as DEFAULT_TEMPLATES, defaultSnippets as DEFAULT_SNIPPETS } from '../lib/default-templates';
 
 const TEMPLATES_STORAGE_KEY = 'ca-templates';
 const SNIPPETS_STORAGE_KEY = 'ca-snippets';
-
-// Default templates for light mode
-const DEFAULT_TEMPLATES: Template[] = [
-  {
-    id: 'default-persona',
-    name: 'Basic Persona',
-    description: 'A simple character persona template',
-    category: 'character',
-    targetFields: ['description'],
-    content: {
-      description: '{{char}} is a [age] year old [gender] [species/race]. They have [physical description]. Their personality is [traits]. They speak in a [speech pattern] manner.',
-    },
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    isDefault: true,
-  },
-  {
-    id: 'default-scenario',
-    name: 'Basic Scenario',
-    description: 'A simple scenario template',
-    category: 'scenario',
-    targetFields: ['scenario'],
-    content: {
-      scenario: '{{user}} and {{char}} are [relationship/situation]. The setting is [location/time]. [Additional context about the situation].',
-    },
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    isDefault: true,
-  },
-];
-
-// Default snippets for light mode
-const DEFAULT_SNIPPETS: Snippet[] = [
-  {
-    id: 'snippet-char',
-    name: '{{char}}',
-    description: 'Character name placeholder',
-    category: 'instruction',
-    content: '{{char}}',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    isDefault: true,
-  },
-  {
-    id: 'snippet-user',
-    name: '{{user}}',
-    description: 'User name placeholder',
-    category: 'instruction',
-    content: '{{user}}',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    isDefault: true,
-  },
-  {
-    id: 'snippet-asterisk-action',
-    name: '*action*',
-    description: 'Action/emote format',
-    category: 'format',
-    content: '*{{char}} [action]*',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    isDefault: true,
-  },
-];
 
 interface TemplateStore {
   templates: Template[];
@@ -81,16 +18,16 @@ interface TemplateStore {
   loadSnippets: () => Promise<void>;
 
   // Template operations
-  getTemplate: (id: UUID) => Template | undefined;
+  getTemplate: (id: string) => Template | undefined;
   createTemplate: (template: Omit<Template, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Template | null>;
-  updateTemplate: (id: UUID, updates: Partial<Omit<Template, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<void>;
-  deleteTemplate: (id: UUID) => Promise<void>;
+  updateTemplate: (id: string, updates: Partial<Omit<Template, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<void>;
+  deleteTemplate: (id: string) => Promise<void>;
 
   // Snippet operations
-  getSnippet: (id: UUID) => Snippet | undefined;
+  getSnippet: (id: string) => Snippet | undefined;
   createSnippet: (snippet: Omit<Snippet, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Snippet | null>;
-  updateSnippet: (id: UUID, updates: Partial<Omit<Snippet, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<void>;
-  deleteSnippet: (id: UUID) => Promise<void>;
+  updateSnippet: (id: string, updates: Partial<Omit<Snippet, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<void>;
+  deleteSnippet: (id: string) => Promise<void>;
 
   // Import/Export
   exportTemplates: () => Promise<void>;

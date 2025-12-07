@@ -1,4 +1,4 @@
-import type { Card, CCv2Data, CCv3Data } from '@card-architect/schemas';
+import type { Card, CCv2Data, CCv3Data } from './types';
 
 /**
  * Extract actual card data fields from card.data, handling both wrapped and unwrapped formats

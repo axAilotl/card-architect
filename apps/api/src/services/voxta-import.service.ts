@@ -10,18 +10,14 @@ import {
   type ExtractedVoxtaAsset,
   type VoxtaData,
 } from '../utils/file-handlers.js';
-import type {
-  CCv3Data,
-  VoxtaExtensionData,
-  VoxtaCharacter,
-  AssetTag,
-  AssetType
-} from '@card-architect/schemas';
+import type { CCv3Data } from '@character-foundry/schemas';
+import type { VoxtaExtensionData, VoxtaCharacter } from '@character-foundry/voxta';
+import type { AssetTag, AssetType } from '../types/index.js';
+import { detectAnimatedAsset } from '../utils/asset-utils.js';
 import { nanoid } from 'nanoid';
 import { join } from 'path';
 import { writeFile } from 'fs/promises';
 import { config } from '../config.js';
-import { detectAnimatedAsset } from '@card-architect/schemas';
 import sharp from 'sharp';
 
 export class VoxtaImportService {
@@ -168,9 +164,9 @@ export class VoxtaImportService {
         creator_notes: voxtaChar.CreatorNotes || '',
         tags: voxtaChar.Tags || [],
         character_version: voxtaChar.Version || '1.0.0',
-        system_prompt: '', // Voxta doesn't map directly to this usually
-        post_history_instructions: '',
-        alternate_greetings: [],
+        system_prompt: voxtaChar.SystemPrompt || '',
+        post_history_instructions: voxtaChar.PostHistoryInstructions || '',
+        alternate_greetings: voxtaChar.AlternateGreetings || [],
         group_only_greetings: [],
         character_book: characterBook,
         extensions: {

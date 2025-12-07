@@ -7,8 +7,10 @@ import { promises as fs } from 'fs';
 import { join } from 'path';
 import { nanoid } from 'nanoid';
 import sharp from 'sharp';
-import type { CharxData, Card, CardMeta, AssetTag, CCv3Data } from '@card-architect/schemas';
-import { detectAnimatedAsset } from '@card-architect/schemas';
+import type { CharxData } from '@character-foundry/charx';
+import type { CCv3Data } from '@character-foundry/schemas';
+import type { Card, CardMeta, AssetTag } from '../types/index.js';
+import { detectAnimatedAsset } from '../utils/asset-utils.js';
 import { AssetRepository, CardAssetRepository, CardRepository } from '../db/repository.js';
 import { getMimeTypeFromExt, extractCharx } from '../utils/file-handlers.js';
 

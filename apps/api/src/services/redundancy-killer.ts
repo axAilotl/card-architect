@@ -1,4 +1,4 @@
-import type { CCv2Data, CCv3Data } from '@card-architect/schemas';
+import type { CCv2Data, CCv3Data } from '@character-foundry/schemas';
 
 /**
  * Redundancy detection result

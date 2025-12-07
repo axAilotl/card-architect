@@ -4,7 +4,7 @@ import { useSettingsStore } from '../../../store/settings-store';
 import { getDeploymentConfig } from '../../../config/deployment';
 import { api } from '../../../lib/api';
 import { localDB, MAX_ASSET_SIZE, type StoredAsset } from '../../../lib/db';
-import type { CardAssetWithDetails } from '@card-architect/schemas';
+import type { CardAssetWithDetails } from '../../../lib/types';
 
 interface AssetGraph {
   nodes: any[];

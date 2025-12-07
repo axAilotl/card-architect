@@ -11,48 +11,50 @@ import { optimizeMedia } from './image-optimizer.js';
 
 // CHARX package
 import {
-  extractCharx as extractCharxBuffer,
-  extractCharxAsync as extractCharxBufferAsync,
-  buildCharx as buildCharxBuffer,
-  type CharxExtractionOptions as CharxPackageExtractionOptions,
-  type CharxBuildOptions as CharxPackageBuildOptions,
+  readCharX as extractCharxBuffer,
+  readCharXAsync as extractCharxBufferAsync,
+  writeCharX as buildCharxBuffer,
+  type CharxReadOptions as CharxPackageExtractionOptions,
+  type CharxWriteOptions as CharxPackageBuildOptions,
   type CharxWriteAsset,
   type AssetFetcher,
-} from '@card-architect/charx';
+} from '@character-foundry/charx';
 
 // Voxta package
 import {
-  extractVoxtaPackage as extractVoxtaBuffer,
-  buildVoxtaPackage as buildVoxtaBuffer,
+  readVoxta as extractVoxtaBuffer,
+  writeVoxta as buildVoxtaBuffer,
   voxtaToCCv3,
   ccv3ToVoxta,
   ccv3LorebookToVoxtaBook,
-  type VoxtaExtractionOptions,
-  type VoxtaBuildOptions as VoxtaPackageBuildOptions,
+  voxtaToStandard,
+  standardToVoxta,
+  type VoxtaReadOptions as VoxtaExtractionOptions,
+  type VoxtaWriteOptions as VoxtaPackageBuildOptions,
   type VoxtaData as VoxtaPackageData,
   type ExtractedVoxtaCharacter as PackageVoxtaCharacter,
   type ExtractedVoxtaBook,
   type ExtractedVoxtaScenario as PackageVoxtaScenario,
   type VoxtaWriteAsset,
-} from '@card-architect/voxta';
+} from '@character-foundry/voxta';
 
 // PNG package
 import {
   extractFromPNG as extractFromPNGBuffer,
-  createCardPNG as createCardPNGBuffer,
+  embedIntoPNG as embedIntoPNGBuffer,
   validatePNGSize as validatePNGSizeBuffer,
-} from '@card-architect/png';
+} from '@character-foundry/png';
 
-// Utils package
+// Core utilities (ZIP, MIME)
 import {
   isZipBuffer as isZipBufferUtil,
   findZipStart as findZipStartUtil,
   getMimeTypeFromExt,
-  voxtaToStandard,
-  standardToVoxta,
-} from '@card-architect/utils';
+} from '@character-foundry/core';
 
-import type { CharxData, CCv3Data, Card } from '@card-architect/schemas';
+import type { CharxData } from '@character-foundry/charx';
+import type { CCv2Data, CCv3Data } from '@character-foundry/schemas';
+import type { Card } from '../types/index.js';
 
 // Re-export types for consumers (with Buffer-based types where needed)
 export interface CharxExtractionOptions extends CharxPackageExtractionOptions {
@@ -442,7 +444,8 @@ export async function createCardPNG(
   imageBuffer: Buffer,
   card: Card
 ): Promise<Buffer> {
-  const result = createCardPNGBuffer(new Uint8Array(imageBuffer), card);
+  // embedIntoPNG expects card data directly, not the wrapper Card type
+  const result = embedIntoPNGBuffer(new Uint8Array(imageBuffer), card.data as CCv2Data | CCv3Data);
   return Buffer.from(result);
 }
 

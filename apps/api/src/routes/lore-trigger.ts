@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { LoreTriggerTester } from '../services/lore-trigger-tester.js';
-import { tokenizerRegistry } from '@card-architect/tokenizers';
-import type { CCv2Data, CCv3Data, CharacterBook } from '@card-architect/schemas';
+import { registry } from '@character-foundry/tokenizers';
+import type { CCv2Data, CCv3Data, CharacterBook } from '@character-foundry/schemas';
 
 /**
  * Lore Trigger Testing Routes
@@ -19,7 +19,7 @@ export async function loreTriggerRoutes(fastify: FastifyInstance) {
       tokenizerModel?: string;
     };
   }>('/lore-trigger/test', async (request, reply) => {
-    const { card, input, chatHistory = [], tokenizerModel = 'gpt2-bpe-approx' } = request.body;
+    const { card, input, chatHistory = [], tokenizerModel = 'gpt-4' } = request.body;
 
     if (!card || input === undefined) {
       reply.code(400);
@@ -27,14 +27,7 @@ export async function loreTriggerRoutes(fastify: FastifyInstance) {
     }
 
     // Get tokenizer
-    const tokenizer = tokenizerRegistry.get(tokenizerModel);
-    if (!tokenizer) {
-      reply.code(400);
-      return {
-        error: `Unknown tokenizer model: ${tokenizerModel}`,
-        available: tokenizerRegistry.list().map((t) => t.id),
-      };
-    }
+    const tokenizer = registry.get(tokenizerModel);
 
     // Extract character book
     let characterBook: CharacterBook | undefined;
@@ -46,7 +39,7 @@ export async function loreTriggerRoutes(fastify: FastifyInstance) {
     }
 
     // Create tester
-    const tester = new LoreTriggerTester((text: string) => tokenizer.estimate(text));
+    const tester = new LoreTriggerTester((text: string) => tokenizer.count(text));
 
     try {
       const result = tester.testInput(input, characterBook, chatHistory);

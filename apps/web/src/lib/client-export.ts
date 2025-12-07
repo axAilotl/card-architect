@@ -5,10 +5,10 @@
  * Exports cards as JSON, PNG, or CHARX directly in the browser.
  */
 
-import { embedIntoPNG } from '@card-architect/png';
-import { buildCharx, type CharxWriteAsset } from '@card-architect/charx';
-import { buildVoxtaPackage, type VoxtaWriteAsset } from '@card-architect/voxta';
-import type { Card, CCv2Data, CCv3Data } from '@card-architect/schemas';
+import { embedIntoPNG } from '@character-foundry/png';
+import { writeCharX as buildCharx, type CharxWriteAsset } from '@character-foundry/charx';
+import { writeVoxta as buildVoxtaPackage, type VoxtaWriteAsset } from '@character-foundry/voxta';
+import type { Card, CCv2Data, CCv3Data } from './types';
 import { localDB } from './db';
 
 /**

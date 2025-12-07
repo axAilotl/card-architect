@@ -4,7 +4,7 @@
  */
 
 import { useRef } from 'react';
-import type { DiffOperation } from '@card-architect/schemas';
+import type { DiffOperation } from '../../lib/types';
 
 interface SideBySideDiffViewerProps {
   diff: DiffOperation[];
