@@ -18,7 +18,7 @@ export type { CCv2Data, CCv3Data } from '@character-foundry/schemas';
 /**
  * Card specification version
  */
-export type Spec = 'v2' | 'v3' | 'chara_card_v2' | 'chara_card_v3';
+export type Spec = 'v2' | 'v3' | 'chara_card_v2' | 'chara_card_v3' | 'collection';
 
 // ============================================================================
 // CARD MANAGEMENT TYPES
@@ -38,6 +38,10 @@ export interface CardMeta {
   createdAt: string;
   updatedAt: string;
   assetCount?: number;
+  /** For cards that are part of a collection/package */
+  packageId?: string;
+  /** For collection cards - number of member cards */
+  memberCount?: number;
 }
 
 /**
@@ -575,7 +579,7 @@ export type { TokenizerAdapter } from '@character-foundry/tokenizers';
 /**
  * Asset type
  */
-export type AssetType = 'icon' | 'background' | 'emotion' | 'avatar' | 'gallery' | 'audio' | 'video' | 'sound' | 'custom' | 'other';
+export type AssetType = 'icon' | 'background' | 'emotion' | 'avatar' | 'gallery' | 'audio' | 'video' | 'sound' | 'custom' | 'other' | 'package-original';
 
 /**
  * Asset metadata

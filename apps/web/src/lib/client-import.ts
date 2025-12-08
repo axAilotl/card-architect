@@ -8,7 +8,7 @@
 import { isPNG } from '@character-foundry/png';
 import { parseCard as parseCardLoader, getContainerFormat, type ExtractedAsset as LoaderAsset } from '@character-foundry/loader';
 import { readVoxta as extractVoxtaPackage, voxtaToCCv3 } from '@character-foundry/voxta';
-import type { Card, CCv2Data, CCv3Data } from './types';
+import type { Card, CCv2Data, CCv3Data, CollectionData, CollectionMember } from './types';
 
 // Asset extracted from CHARX/Voxta for storing in IndexedDB
 export interface ExtractedAsset {
@@ -30,6 +30,18 @@ export interface ClientImportResult {
   thumbnailDataUrl?: string; // Small WebP for display
   assets?: ExtractedAsset[]; // Additional assets from CHARX/Voxta
   warnings?: string[];
+  /** For collection cards only - indicates this is a collection card */
+  isCollection?: boolean;
+}
+
+/** Result of importing a Voxta package with multiple characters */
+export interface VoxtaCollectionImportResult {
+  /** The collection card containing package metadata */
+  collection: ClientImportResult;
+  /** Individual character cards */
+  characters: ClientImportResult[];
+  /** Original package bytes for delta export */
+  originalPackageAsset: ExtractedAsset;
 }
 
 /**
@@ -163,7 +175,8 @@ async function createThumbnail(imageDataUrl: string, maxSize = 400): Promise<str
  */
 function createCard(
   data: CCv2Data | CCv3Data,
-  spec: 'v2' | 'v3'
+  spec: 'v2' | 'v3',
+  options?: { packageId?: string }
 ): Card {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -191,123 +204,295 @@ function createCard(
       tags: [],
       createdAt: now,
       updatedAt: now,
+      packageId: options?.packageId,
     },
     data,
   };
 }
 
 /**
+ * Create a Collection card from Voxta package metadata
+ */
+function createCollectionCard(
+  packageData: {
+    id?: string;
+    name: string;
+    description?: string;
+    version?: string;
+    creator?: string;
+    explicitContent?: boolean;
+    dateCreated?: string;
+    dateModified?: string;
+  },
+  members: CollectionMember[]
+): Card {
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  const collectionData: CollectionData = {
+    name: packageData.name,
+    description: packageData.description,
+    version: packageData.version,
+    creator: packageData.creator,
+    voxtaPackageId: packageData.id,
+    members,
+    explicitContent: packageData.explicitContent,
+    dateCreated: packageData.dateCreated,
+    dateModified: packageData.dateModified,
+  };
+
+  return {
+    meta: {
+      id,
+      name: packageData.name,
+      spec: 'collection',
+      tags: ['Collection'],
+      createdAt: now,
+      updatedAt: now,
+      memberCount: members.length,
+    },
+    data: collectionData,
+  };
+}
+
+/**
+ * Process a character from Voxta package and return import result
+ */
+async function processVoxtaCharacter(
+  charData: {
+    id: string;
+    data: { Name: string; MemoryBooks?: string[] };
+    thumbnail?: Uint8Array | ArrayBuffer;
+    assets: Array<{ path: string; buffer?: Uint8Array | ArrayBuffer }>;
+  },
+  books: Array<{ id: string; data: unknown }>,
+  packageId?: string
+): Promise<ClientImportResult> {
+  // Find books referenced by this character
+  const referencedBooks = charData.data.MemoryBooks
+    ? books
+        .filter(b => charData.data.MemoryBooks?.includes(b.id))
+        .map(b => b.data)
+    : [];
+
+  // Convert Voxta to CCv3
+  const ccv3Data = voxtaToCCv3(charData.data as Parameters<typeof voxtaToCCv3>[0], referencedBooks as Parameters<typeof voxtaToCCv3>[1]);
+  const card = createCard(ccv3Data, 'v3', { packageId });
+
+  // Process thumbnail if present
+  let fullImageDataUrl: string | undefined;
+  let thumbnailDataUrl: string | undefined;
+
+  if (charData.thumbnail) {
+    // Detect format from buffer
+    let mimeType = 'image/png';
+    const bytes = charData.thumbnail instanceof Uint8Array ? charData.thumbnail : new Uint8Array(charData.thumbnail);
+    if (bytes[0] === 0xFF && bytes[1] === 0xD8) {
+      mimeType = 'image/jpeg';
+    } else if (bytes[0] === 0x52 && bytes[1] === 0x49) {
+      mimeType = 'image/webp';
+    }
+
+    fullImageDataUrl = uint8ArrayToDataURL(bytes, mimeType);
+
+    try {
+      thumbnailDataUrl = await createThumbnail(fullImageDataUrl);
+    } catch {
+      thumbnailDataUrl = fullImageDataUrl;
+    }
+  }
+
+  // Extract assets from Voxta package
+  const extractedAssets: ExtractedAsset[] = [];
+  if (charData.assets && charData.assets.length > 0) {
+    console.log(`[client-import] Extracting ${charData.assets.length} assets from Voxta character ${charData.data.Name}`);
+    for (const asset of charData.assets) {
+      if (asset.buffer) {
+        // Get extension from path
+        const pathParts = asset.path.split('/');
+        const filename = pathParts[pathParts.length - 1];
+        const extMatch = filename.match(/\.([^.]+)$/);
+        const ext = extMatch ? extMatch[1].toLowerCase() : 'bin';
+
+        // Determine MIME type
+        let mimeType = 'application/octet-stream';
+        if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) {
+          mimeType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+        } else if (['mp3', 'wav', 'ogg', 'webm'].includes(ext)) {
+          mimeType = `audio/${ext}`;
+        } else if (['mp4'].includes(ext)) {
+          mimeType = 'video/mp4';
+        } else if (ext === 'json') {
+          mimeType = 'application/json';
+        }
+
+        // Determine asset type from path
+        let assetType = 'custom';
+        const pathLower = asset.path.toLowerCase();
+        if (pathLower.includes('emotion') || pathLower.includes('expression')) {
+          assetType = 'emotion';
+        } else if (pathLower.includes('background') || pathLower.includes('bg')) {
+          assetType = 'background';
+        } else if (pathLower.includes('icon') || pathLower.includes('avatar') || pathLower.includes('portrait')) {
+          assetType = 'icon';
+        } else if (pathLower.includes('audio') || pathLower.includes('voice') || pathLower.includes('sound')) {
+          assetType = 'sound';
+        }
+
+        const bytes = asset.buffer instanceof Uint8Array ? asset.buffer : new Uint8Array(asset.buffer);
+        extractedAssets.push({
+          name: filename.replace(/\.[^.]+$/, '') || 'asset',
+          type: assetType,
+          ext,
+          mimetype: mimeType,
+          data: uint8ArrayToDataURL(bytes, mimeType),
+          size: bytes.length,
+          isMain: false,
+        });
+      }
+    }
+    console.log(`[client-import] Extracted ${extractedAssets.length} Voxta assets`);
+  }
+
+  return {
+    card,
+    fullImageDataUrl,
+    thumbnailDataUrl,
+    assets: extractedAssets.length > 0 ? extractedAssets : undefined,
+  };
+}
+
+/**
  * Import a Voxta package (.voxpkg) client-side
- * Returns multiple cards since Voxta packages can contain multiple characters
+ * For multi-character packages, creates a Collection card plus individual character cards.
+ * For single-character packages, returns just the character card.
  */
 export async function importVoxtaPackageClientSide(buffer: Uint8Array): Promise<ClientImportResult[]> {
-  const results: ClientImportResult[] = [];
-
   try {
+    console.log('[client-import] Starting Voxta package import, buffer size:', buffer.length);
     const voxtaData = extractVoxtaPackage(buffer);
+    console.log('[client-import] Voxta data extracted:', {
+      characterCount: voxtaData.characters.length,
+      bookCount: voxtaData.books.length,
+      scenarioCount: voxtaData.scenarios.length,
+      hasPackage: !!voxtaData.package,
+      packageName: voxtaData.package?.Name,
+    });
 
     if (voxtaData.characters.length === 0) {
       throw new Error('Voxta package contains no characters');
     }
 
-    for (const charData of voxtaData.characters) {
-      // Find books referenced by this character
-      const referencedBooks = charData.data.MemoryBooks
-        ? voxtaData.books
-            .filter(b => charData.data.MemoryBooks?.includes(b.id))
-            .map(b => b.data)
-        : [];
+    const now = new Date().toISOString();
+    const results: ClientImportResult[] = [];
 
-      // Convert Voxta to CCv3
-      const ccv3Data = voxtaToCCv3(charData.data, referencedBooks);
-      const card = createCard(ccv3Data, 'v3');
+    // Determine if this should be a collection (multi-character or has package metadata)
+    const isCollection = voxtaData.characters.length > 1 || voxtaData.package !== undefined;
+    console.log('[client-import] isCollection:', isCollection, '(chars > 1:', voxtaData.characters.length > 1, ', hasPackage:', !!voxtaData.package, ')');
 
-      // Process thumbnail if present
-      let fullImageDataUrl: string | undefined;
-      let thumbnailDataUrl: string | undefined;
+    if (isCollection) {
+      // Process all characters first WITHOUT packageId
+      const characterResults: ClientImportResult[] = [];
+      const members: CollectionMember[] = [];
 
-      if (charData.thumbnail) {
-        // Detect format from buffer
-        let mimeType = 'image/png';
-        const bytes = charData.thumbnail as Uint8Array;
-        if (bytes[0] === 0xFF && bytes[1] === 0xD8) {
-          mimeType = 'image/jpeg';
-        } else if (bytes[0] === 0x52 && bytes[1] === 0x49) {
-          mimeType = 'image/webp';
-        }
+      for (let i = 0; i < voxtaData.characters.length; i++) {
+        const charData = voxtaData.characters[i];
+        const result = await processVoxtaCharacter(
+          charData as Parameters<typeof processVoxtaCharacter>[0],
+          voxtaData.books as Parameters<typeof processVoxtaCharacter>[1]
+        );
+        characterResults.push(result);
 
-        fullImageDataUrl = uint8ArrayToDataURL(bytes, mimeType);
-
-        try {
-          thumbnailDataUrl = await createThumbnail(fullImageDataUrl);
-        } catch {
-          thumbnailDataUrl = fullImageDataUrl;
-        }
+        // Build member info for collection using actual card IDs
+        members.push({
+          cardId: result.card.meta.id,
+          voxtaCharacterId: charData.id,
+          name: result.card.meta.name,
+          order: i,
+          addedAt: now,
+        });
       }
 
-      const warnings: string[] = [];
+      // Create the collection card with actual member card IDs
+      const packageInfo = voxtaData.package;
+      const fallbackName = `${voxtaData.characters[0].data.Name} Collection`;
+      const fallbackDesc = `Collection of ${voxtaData.characters.length} characters`;
 
-      // Extract assets from Voxta package
-      const extractedAssets: ExtractedAsset[] = [];
-      if (charData.assets && charData.assets.length > 0) {
-        console.log(`[client-import] Extracting ${charData.assets.length} assets from Voxta`);
-        for (const asset of charData.assets) {
-          if (asset.buffer) {
-            // Get extension from path
-            const pathParts = asset.path.split('/');
-            const filename = pathParts[pathParts.length - 1];
-            const extMatch = filename.match(/\.([^.]+)$/);
-            const ext = extMatch ? extMatch[1].toLowerCase() : 'bin';
+      const collectionCard = createCollectionCard(
+        {
+          id: packageInfo?.Id,
+          name: packageInfo?.Name || fallbackName,
+          description: packageInfo?.Description || fallbackDesc,
+          version: packageInfo?.Version,
+          creator: packageInfo?.Creator,
+          explicitContent: packageInfo?.ExplicitContent,
+          dateCreated: packageInfo?.DateCreated,
+          dateModified: packageInfo?.DateModified,
+        },
+        members
+      );
 
-            // Determine MIME type
-            let mimeType = 'application/octet-stream';
-            if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) {
-              mimeType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
-            } else if (['mp3', 'wav', 'ogg', 'webm'].includes(ext)) {
-              mimeType = `audio/${ext}`;
-            } else if (['mp4'].includes(ext)) {
-              mimeType = 'video/mp4';
-            } else if (ext === 'json') {
-              mimeType = 'application/json';
-            }
-
-            // Determine asset type from path
-            let assetType = 'custom';
-            const pathLower = asset.path.toLowerCase();
-            if (pathLower.includes('emotion') || pathLower.includes('expression')) {
-              assetType = 'emotion';
-            } else if (pathLower.includes('background') || pathLower.includes('bg')) {
-              assetType = 'background';
-            } else if (pathLower.includes('icon') || pathLower.includes('avatar') || pathLower.includes('portrait')) {
-              assetType = 'icon';
-            } else if (pathLower.includes('audio') || pathLower.includes('voice') || pathLower.includes('sound')) {
-              assetType = 'sound';
-            }
-
-            const bytes = asset.buffer as Uint8Array;
-            extractedAssets.push({
-              name: filename.replace(/\.[^.]+$/, '') || 'asset',
-              type: assetType,
-              ext,
-              mimetype: mimeType,
-              data: uint8ArrayToDataURL(bytes, mimeType),
-              size: bytes.length,
-              isMain: false,
-            });
-          }
-        }
-        console.log(`[client-import] Extracted ${extractedAssets.length} Voxta assets`);
+      // Now update all character cards with the collection's actual ID
+      for (const result of characterResults) {
+        result.card.meta.packageId = collectionCard.meta.id;
       }
 
+      // Store the original .voxpkg as an asset on the collection
+      const originalPackageAsset: ExtractedAsset = {
+        name: 'original-package',
+        type: 'package-original',
+        ext: 'voxpkg',
+        mimetype: 'application/octet-stream',
+        data: uint8ArrayToDataURL(buffer, 'application/octet-stream'),
+        size: buffer.length,
+        isMain: false,
+      };
+
+      // Get collection thumbnail from package's ThumbnailResource
+      let collectionThumb: string | undefined;
+      const thumbResource = packageInfo?.ThumbnailResource;
+      if (thumbResource?.Kind === 3) {
+        // Scenario thumbnail
+        const scenario = voxtaData.scenarios.find(s => s.id === thumbResource.Id);
+        if (scenario?.thumbnail) {
+          collectionThumb = uint8ArrayToDataURL(scenario.thumbnail, 'image/png');
+        }
+      } else if (thumbResource?.Kind === 1) {
+        // Character thumbnail
+        const char = voxtaData.characters.find(c => c.id === thumbResource.Id);
+        if (char?.thumbnail) {
+          collectionThumb = uint8ArrayToDataURL(char.thumbnail, 'image/png');
+        }
+      }
+      // Fallback to first character's thumbnail
+      if (!collectionThumb) {
+        const firstCharWithThumb = characterResults.find(r => r.thumbnailDataUrl);
+        collectionThumb = firstCharWithThumb?.thumbnailDataUrl;
+      }
+
+      // Return collection first, then all characters
       results.push({
-        card,
-        fullImageDataUrl,
-        thumbnailDataUrl,
-        assets: extractedAssets.length > 0 ? extractedAssets : undefined,
-        warnings: warnings.length > 0 ? warnings : undefined,
+        card: collectionCard,
+        fullImageDataUrl: collectionThumb,
+        thumbnailDataUrl: collectionThumb,
+        assets: [originalPackageAsset],
+        isCollection: true,
       });
+
+      results.push(...characterResults);
+
+      console.log(`[client-import] Created collection "${collectionCard.meta.name}" with ${members.length} characters`);
+    } else {
+      // Single character - import without collection
+      console.log('[client-import] Single character import (no collection)');
+      const result = await processVoxtaCharacter(
+        voxtaData.characters[0] as Parameters<typeof processVoxtaCharacter>[0],
+        voxtaData.books as Parameters<typeof processVoxtaCharacter>[1]
+      );
+      results.push(result);
     }
 
+    console.log('[client-import] Returning', results.length, 'results, isCollection in first:', results[0]?.isCollection);
     return results;
   } catch (err) {
     throw new Error(`Failed to parse Voxta package: ${err instanceof Error ? err.message : String(err)}`);

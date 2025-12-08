@@ -15,12 +15,18 @@ export type { CCv2Data, CCv3Data } from '@character-foundry/schemas';
 // SPEC TYPES
 // ============================================================================
 
-export type Spec = 'v2' | 'v3' | 'chara_card_v2' | 'chara_card_v3';
+export type Spec = 'v2' | 'v3' | 'chara_card_v2' | 'chara_card_v3' | 'collection';
 
 // Helper to normalize spec to short form
-export function normalizeSpec(spec: Spec): 'v2' | 'v3' {
+export function normalizeSpec(spec: Spec): 'v2' | 'v3' | 'collection' {
   if (spec === 'chara_card_v2' || spec === 'v2') return 'v2';
+  if (spec === 'collection') return 'collection';
   return 'v3';
+}
+
+// Check if a spec is a collection
+export function isCollectionSpec(spec: Spec): boolean {
+  return spec === 'collection';
 }
 
 // ============================================================================
@@ -38,12 +44,22 @@ export interface CardMeta {
   createdAt: string;
   updatedAt: string;
   assetCount?: number;
+  /** Package ID for cards that belong to a Voxta collection */
+  packageId?: string;
+  /** Number of member cards (for collection cards only) */
+  memberCount?: number;
 }
 
 export interface Card {
   meta: CardMeta;
-  data: CCv2Data | CCv3Data;
+  data: CCv2Data | CCv3Data | CollectionData;
 }
+
+/** Type alias for character cards (non-collection) */
+export type CharacterCard = Card & { data: CCv2Data | CCv3Data };
+
+/** Type alias for collection cards */
+export type CollectionCard = Card & { meta: CardMeta & { spec: 'collection' }; data: CollectionData };
 
 export interface CardVersion {
   id: string;
@@ -53,6 +69,53 @@ export interface CardVersion {
   message?: string;
   createdAt: string;
   createdBy?: string;
+}
+
+// ============================================================================
+// COLLECTION TYPES (Voxta multi-character packages)
+// ============================================================================
+
+/** Member card info stored in collection */
+export interface CollectionMember {
+  /** Card ID in our system */
+  cardId: string;
+  /** Original Voxta character ID */
+  voxtaCharacterId?: string;
+  /** Character name (cached for display) */
+  name: string;
+  /** Order in the collection */
+  order: number;
+  /** When added to collection */
+  addedAt: string;
+}
+
+/** Collection-specific data stored in Card.data for collection cards */
+export interface CollectionData {
+  /** Package name */
+  name: string;
+  /** Package description */
+  description?: string;
+  /** Package version */
+  version?: string;
+  /** Package creator */
+  creator?: string;
+  /** Original Voxta package ID */
+  voxtaPackageId?: string;
+  /** Member cards in this collection */
+  members: CollectionMember[];
+  /** Shared lorebooks (book IDs) */
+  sharedBookIds?: string[];
+  /** Whether this package has explicit content */
+  explicitContent?: boolean;
+  /** Original package creation date */
+  dateCreated?: string;
+  /** Last modification date */
+  dateModified?: string;
+}
+
+/** Type guard for collection data */
+export function isCollectionData(data: CCv2Data | CCv3Data | CollectionData): data is CollectionData {
+  return 'members' in data && Array.isArray((data as CollectionData).members);
 }
 
 // ============================================================================
@@ -457,7 +520,7 @@ export interface FocusFieldConfig {
 // ASSET EXTENDED TYPES
 // ============================================================================
 
-export type AssetType = 'icon' | 'background' | 'emotion' | 'avatar' | 'gallery' | 'audio' | 'video' | 'sound' | 'custom' | 'other';
+export type AssetType = 'icon' | 'background' | 'emotion' | 'avatar' | 'gallery' | 'audio' | 'video' | 'sound' | 'custom' | 'other' | 'package-original';
 
 export interface AssetMetadata {
   type: AssetType;
@@ -499,7 +562,7 @@ export interface FieldContext {
   fieldName?: string;
   field?: string;
   currentValue?: string;
-  spec?: 'v2' | 'v3';
+  spec?: 'v2' | 'v3' | 'collection';
   cardName?: string;
   cardData?: Record<string, unknown>;
   selection?: string;

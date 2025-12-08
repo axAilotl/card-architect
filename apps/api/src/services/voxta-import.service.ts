@@ -16,9 +16,33 @@ import type { AssetTag, AssetType } from '../types/index.js';
 import { detectAnimatedAsset } from '../utils/asset-utils.js';
 import { nanoid } from 'nanoid';
 import { join } from 'path';
-import { writeFile } from 'fs/promises';
+import { writeFile, readFile } from 'fs/promises';
 import { config } from '../config.js';
 import sharp from 'sharp';
+
+/**
+ * Collection card data structure
+ */
+interface CollectionMember {
+  cardId: string;
+  voxtaCharacterId?: string;
+  name: string;
+  order: number;
+  addedAt: string;
+}
+
+interface CollectionData {
+  name: string;
+  description?: string;
+  version?: string;
+  creator?: string;
+  voxtaPackageId?: string;
+  members: CollectionMember[];
+  sharedBookIds?: string[];
+  explicitContent?: boolean;
+  dateCreated?: string;
+  dateModified?: string;
+}
 
 export class VoxtaImportService {
   constructor(
@@ -35,25 +59,183 @@ export class VoxtaImportService {
     const data = await extractVoxtaPackage(filePath);
     const createdCardIds: string[] = [];
 
-    // 2. Process each character
-    for (const char of data.characters) {
+    // Determine if this should be a collection (multi-character or has package metadata)
+    const isCollection = data.characters.length > 1 || data.package !== undefined;
+
+    const now = new Date().toISOString();
+    const members: CollectionMember[] = [];
+
+    // 2. Process each character first (packageId will be set after collection is created)
+    for (let i = 0; i < data.characters.length; i++) {
+      const char = data.characters[i];
       const cardId = await this.importCharacter(char, data);
       createdCardIds.push(cardId);
+
+      // Build member info for collection
+      if (isCollection) {
+        members.push({
+          cardId,
+          voxtaCharacterId: char.data.Id,
+          name: char.data.Name || 'Unknown',
+          order: i,
+          addedAt: now,
+        });
+      }
+    }
+
+    // 3. Create collection card AFTER characters, using the actual card IDs
+    if (isCollection && members.length > 0) {
+      const collectionCardId = await this.createCollectionCard(data, members, filePath);
+
+      // Update each character card with the collection's packageId
+      for (const member of members) {
+        this.cardRepo.update(member.cardId, {
+          meta: { packageId: collectionCardId } as any,
+        });
+      }
+
+      // Return collection card first, then all character cards
+      return [collectionCardId, ...createdCardIds];
     }
 
     return createdCardIds;
   }
 
   /**
+   * Get the package thumbnail from ThumbnailResource
+   * Kind values: 1 = Character, 2 = Book, 3 = Scenario
+   */
+  private getPackageThumbnail(data: VoxtaData): Buffer | undefined {
+    const thumbnailResource = data.package?.ThumbnailResource;
+    if (!thumbnailResource) {
+      // No explicit thumbnail, fall back to first character's thumbnail
+      return data.characters[0]?.thumbnail;
+    }
+
+    const { Kind, Id } = thumbnailResource;
+
+    // Kind 3 = Scenario
+    if (Kind === 3) {
+      const scenario = data.scenarios.find(s => s.id === Id);
+      if (scenario?.thumbnail) {
+        console.log(`[Voxta Import] Using scenario thumbnail for package (scenario: ${Id})`);
+        return scenario.thumbnail;
+      }
+    }
+
+    // Kind 1 = Character
+    if (Kind === 1) {
+      const character = data.characters.find(c => c.id === Id);
+      if (character?.thumbnail) {
+        console.log(`[Voxta Import] Using character thumbnail for package (character: ${Id})`);
+        return character.thumbnail;
+      }
+    }
+
+    // Fallback to first character's thumbnail
+    console.log('[Voxta Import] ThumbnailResource not found, using first character thumbnail');
+    return data.characters[0]?.thumbnail;
+  }
+
+  /**
+   * Create a collection card for multi-character packages
+   */
+  private async createCollectionCard(
+    data: VoxtaData,
+    members: CollectionMember[],
+    originalFilePath: string
+  ): Promise<string> {
+    const packageData = data.package;
+    const fallbackName = members.length > 0
+      ? `${members[0].name} Collection`
+      : 'Voxta Collection';
+
+    const collectionData: CollectionData = {
+      name: packageData?.Name || fallbackName,
+      description: packageData?.Description || `Collection of ${members.length} characters`,
+      version: packageData?.Version,
+      creator: packageData?.Creator,
+      voxtaPackageId: packageData?.Id,
+      members,
+      explicitContent: packageData?.ExplicitContent,
+      dateCreated: packageData?.DateCreated,
+      dateModified: packageData?.DateModified,
+    };
+
+    // Create the collection card
+    const card = this.cardRepo.create({
+      meta: {
+        name: collectionData.name,
+        spec: 'collection' as any, // Collection is a special spec
+        tags: ['Collection', 'voxta'],
+        memberCount: members.length,
+      },
+      data: collectionData as any,
+    });
+
+    console.log(`[Voxta Import] Created collection card "${collectionData.name}" with ${members.length} members`);
+
+    // Get and save thumbnail using package's ThumbnailResource
+    const thumbnail = this.getPackageThumbnail(data);
+    if (thumbnail) {
+      this.cardRepo.updateImage(card.meta.id, thumbnail);
+      await this.importThumbnailAsMainIcon(card.meta.id, thumbnail);
+    }
+
+    // Store the original .voxpkg file as an asset for delta export
+    try {
+      const originalBytes = await readFile(originalFilePath);
+      await this.storeOriginalPackage(card.meta.id, originalBytes);
+    } catch (err) {
+      console.warn('[Voxta Import] Failed to store original package:', err);
+    }
+
+    return card.meta.id;
+  }
+
+  /**
+   * Store the original .voxpkg bytes as an asset for future delta export
+   */
+  private async storeOriginalPackage(cardId: string, packageBytes: Buffer): Promise<void> {
+    const fileId = nanoid();
+    const storageFilename = `${fileId}.voxpkg`;
+    const storagePath = join(config.storagePath, storageFilename);
+
+    await writeFile(storagePath, packageBytes);
+
+    // Create Asset Record
+    const assetRecord = this.assetRepo.create({
+      filename: storageFilename,
+      mimetype: 'application/octet-stream',
+      size: packageBytes.length,
+      url: `/storage/${storageFilename}`,
+    });
+
+    // Create Card Asset Link with special type
+    this.cardAssetRepo.create({
+      cardId,
+      assetId: assetRecord.id,
+      type: 'package-original' as AssetType,
+      name: 'original-package',
+      ext: 'voxpkg',
+      order: 0,
+      isMain: false,
+      tags: []
+    });
+
+    console.log(`[Voxta Import] Stored original package (${packageBytes.length} bytes) for card ${cardId}`);
+  }
+
+  /**
    * Import a single character from the package
    */
   private async importCharacter(
-    char: ExtractedVoxtaCharacter, 
+    char: ExtractedVoxtaCharacter,
     fullPackage: VoxtaData
   ): Promise<string> {
     // Map Voxta -> CCv3
     const ccv3Data = this.mapToCCv3(char.data, fullPackage);
-    
+
     // Add 'voxta' tag
     const tags = new Set(ccv3Data.data.tags || []);
     tags.add('voxta');
@@ -65,7 +247,7 @@ export class VoxtaImportService {
         spec: 'v3',
         tags: Array.from(tags),
         creator: ccv3Data.data.creator,
-        characterVersion: ccv3Data.data.character_version
+        characterVersion: ccv3Data.data.character_version,
       },
       data: ccv3Data as any, // Type assertion needed due to schema strictness
     });

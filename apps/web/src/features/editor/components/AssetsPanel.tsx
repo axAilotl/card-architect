@@ -5,6 +5,7 @@ import { getDeploymentConfig } from '../../../config/deployment';
 import { api } from '../../../lib/api';
 import { localDB, MAX_ASSET_SIZE, type StoredAsset } from '../../../lib/db';
 import type { CardAssetWithDetails } from '../../../lib/types';
+import { CollectionsView } from './CollectionsView';
 
 interface AssetGraph {
   nodes: any[];
@@ -668,6 +669,15 @@ export function AssetsPanel() {
     }
   };
 
+
+  // For collection cards, show the CollectionsView instead of regular assets
+  if (currentCard?.meta.spec === 'collection') {
+    return (
+      <div className="h-full overflow-auto p-6">
+        <CollectionsView collectionCard={currentCard} />
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex">

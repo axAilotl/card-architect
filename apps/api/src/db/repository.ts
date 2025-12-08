@@ -55,8 +55,8 @@ export class CardRepository {
     };
 
     const stmt = this.db.prepare(`
-      INSERT INTO cards (id, name, spec, data, tags, creator, character_version, rating, original_image, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO cards (id, name, spec, data, tags, creator, character_version, rating, original_image, created_at, updated_at, package_id, member_count)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -70,7 +70,9 @@ export class CardRepository {
       meta.rating || null,
       originalImage || null,
       meta.createdAt,
-      meta.updatedAt
+      meta.updatedAt,
+      meta.packageId || null,
+      meta.memberCount || null
     );
 
     return { meta, data: card.data };
@@ -120,7 +122,7 @@ export class CardRepository {
 
     const stmt = this.db.prepare(`
       UPDATE cards
-      SET name = ?, spec = ?, data = ?, tags = ?, creator = ?, character_version = ?, rating = ?, updated_at = ?
+      SET name = ?, spec = ?, data = ?, tags = ?, creator = ?, character_version = ?, rating = ?, updated_at = ?, package_id = ?, member_count = ?
       WHERE id = ?
     `);
 
@@ -133,6 +135,8 @@ export class CardRepository {
       meta.characterVersion || null,
       meta.rating || null,
       meta.updatedAt,
+      meta.packageId || null,
+      meta.memberCount || null,
       id
     );
 
@@ -237,6 +241,8 @@ export class CardRepository {
       created_at: string;
       updated_at: string;
       asset_count?: number;
+      package_id?: string | null;
+      member_count?: number | null;
     };
 
     return {
@@ -251,6 +257,8 @@ export class CardRepository {
         createdAt: r.created_at,
         updatedAt: r.updated_at,
         assetCount: r.asset_count,
+        packageId: r.package_id || undefined,
+        memberCount: r.member_count || undefined,
       },
       data: JSON.parse(r.data),
     };

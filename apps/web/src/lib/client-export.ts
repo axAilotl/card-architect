@@ -8,7 +8,8 @@
 import { embedIntoPNG } from '@character-foundry/png';
 import { writeCharX as buildCharx, type CharxWriteAsset } from '@character-foundry/charx';
 import { writeVoxta as buildVoxtaPackage, type VoxtaWriteAsset } from '@character-foundry/voxta';
-import type { Card, CCv2Data, CCv3Data } from './types';
+import type { Card, CCv2Data, CCv3Data, CollectionData } from './types';
+import { isCollectionData } from './types';
 import { localDB } from './db';
 
 /**
@@ -254,6 +255,44 @@ export function downloadBlob(blob: Blob, filename: string): void {
 }
 
 /**
+ * Export a collection card as Voxta package
+ * Uses the original .voxpkg bytes stored as an asset if available.
+ * Falls back to exporting first member card if no original is stored.
+ */
+export async function exportCollectionAsVoxta(card: Card): Promise<Blob> {
+  if (!isCollectionData(card.data)) {
+    throw new Error('Not a collection card');
+  }
+
+  const collectionData = card.data as CollectionData;
+
+  // Try to find the original package asset
+  const assets = await localDB.getAssetsByCard(card.meta.id);
+  const originalPackageAsset = assets.find(a => a.type === 'package-original');
+
+  if (originalPackageAsset && originalPackageAsset.data) {
+    // Return the original package bytes
+    console.log('[client-export] Using original .voxpkg for collection export');
+    const packageBytes = dataURLToUint8Array(originalPackageAsset.data);
+    // Create a new ArrayBuffer from the Uint8Array for Blob constructor
+    const arrayBuffer = new ArrayBuffer(packageBytes.length);
+    new Uint8Array(arrayBuffer).set(packageBytes);
+    return new Blob([arrayBuffer], { type: 'application/zip' });
+  }
+
+  // Fallback: Export first member as a single-character package
+  if (collectionData.members.length > 0) {
+    const firstMemberCard = await localDB.getCard(collectionData.members[0].cardId);
+    if (firstMemberCard) {
+      console.log('[client-export] No original package found, exporting first member');
+      return exportCardAsVoxta(firstMemberCard);
+    }
+  }
+
+  throw new Error('Collection has no members to export');
+}
+
+/**
  * Export card in specified format and trigger download
  */
 export async function exportCard(
@@ -263,6 +302,17 @@ export async function exportCard(
   let filename = `${card.meta.name || 'character'}.${format}`;
   if (format === 'voxta') {
     filename = `${card.meta.name || 'character'}.voxpkg`;
+  }
+
+  // Handle collection cards
+  if (card.meta.spec === 'collection') {
+    if (format === 'voxta') {
+      const blob = await exportCollectionAsVoxta(card);
+      downloadBlob(blob, filename);
+      return;
+    }
+    // Other formats not supported for collections
+    throw new Error(`Collection cards can only be exported as Voxta packages`);
   }
 
   if (format === 'json') {

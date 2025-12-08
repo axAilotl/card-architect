@@ -87,6 +87,10 @@ class ApiClient {
     return this.request<void>(`/cards/${id}`, { method: 'DELETE' });
   }
 
+  getCardImageUrl(cardId: string): string {
+    return `${this.baseURL}/cards/${cardId}/image`;
+  }
+
   async getCardAssets(cardId: string) {
     return this.request<CardAssetWithDetails[]>(`/cards/${cardId}/assets`);
   }
