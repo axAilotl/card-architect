@@ -18,6 +18,8 @@ interface CardGridProps {
 type SortOption = 'edited' | 'newest' | 'oldest' | 'name';
 type FilterOption = 'all' | 'voxta' | 'charx' | 'v3' | 'v2';
 
+const CARDS_PER_PAGE = 50;
+
 export function CardGrid({ onCardClick }: CardGridProps) {
   const [cards, setCards] = useState<Card[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,6 +31,8 @@ export function CardGrid({ onCardClick }: CardGridProps) {
   const [sortBy, setSortBy] = useState<SortOption>('edited');
   const [filterBy, setFilterBy] = useState<FilterOption>('all');
   const [showImportMenu, setShowImportMenu] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
   const { importCard, importCardFromURL, createNewCard } = useCardStore();
 
   // Federation sync states (only for full mode)
@@ -614,18 +618,30 @@ export function CardGrid({ onCardClick }: CardGridProps) {
   };
 
   const getFilteredCards = () => {
-    if (filterBy === 'all') return cards;
+    let filtered = cards;
 
-    return cards.filter(card => {
-      const cardType = getCardType(card);
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(card => {
+        const name = getCardName(card).toLowerCase();
+        return name.includes(query);
+      });
+    }
 
-      if (filterBy === 'voxta') return cardType === 'voxta';
-      if (filterBy === 'charx') return cardType === 'charx';
-      if (filterBy === 'v3') return cardType === 'v3'; // V3 without charx/voxta
-      if (filterBy === 'v2') return cardType === 'v2'; // V2 without charx/voxta
+    // Apply type filter
+    if (filterBy !== 'all') {
+      filtered = filtered.filter(card => {
+        const cardType = getCardType(card);
+        if (filterBy === 'voxta') return cardType === 'voxta';
+        if (filterBy === 'charx') return cardType === 'charx';
+        if (filterBy === 'v3') return cardType === 'v3';
+        if (filterBy === 'v2') return cardType === 'v2';
+        return true;
+      });
+    }
 
-      return true;
-    });
+    return filtered;
   };
 
   const getSortedCards = () => {
@@ -633,20 +649,40 @@ export function CardGrid({ onCardClick }: CardGridProps) {
     const sorted = [...filtered];
     switch (sortBy) {
       case 'newest':
-        return sorted.sort((a, b) => new Date(b.meta.createdAt).getTime() - new Date(a.meta.createdAt).getTime());
+        sorted.sort((a, b) => new Date(b.meta.createdAt).getTime() - new Date(a.meta.createdAt).getTime());
+        break;
       case 'oldest':
-        return sorted.sort((a, b) => new Date(a.meta.createdAt).getTime() - new Date(b.meta.createdAt).getTime());
+        sorted.sort((a, b) => new Date(a.meta.createdAt).getTime() - new Date(b.meta.createdAt).getTime());
+        break;
       case 'name':
-        return sorted.sort((a, b) => {
+        sorted.sort((a, b) => {
           const nameA = getCardName(a).toLowerCase();
           const nameB = getCardName(b).toLowerCase();
           return nameA.localeCompare(nameB);
         });
+        break;
       case 'edited':
       default:
-        return sorted.sort((a, b) => new Date(b.meta.updatedAt).getTime() - new Date(a.meta.updatedAt).getTime());
+        sorted.sort((a, b) => new Date(b.meta.updatedAt).getTime() - new Date(a.meta.updatedAt).getTime());
     }
+    return sorted;
   };
+
+  // Get paginated cards
+  const getPaginatedCards = () => {
+    const sorted = getSortedCards();
+    const startIndex = (currentPage - 1) * CARDS_PER_PAGE;
+    return sorted.slice(startIndex, startIndex + CARDS_PER_PAGE);
+  };
+
+  // Calculate total pages
+  const totalFilteredCards = getFilteredCards().length;
+  const totalPages = Math.ceil(totalFilteredCards / CARDS_PER_PAGE);
+
+  // Reset to page 1 when filter/search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterBy]);
 
   if (loading) {
     return (
@@ -663,10 +699,38 @@ export function CardGrid({ onCardClick }: CardGridProps) {
         {/* Main Row */}
         <div className="p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/logo.png" alt="Card Architect" className="w-24 h-24" />
-            <h1 className="text-2xl font-bold">Card Architect</h1>
+            <img src="/logo.png" alt="Character Architect" className="w-24 h-24" />
+            <div>
+              <h1 className="text-2xl font-bold">Character Architect</h1>
+              <p className="text-sm text-dark-muted">
+                {cards.length} {cards.length === 1 ? 'card' : 'cards'}
+                {totalFilteredCards !== cards.length && ` (${totalFilteredCards} shown)`}
+              </p>
+            </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            {/* Search Input */}
+            <div className="relative">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by name..."
+                className="w-48 px-3 py-2 pl-8 bg-dark-bg border border-dark-border rounded text-sm text-dark-text placeholder:text-dark-muted focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-dark-muted hover:text-dark-text"
+                  title="Clear search"
+                >
+                  ×
+                </button>
+              )}
+            </div>
             <button
               onClick={() => setShowSettings(true)}
               className="btn-secondary"
@@ -809,13 +873,17 @@ export function CardGrid({ onCardClick }: CardGridProps) {
               <p>Create a new card or import one to get started</p>
             </div>
           </div>
-        ) : getSortedCards().length === 0 ? (
+        ) : totalFilteredCards === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center text-dark-muted">
               <h2 className="text-xl font-semibold mb-2">No matching cards</h2>
-              <p>No cards match the current filter. Try selecting a different type.</p>
+              <p>
+                {searchQuery
+                  ? `No cards match "${searchQuery}".`
+                  : 'No cards match the current filter.'}
+              </p>
               <button
-                onClick={() => setFilterBy('all')}
+                onClick={() => { setFilterBy('all'); setSearchQuery(''); }}
                 className="mt-4 btn-secondary"
               >
                 Show All Cards
@@ -823,8 +891,9 @@ export function CardGrid({ onCardClick }: CardGridProps) {
             </div>
           </div>
         ) : (
+          <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {getSortedCards().map((card) => (
+            {getPaginatedCards().map((card) => (
               <div
                 key={card.meta.id}
                 onClick={() => {
@@ -1017,6 +1086,48 @@ export function CardGrid({ onCardClick }: CardGridProps) {
               </div>
             ))}
           </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 mt-6 pb-4">
+              <button
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="px-3 py-1.5 bg-dark-surface border border-dark-border rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-dark-border transition-colors"
+                title="First page"
+              >
+                ««
+              </button>
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1.5 bg-dark-surface border border-dark-border rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-dark-border transition-colors"
+                title="Previous page"
+              >
+                «
+              </button>
+              <span className="px-4 py-1.5 text-sm text-dark-muted">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1.5 bg-dark-surface border border-dark-border rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-dark-border transition-colors"
+                title="Next page"
+              >
+                »
+              </button>
+              <button
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1.5 bg-dark-surface border border-dark-border rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-dark-border transition-colors"
+                title="Last page"
+              >
+                »»
+              </button>
+            </div>
+          )}
+          </>
         )}
       </div>
 

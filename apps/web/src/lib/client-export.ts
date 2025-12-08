@@ -110,29 +110,48 @@ export async function exportCardAsCHARX(card: Card): Promise<Blob> {
     } as CCv3Data;
   }
 
-  // Collect assets
+  // Collect assets from IndexedDB
   const assets: CharxWriteAsset[] = [];
+  const storedAssets = await localDB.getAssetsByCard(card.meta.id);
+  console.log(`[client-export] Found ${storedAssets.length} assets for CHARX export`);
 
-  // Get the main icon image
-  let imageData = await localDB.getImage(card.meta.id, 'icon');
-  if (!imageData) {
-    imageData = await localDB.getImage(card.meta.id, 'thumbnail');
+  // Add all stored assets
+  for (const asset of storedAssets) {
+    if (asset.data) {
+      assets.push({
+        type: asset.type as CharxWriteAsset['type'],
+        name: asset.name,
+        ext: asset.ext,
+        data: dataURLToUint8Array(asset.data),
+        isMain: asset.isMain,
+      });
+    }
   }
 
-  if (imageData) {
-    const buffer = dataURLToUint8Array(imageData);
-    // Detect format from data URL
-    let ext = 'png';
-    if (imageData.startsWith('data:image/webp')) ext = 'webp';
-    else if (imageData.startsWith('data:image/jpeg')) ext = 'jpg';
+  // If no icon asset, fallback to wrapper image
+  const hasIcon = storedAssets.some(a => a.type === 'icon' || a.isMain);
+  if (!hasIcon) {
+    // Get the wrapper icon image as fallback
+    let imageData = await localDB.getImage(card.meta.id, 'icon');
+    if (!imageData) {
+      imageData = await localDB.getImage(card.meta.id, 'thumbnail');
+    }
 
-    assets.push({
-      type: 'icon',
-      name: 'main',
-      ext,
-      data: buffer,
-      isMain: true,
-    });
+    if (imageData) {
+      const buffer = dataURLToUint8Array(imageData);
+      let ext = 'png';
+      if (imageData.startsWith('data:image/webp')) ext = 'webp';
+      else if (imageData.startsWith('data:image/jpeg')) ext = 'jpg';
+
+      assets.push({
+        type: 'icon',
+        name: 'main',
+        ext,
+        data: buffer,
+        isMain: true,
+      });
+      console.log('[client-export] Added wrapper image as fallback icon');
+    }
   }
 
   // Build CHARX
@@ -169,28 +188,46 @@ export async function exportCardAsVoxta(card: Card): Promise<Blob> {
     } as CCv3Data;
   }
 
-  // Collect assets
+  // Collect assets from IndexedDB
   const assets: VoxtaWriteAsset[] = [];
+  const storedAssets = await localDB.getAssetsByCard(card.meta.id);
+  console.log(`[client-export] Found ${storedAssets.length} assets for Voxta export`);
 
-  // Get the main icon image
-  let imageData = await localDB.getImage(card.meta.id, 'icon');
-  if (!imageData) {
-    imageData = await localDB.getImage(card.meta.id, 'thumbnail');
+  // Add all stored assets
+  for (const asset of storedAssets) {
+    if (asset.data) {
+      assets.push({
+        type: asset.type as VoxtaWriteAsset['type'],
+        name: asset.name,
+        ext: asset.ext,
+        data: dataURLToUint8Array(asset.data),
+      });
+    }
   }
 
-  if (imageData) {
-    const buffer = dataURLToUint8Array(imageData);
-    // Detect format from data URL
-    let ext = 'png';
-    if (imageData.startsWith('data:image/webp')) ext = 'webp';
-    else if (imageData.startsWith('data:image/jpeg')) ext = 'jpg';
+  // If no icon asset, fallback to wrapper image
+  const hasIcon = storedAssets.some(a => a.type === 'icon' || a.isMain);
+  if (!hasIcon) {
+    // Get the wrapper icon image as fallback
+    let imageData = await localDB.getImage(card.meta.id, 'icon');
+    if (!imageData) {
+      imageData = await localDB.getImage(card.meta.id, 'thumbnail');
+    }
 
-    assets.push({
-      type: 'icon',
-      name: 'main',
-      ext,
-      data: buffer,
-    });
+    if (imageData) {
+      const buffer = dataURLToUint8Array(imageData);
+      let ext = 'png';
+      if (imageData.startsWith('data:image/webp')) ext = 'webp';
+      else if (imageData.startsWith('data:image/jpeg')) ext = 'jpg';
+
+      assets.push({
+        type: 'icon',
+        name: 'main',
+        ext,
+        data: buffer,
+      });
+      console.log('[client-export] Added wrapper image as fallback icon for Voxta');
+    }
   }
 
   // Build Voxta package (takes CCv3Data directly, converts internally)

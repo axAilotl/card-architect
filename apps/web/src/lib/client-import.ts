@@ -5,8 +5,8 @@
  * Parses PNG, CHARX, and Voxta files directly in the browser.
  */
 
-import { extractFromPNG, isPNG } from '@character-foundry/png';
-import { readCharX as extractCharx } from '@character-foundry/charx';
+import { isPNG } from '@character-foundry/png';
+import { parseCard as parseCardLoader, getContainerFormat, type ExtractedAsset as LoaderAsset } from '@character-foundry/loader';
 import { readVoxta as extractVoxtaPackage, voxtaToCCv3 } from '@character-foundry/voxta';
 import type { Card, CCv2Data, CCv3Data } from './types';
 
@@ -315,6 +315,35 @@ export async function importVoxtaPackageClientSide(buffer: Uint8Array): Promise<
 }
 
 /**
+ * Convert loader asset to our ExtractedAsset format
+ */
+function convertLoaderAsset(asset: LoaderAsset): ExtractedAsset {
+  const ext = asset.ext || 'bin';
+  let mimetype = 'application/octet-stream';
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) {
+    mimetype = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+  } else if (['mp3', 'wav', 'ogg', 'webm'].includes(ext)) {
+    mimetype = `audio/${ext}`;
+  } else if (['mp4'].includes(ext)) {
+    mimetype = 'video/mp4';
+  } else if (ext === 'json') {
+    mimetype = 'application/json';
+  }
+
+  const bytes = asset.data instanceof Uint8Array ? asset.data : new Uint8Array(asset.data);
+
+  return {
+    name: asset.name || 'asset',
+    type: asset.type === 'data' || asset.type === 'unknown' ? 'custom' : asset.type,
+    ext,
+    mimetype,
+    data: uint8ArrayToDataURL(bytes, mimetype),
+    size: bytes.length,
+    isMain: asset.isMain ?? (asset.type === 'icon'),
+  };
+}
+
+/**
  * Import a card file (PNG, CHARX, JSON, or Voxta) client-side
  */
 export async function importCardClientSide(file: File): Promise<ClientImportResult> {
@@ -322,63 +351,42 @@ export async function importCardClientSide(file: File): Promise<ClientImportResu
   const buffer = await readFileAsArrayBuffer(file);
   const fileName = file.name.toLowerCase();
 
-  // Detect file type and parse
-  if (fileName.endsWith('.charx')) {
-    // CHARX file
-    try {
-      const charxData = extractCharx(buffer);
-      const card = createCard(charxData.card, 'v3');
+  // Use the unified loader for CHARX and PNG files
+  const containerFormat = getContainerFormat(buffer);
 
-      // Try to extract icon from assets for thumbnail
+  if (containerFormat === 'charx' || (containerFormat === 'png' && isPNG(buffer))) {
+    try {
+      console.log(`[client-import] Using unified loader for ${containerFormat} file`);
+      const result = parseCardLoader(buffer, { extractAssets: true });
+
+      // Create card from parsed data
+      const card = createCard(result.card, 'v3');
+      console.log(`[client-import] Parsed card: ${card.meta.name}, spec: ${result.spec}, source: ${result.sourceFormat}`);
+
+      // Process images - use the isMain icon asset (loader strips tEXt chunks for PNG containers)
       let fullImageDataUrl: string | undefined;
       let thumbnailDataUrl: string | undefined;
-      const iconAsset = charxData.assets.find(
-        (a) => a.descriptor.type === 'icon' || a.path.includes('icon') || a.path.includes('avatar')
-      );
-      if (iconAsset?.buffer) {
-        const ext = iconAsset.descriptor.ext || 'png';
+
+      // Find the main icon asset - loader now provides clean PNG without metadata
+      const iconAsset = result.assets.find(a => a.type === 'icon' || a.isMain);
+      if (iconAsset) {
+        const ext = iconAsset.ext || 'png';
         const mimeType = ext === 'webp' ? 'image/webp' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
-        fullImageDataUrl = uint8ArrayToDataURL(iconAsset.buffer, mimeType);
-        // Create smaller WebP thumbnail for display
+        const bytes = iconAsset.data instanceof Uint8Array ? iconAsset.data : new Uint8Array(iconAsset.data);
+        fullImageDataUrl = uint8ArrayToDataURL(bytes, mimeType);
+        console.log(`[client-import] Using isMain icon asset (${ext}), size: ${fullImageDataUrl.length}`);
         try {
           thumbnailDataUrl = await createThumbnail(fullImageDataUrl);
-        } catch {
-          thumbnailDataUrl = fullImageDataUrl; // Fallback if thumbnail fails
+          console.log('[client-import] Thumbnail size:', thumbnailDataUrl.length);
+        } catch (err) {
+          console.error('[client-import] Thumbnail creation failed:', err);
+          thumbnailDataUrl = fullImageDataUrl;
         }
       }
 
-      // Extract ALL assets for storing in IndexedDB
-      const extractedAssets: ExtractedAsset[] = [];
-      for (const asset of charxData.assets) {
-        if (asset.buffer) {
-          const ext = asset.descriptor.ext || 'png';
-          let mimeType = 'application/octet-stream';
-          if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) {
-            mimeType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
-          } else if (['mp3', 'wav', 'ogg', 'webm'].includes(ext)) {
-            mimeType = `audio/${ext}`;
-          } else if (['mp4'].includes(ext)) {
-            mimeType = 'video/mp4';
-          } else if (ext === 'json') {
-            mimeType = 'application/json';
-          }
-
-          // Determine if this is the main asset based on type being 'icon' or name
-          const isIcon = asset.descriptor.type === 'icon';
-
-          extractedAssets.push({
-            name: asset.descriptor.name || asset.path.split('/').pop()?.replace(/\.[^.]+$/, '') || 'asset',
-            type: asset.descriptor.type || 'custom',
-            ext,
-            mimetype: mimeType,
-            data: uint8ArrayToDataURL(asset.buffer, mimeType),
-            size: asset.buffer.length,
-            isMain: isIcon, // Icons are the main asset
-          });
-        }
-      }
-
-      console.log(`[client-import] Extracted ${extractedAssets.length} assets from CHARX`);
+      // Convert all assets
+      const extractedAssets: ExtractedAsset[] = result.assets.map(convertLoaderAsset);
+      console.log(`[client-import] Extracted ${extractedAssets.length} assets from ${containerFormat.toUpperCase()}`);
 
       return {
         card,
@@ -388,31 +396,8 @@ export async function importCardClientSide(file: File): Promise<ClientImportResu
         warnings: warnings.length > 0 ? warnings : undefined,
       };
     } catch (err) {
-      throw new Error(`Failed to parse CHARX: ${err instanceof Error ? err.message : String(err)}`);
+      throw new Error(`Failed to parse ${containerFormat.toUpperCase()}: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }
-
-  if (isPNG(buffer)) {
-    // PNG file with embedded character data
-    const result = extractFromPNG(buffer);
-    if (!result) {
-      throw new Error('PNG does not contain character card data');
-    }
-
-    const card = createCard(result.data, result.spec);
-    // Keep full PNG for export, create small WebP thumbnail for display
-    const fullImageDataUrl = uint8ArrayToDataURL(buffer, 'image/png');
-    console.log('[client-import] Full PNG size:', fullImageDataUrl.length);
-
-    let thumbnailDataUrl: string;
-    try {
-      thumbnailDataUrl = await createThumbnail(fullImageDataUrl);
-      console.log('[client-import] Thumbnail size:', thumbnailDataUrl.length);
-    } catch (err) {
-      console.error('[client-import] Thumbnail creation failed:', err);
-      thumbnailDataUrl = fullImageDataUrl; // Fallback to full image
-    }
-    return { card, fullImageDataUrl, thumbnailDataUrl, warnings: warnings.length > 0 ? warnings : undefined };
   }
 
   if (fileName.endsWith('.json')) {
