@@ -262,7 +262,7 @@ function createCollectionCard(
       id,
       name: packageData.name,
       spec: 'collection',
-      tags: ['Collection'],
+      tags: ['Collection', 'voxta'],
       createdAt: now,
       updatedAt: now,
       memberCount: members.length,
@@ -294,6 +294,9 @@ async function processVoxtaCharacter(
   // Convert Voxta to CCv3
   const ccv3Data = voxtaToCCv3(charData.data as Parameters<typeof voxtaToCCv3>[0], referencedBooks as Parameters<typeof voxtaToCCv3>[1]);
   const card = createCard(ccv3Data, 'v3', { packageId });
+
+  // Add 'voxta' tag to identify source format
+  card.meta.tags = [...(card.meta.tags || []), 'voxta'];
 
   // Process thumbnail if present
   let fullImageDataUrl: string | undefined;
