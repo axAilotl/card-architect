@@ -19,6 +19,7 @@ import sharp from 'sharp';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES_DIR = path.join(__dirname, '../../../../e2e/fixtures');
+const INTERNAL_FIXTURES_DIR = path.join(__dirname, '../../../../docs/internal/testing');
 
 // ============================================================================
 // Test Helpers
@@ -1147,6 +1148,394 @@ describe('Data Integrity', () => {
       const exportedData = exported.data || exported;
 
       expect(exportedData.character_book.entries.length).toBe(originalEntryCount);
+    });
+  });
+
+  // ==========================================================================
+  // Real CHARX/Voxta Fixture Tests (with assets and lorebooks)
+  // ==========================================================================
+
+  describe('Real CHARX Fixture Tests', () => {
+    const KASUMI_CHARX = path.join(INTERNAL_FIXTURES_DIR, 'Kasumi_test.charx');
+
+    it('should import Kasumi_test.charx with 36 assets and 15 lorebook entries', async () => {
+      if (!fs.existsSync(KASUMI_CHARX)) {
+        console.log('Skipping: Kasumi_test.charx not found');
+        return;
+      }
+
+      const charxBuffer = fs.readFileSync(KASUMI_CHARX);
+
+      const FormData = (await import('form-data')).default;
+      const form = new FormData();
+      form.append('file', charxBuffer, { filename: 'Kasumi_test.charx', contentType: 'application/zip' });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/import',
+        payload: form,
+        headers: form.getHeaders(),
+      });
+
+      expect(response.statusCode).toBe(200);
+      const result = JSON.parse(response.body);
+      expect(result.card).toBeDefined();
+
+      const cardData = result.card.data?.data || result.card.data;
+
+      // Verify lorebook
+      expect(cardData.character_book).toBeDefined();
+      expect(cardData.character_book.entries.length).toBe(15);
+
+      // Verify assets were imported (check card assets in DB)
+      const cardId = result.card.meta.id;
+      const assetsResponse = await app.inject({
+        method: 'GET',
+        url: `/api/cards/${cardId}/assets`,
+      });
+      expect(assetsResponse.statusCode).toBe(200);
+      const assets = JSON.parse(assetsResponse.body);
+      // Should have many assets (icons, emotions, custom)
+      expect(assets.length).toBeGreaterThanOrEqual(30);
+    });
+
+    it('should export Kasumi CHARX to Voxta and preserve lorebook', async () => {
+      if (!fs.existsSync(KASUMI_CHARX)) {
+        console.log('Skipping: Kasumi_test.charx not found');
+        return;
+      }
+
+      const charxBuffer = fs.readFileSync(KASUMI_CHARX);
+
+      // Import CHARX
+      const FormData = (await import('form-data')).default;
+      const form = new FormData();
+      form.append('file', charxBuffer, { filename: 'Kasumi_test.charx', contentType: 'application/zip' });
+
+      const importResponse = await app.inject({
+        method: 'POST',
+        url: '/api/import',
+        payload: form,
+        headers: form.getHeaders(),
+      });
+
+      const importResult = JSON.parse(importResponse.body);
+      const cardId = importResult.card.meta.id;
+      const originalData = importResult.card.data?.data || importResult.card.data;
+
+      // Export to Voxta
+      const voxtaResponse = await app.inject({
+        method: 'GET',
+        url: `/api/cards/${cardId}/export?format=voxta`,
+      });
+      expect(voxtaResponse.statusCode).toBe(200);
+
+      // Re-import the Voxta package
+      const voxtaForm = new FormData();
+      voxtaForm.append('file', voxtaResponse.rawPayload, { filename: 'kasumi.voxpkg', contentType: 'application/zip' });
+
+      const reImportResponse = await app.inject({
+        method: 'POST',
+        url: '/api/import-voxta',
+        payload: voxtaForm,
+        headers: voxtaForm.getHeaders(),
+      });
+
+      expect(reImportResponse.statusCode).toBe(200);
+      const reImportResult = JSON.parse(reImportResponse.body);
+
+      // Voxta import may return cards array or single card
+      const reimportedCard = reImportResult.card || reImportResult.cards?.[0];
+      expect(reimportedCard).toBeDefined();
+      const reimportedData = reimportedCard.data?.data || reimportedCard.data;
+
+      // Verify lorebook preserved
+      const reimportedBook = reimportedData.character_book;
+      expect(reimportedBook).toBeDefined();
+      expect(reimportedBook.entries).toBeDefined();
+      expect(reimportedBook.entries.length).toBe(originalData.character_book.entries.length);
+
+      // Verify lorebook content
+      for (let i = 0; i < Math.min(5, reimportedBook.entries.length); i++) {
+        const orig = originalData.character_book.entries[i];
+        const conv = reimportedBook.entries[i];
+        expect(conv.keys).toEqual(orig.keys);
+        expect(conv.content).toBe(orig.content);
+      }
+    });
+  });
+
+  describe('Real Voxta Fixture Tests', () => {
+    const KATSUMI_VOXTA = path.join(INTERNAL_FIXTURES_DIR, 'voxta', 'Katsumi Test Name.1.0.0.voxpkg');
+
+    it('should import Katsumi Voxta package with lorebook and assets', async () => {
+      if (!fs.existsSync(KATSUMI_VOXTA)) {
+        console.log('Skipping: Katsumi voxpkg not found');
+        return;
+      }
+
+      const voxtaBuffer = fs.readFileSync(KATSUMI_VOXTA);
+
+      const FormData = (await import('form-data')).default;
+      const form = new FormData();
+      form.append('file', voxtaBuffer, { filename: 'Katsumi.voxpkg', contentType: 'application/zip' });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/import-voxta',
+        payload: form,
+        headers: form.getHeaders(),
+      });
+
+      expect(response.statusCode).toBe(200);
+      const result = JSON.parse(response.body);
+
+      // Voxta import returns cards array
+      const card = result.cards?.[0];
+      expect(card).toBeDefined();
+
+      const cardData = card.data?.data || card.data;
+
+      // Verify basic import worked
+      expect(cardData.name).toBeDefined();
+      expect(cardData.name.length).toBeGreaterThan(0);
+
+      // Lorebook is optional - only verify if present
+      if (cardData.character_book) {
+        expect(cardData.character_book.entries).toBeDefined();
+        expect(cardData.character_book.entries.length).toBeGreaterThan(0);
+      }
+
+      // Alternate greetings should be defined (can be empty array)
+      expect(cardData.alternate_greetings).toBeDefined();
+    });
+
+    it('should export Katsumi Voxta to CHARX and preserve lorebook', { timeout: 30000 }, async () => {
+      if (!fs.existsSync(KATSUMI_VOXTA)) {
+        console.log('Skipping: Katsumi voxpkg not found');
+        return;
+      }
+
+      const voxtaBuffer = fs.readFileSync(KATSUMI_VOXTA);
+
+      // Import Voxta
+      const FormData = (await import('form-data')).default;
+      const form = new FormData();
+      form.append('file', voxtaBuffer, { filename: 'Katsumi.voxpkg', contentType: 'application/zip' });
+
+      const importResponse = await app.inject({
+        method: 'POST',
+        url: '/api/import-voxta',
+        payload: form,
+        headers: form.getHeaders(),
+      });
+
+      const importResult = JSON.parse(importResponse.body);
+      // Voxta import returns cards array
+      const importedCard = importResult.cards?.[0];
+      const cardId = importedCard.meta.id;
+      const originalData = importedCard.data?.data || importedCard.data;
+      const originalBookEntries = originalData.character_book?.entries?.length || 0;
+
+      // Export to CHARX
+      const charxResponse = await app.inject({
+        method: 'GET',
+        url: `/api/cards/${cardId}/export?format=charx`,
+      });
+      expect(charxResponse.statusCode).toBe(200);
+
+      // Re-import the CHARX
+      const charxForm = new FormData();
+      charxForm.append('file', charxResponse.rawPayload, { filename: 'katsumi.charx', contentType: 'application/zip' });
+
+      const reImportResponse = await app.inject({
+        method: 'POST',
+        url: '/api/import',
+        payload: charxForm,
+        headers: charxForm.getHeaders(),
+      });
+
+      expect(reImportResponse.statusCode).toBe(200);
+      const reImportResult = JSON.parse(reImportResponse.body);
+      const reimportedData = reImportResult.card.data?.data || reImportResult.card.data;
+
+      // Verify lorebook preserved
+      if (originalBookEntries > 0) {
+        expect(reimportedData.character_book).toBeDefined();
+        expect(reimportedData.character_book.entries.length).toBe(originalBookEntries);
+      }
+    });
+
+    it('should do full round-trip: Voxta → CHARX → Voxta preserving lorebook', { timeout: 60000 }, async () => {
+      if (!fs.existsSync(KATSUMI_VOXTA)) {
+        console.log('Skipping: Katsumi voxpkg not found');
+        return;
+      }
+
+      const voxtaBuffer = fs.readFileSync(KATSUMI_VOXTA);
+      const FormData = (await import('form-data')).default;
+
+      // 1. Import Voxta
+      const form1 = new FormData();
+      form1.append('file', voxtaBuffer, { filename: 'Katsumi.voxpkg', contentType: 'application/zip' });
+      const import1 = await app.inject({
+        method: 'POST',
+        url: '/api/import-voxta',
+        payload: form1,
+        headers: form1.getHeaders(),
+      });
+      const result1 = JSON.parse(import1.body);
+      // Voxta import returns cards array
+      const card1 = result1.cards?.[0];
+      const cardId1 = card1.meta.id;
+      const originalBook = card1.data?.data?.character_book || card1.data?.character_book;
+
+      // 2. Export to CHARX
+      const charxExport = await app.inject({
+        method: 'GET',
+        url: `/api/cards/${cardId1}/export?format=charx`,
+      });
+
+      // 3. Import CHARX
+      const form2 = new FormData();
+      form2.append('file', charxExport.rawPayload, { filename: 'mid.charx', contentType: 'application/zip' });
+      const import2 = await app.inject({
+        method: 'POST',
+        url: '/api/import',
+        payload: form2,
+        headers: form2.getHeaders(),
+      });
+      const result2 = JSON.parse(import2.body);
+      const cardId2 = result2.card.meta.id;
+
+      // 4. Export back to Voxta
+      const voxtaExport = await app.inject({
+        method: 'GET',
+        url: `/api/cards/${cardId2}/export?format=voxta`,
+      });
+
+      // 5. Final import
+      const form3 = new FormData();
+      form3.append('file', voxtaExport.rawPayload, { filename: 'final.voxpkg', contentType: 'application/zip' });
+      const import3 = await app.inject({
+        method: 'POST',
+        url: '/api/import-voxta',
+        payload: form3,
+        headers: form3.getHeaders(),
+      });
+      const result3 = JSON.parse(import3.body);
+      // Voxta import returns cards array
+      const card3 = result3.cards?.[0];
+      const finalBook = card3.data?.data?.character_book || card3.data?.character_book;
+
+      // Verify lorebook survived the round-trip
+      if (originalBook && originalBook.entries && originalBook.entries.length > 0) {
+        expect(finalBook).toBeDefined();
+        expect(finalBook.entries).toBeDefined();
+        expect(finalBook.entries.length).toBe(originalBook.entries.length);
+
+        // Verify content
+        for (let i = 0; i < Math.min(3, originalBook.entries.length); i++) {
+          expect(finalBook.entries[i].keys).toEqual(originalBook.entries[i].keys);
+          expect(finalBook.entries[i].content).toBe(originalBook.entries[i].content);
+        }
+      }
+    });
+  });
+
+  // ==========================================================================
+  // Collection Card Tests
+  // ==========================================================================
+
+  describe('Collection Card Operations', () => {
+    it('should create and update a collection card without validation errors', async () => {
+      // Create a collection card directly via API
+      const collectionData = {
+        name: 'Test Collection',
+        description: 'A test collection of characters',
+        version: '1.0',
+        creator: 'Test',
+        members: [],
+      };
+
+      const createResponse = await app.inject({
+        method: 'POST',
+        url: '/api/cards',
+        payload: {
+          meta: {
+            name: 'Test Collection',
+            spec: 'collection',
+            tags: ['Collection', 'test'],
+            memberCount: 0,
+          },
+          data: collectionData,
+        },
+      });
+
+      expect(createResponse.statusCode).toBe(201);
+      const createdCard = JSON.parse(createResponse.body);
+      expect(createdCard.meta.spec).toBe('collection');
+      createdCardIds.push(createdCard.meta.id);
+
+      // Update the collection card - this should NOT fail validation
+      const updateResponse = await app.inject({
+        method: 'PATCH',
+        url: `/api/cards/${createdCard.meta.id}`,
+        payload: {
+          data: {
+            ...collectionData,
+            description: 'Updated description',
+            members: [
+              {
+                cardId: 'test-member-id',
+                name: 'Test Character',
+                order: 0,
+                addedAt: new Date().toISOString(),
+              },
+            ],
+          },
+        },
+      });
+
+      // This is the key assertion - collection cards should update without validation errors
+      expect(updateResponse.statusCode).toBe(200);
+      const updatedCard = JSON.parse(updateResponse.body);
+      expect(updatedCard.data.description).toBe('Updated description');
+      expect(updatedCard.data.members.length).toBe(1);
+    });
+
+    it('should not require character fields (personality, scenario, etc) for collection cards', async () => {
+      // Collection cards have members array, not character fields
+      const collectionData = {
+        name: 'Character Pack',
+        members: [
+          { cardId: 'char-1', name: 'Character 1', order: 0, addedAt: new Date().toISOString() },
+          { cardId: 'char-2', name: 'Character 2', order: 1, addedAt: new Date().toISOString() },
+        ],
+      };
+
+      const createResponse = await app.inject({
+        method: 'POST',
+        url: '/api/cards',
+        payload: {
+          meta: {
+            name: 'Character Pack',
+            spec: 'collection',
+            tags: ['Collection'],
+            memberCount: 2,
+          },
+          data: collectionData,
+        },
+      });
+
+      // Should succeed without requiring personality, scenario, first_mes, etc.
+      expect(createResponse.statusCode).toBe(201);
+      const card = JSON.parse(createResponse.body);
+      createdCardIds.push(card.meta.id);
+
+      // Verify the collection data is intact
+      expect(card.data.members.length).toBe(2);
+      expect(card.data.members[0].name).toBe('Character 1');
     });
   });
 });

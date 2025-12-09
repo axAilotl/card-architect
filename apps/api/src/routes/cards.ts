@@ -88,11 +88,14 @@ export async function cardRoutes(fastify: FastifyInstance) {
       ? (body.meta as { spec: string }).spec
       : 'v2';
 
-    const validation = spec === 'v3' ? validateV3(body.data) : validateV2(body.data);
+    // Skip validation for collection cards - they have different structure
+    if (spec !== 'collection') {
+      const validation = spec === 'v3' ? validateV3(body.data) : validateV2(body.data);
 
-    if (!validation.valid) {
-      reply.code(400);
-      return { error: 'Validation failed', errors: validation.errors };
+      if (!validation.valid) {
+        reply.code(400);
+        return { error: 'Validation failed', errors: validation.errors };
+      }
     }
 
     // Extract name from data
