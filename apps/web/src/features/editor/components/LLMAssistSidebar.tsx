@@ -25,7 +25,7 @@ interface LLMAssistSidebarProps {
   currentValue: string;
   selection?: string;
   onApply: (value: string, action: 'replace' | 'append' | 'insert') => void;
-  cardSpec: 'v2' | 'v3';
+  cardSpec: 'v2' | 'v3' | 'collection';
 }
 
 export function LLMAssistSidebar({

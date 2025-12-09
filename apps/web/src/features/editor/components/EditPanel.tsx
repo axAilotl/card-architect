@@ -708,6 +708,15 @@ export function EditPanel() {
                         : 'Not set'}
                     </span>
                   </div>
+                  {/* Package ID - only shown for cards that are part of a collection */}
+                  {currentCard?.meta.packageId && (
+                    <div className="flex justify-between text-sm pt-2 border-t border-dark-border">
+                      <span className="text-dark-muted">Package ID:</span>
+                      <span className="text-dark-text font-mono text-xs">
+                        {currentCard.meta.packageId.slice(0, 8)}...
+                      </span>
+                    </div>
+                  )}
                   <p className="text-xs text-dark-muted mt-2">
                     These timestamps are automatically managed.
                   </p>

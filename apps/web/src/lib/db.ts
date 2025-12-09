@@ -37,7 +37,7 @@ export interface StoredAsset {
   id: string;
   cardId: string;
   name: string;
-  type: 'icon' | 'background' | 'emotion' | 'sound' | 'workflow' | 'lorebook' | 'custom';
+  type: 'icon' | 'background' | 'emotion' | 'sound' | 'workflow' | 'lorebook' | 'custom' | 'package-original';
   ext: string;
   mimetype: string;
   size: number;

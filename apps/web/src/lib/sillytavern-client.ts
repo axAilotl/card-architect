@@ -91,9 +91,14 @@ export class SillyTavernClient {
       return { success: false, error: 'SillyTavern baseUrl is not configured' };
     }
 
+    // Collection cards cannot be pushed to SillyTavern
+    if (card.meta.spec === 'collection') {
+      return { success: false, error: 'Collection cards cannot be pushed to SillyTavern. Push individual character cards instead.' };
+    }
+
     try {
       // Step 1: Generate PNG with embedded card data
-      const pngBuffer = createCardPNG(imageBuffer, card.data);
+      const pngBuffer = createCardPNG(imageBuffer, card.data as import('./types').CCv2Data | import('./types').CCv3Data);
 
       // Step 2: Get CSRF token
       const csrfToken = await this.getCsrfToken();
