@@ -179,7 +179,6 @@ export class VoxtaImportService {
     const thumbnail = this.getPackageThumbnail(data);
     if (thumbnail) {
       this.cardRepo.updateImage(card.meta.id, thumbnail);
-      await this.importThumbnailAsMainIcon(card.meta.id, thumbnail);
     }
 
     // Store the original .voxpkg file as an asset for delta export
@@ -354,66 +353,6 @@ export class VoxtaImportService {
         }
       }
     };
-  }
-
-  /**
-   * Import the Voxta thumbnail as the main icon asset
-   */
-  private async importThumbnailAsMainIcon(cardId: string, thumbnail: Buffer): Promise<void> {
-    // Detect format from buffer
-    let ext = 'png';
-    let mimetype = 'image/png';
-
-    // Check magic bytes for common formats
-    if (thumbnail[0] === 0xFF && thumbnail[1] === 0xD8) {
-      ext = 'jpg';
-      mimetype = 'image/jpeg';
-    } else if (thumbnail[0] === 0x52 && thumbnail[1] === 0x49 && thumbnail[2] === 0x46 && thumbnail[3] === 0x46) {
-      ext = 'webp';
-      mimetype = 'image/webp';
-    }
-
-    // Save file to storage
-    const fileId = nanoid();
-    const storageFilename = `${fileId}.${ext}`;
-    const storagePath = join(config.storagePath, storageFilename);
-
-    await writeFile(storagePath, thumbnail);
-
-    // Get dimensions
-    let width = 0;
-    let height = 0;
-    try {
-      const meta = await sharp(thumbnail).metadata();
-      width = meta.width || 0;
-      height = meta.height || 0;
-    } catch (e) {
-      console.warn('[Voxta Import] Failed to get thumbnail dimensions:', e);
-    }
-
-    // Create Asset Record
-    const assetRecord = this.assetRepo.create({
-      filename: storageFilename,
-      mimetype,
-      size: thumbnail.length,
-      url: `/storage/${storageFilename}`,
-      width,
-      height
-    });
-
-    // Create Card Asset Link - this is the MAIN icon
-    this.cardAssetRepo.create({
-      cardId,
-      assetId: assetRecord.id,
-      type: 'icon',
-      name: 'main', // Named 'main' for CHARX compatibility
-      ext,
-      order: 0,
-      isMain: true, // This is THE main icon
-      tags: ['portrait-override']
-    });
-
-    console.log(`[Voxta Import] Imported thumbnail as main icon for card ${cardId}`);
   }
 
   /**
