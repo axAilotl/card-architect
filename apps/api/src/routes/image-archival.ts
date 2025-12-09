@@ -97,7 +97,7 @@ function slugifyName(name: string): string {
  */
 export function restoreOriginalUrls(
   cardData: Record<string, unknown>,
-  archivedAssets: Array<{ assetId: string; ext: string; originalUrl: string }>,
+  archivedAssets: Array<{ assetId: string; ext: string; originalUrl: string; filename?: string }>,
   characterName: string
 ): Record<string, unknown> {
   if (archivedAssets.length === 0) {
@@ -109,8 +109,12 @@ export function restoreOriginalUrls(
   // Build local path to original URL mapping
   const localToOriginal = new Map<string, string>();
   for (const asset of archivedAssets) {
-    // Use assetId which is the nanoid from card_assets, and append .ext
-    const localPath = `/user/images/${sluggedName}/${asset.assetId}.${asset.ext}`;
+    // Use the actual filename from assets table, which contains the nanoid
+    // Fallback to constructing from assetId for backwards compatibility
+    const filenameBase = asset.filename
+      ? asset.filename.replace(/\.[^/.]+$/, '') // Remove extension from filename
+      : asset.assetId;
+    const localPath = `/user/images/${sluggedName}/${filenameBase}.${asset.ext}`;
     localToOriginal.set(localPath, asset.originalUrl);
   }
 
@@ -152,7 +156,7 @@ export function restoreOriginalUrls(
  */
 export function convertToEmbeddedUrls(
   cardData: Record<string, unknown>,
-  archivedAssets: Array<{ assetId: string; ext: string; originalUrl: string }>,
+  archivedAssets: Array<{ assetId: string; ext: string; originalUrl: string; filename?: string; name?: string }>,
   characterName: string
 ): { cardData: Record<string, unknown>; embeddedAssets: Array<{ assetId: string; ext: string; embedPath: string }> } {
   if (archivedAssets.length === 0) {
@@ -165,8 +169,17 @@ export function convertToEmbeddedUrls(
   // Build local path to embedded URL mapping
   const localToEmbedded = new Map<string, string>();
   for (const asset of archivedAssets) {
-    const localPath = `/user/images/${sluggedName}/${asset.assetId}.${asset.ext}`;
-    const embedPath = `assets/embedded/${asset.assetId}.${asset.ext}`;
+    // Use the actual filename from assets table, which contains the nanoid
+    // Fallback to constructing from assetId for backwards compatibility
+    const filenameBase = asset.filename
+      ? asset.filename.replace(/\.[^/.]+$/, '') // Remove extension from filename
+      : asset.assetId;
+    const localPath = `/user/images/${sluggedName}/${filenameBase}.${asset.ext}`;
+
+    // For embedded URL, use the asset name (original filename) for SillyTavern compatibility
+    // SillyTavern expects: user/images/CharacterName/assetname.ext
+    const assetName = asset.name || filenameBase;
+    const embedPath = `user/images/${characterName}/${assetName}.${asset.ext}`;
     const embeddedUrl = `embeded://${embedPath}`;
     localToEmbedded.set(localPath, embeddedUrl);
     embeddedAssets.push({ assetId: asset.assetId, ext: asset.ext, embedPath });
@@ -451,8 +464,8 @@ export async function imageArchivalRoutes(fastify: FastifyInstance) {
       return { error: 'Card not found' };
     }
 
-    // Get all assets with original URLs
-    const assets = cardAssetRepo.listByCard(card.meta.id);
+    // Get all assets with original URLs (need full details for filename)
+    const assets = cardAssetRepo.listByCardWithDetails(card.meta.id);
     const archivedAssets = assets.filter(a => a.originalUrl);
 
     if (archivedAssets.length === 0) {
@@ -488,7 +501,11 @@ export async function imageArchivalRoutes(fastify: FastifyInstance) {
 
     const localToOriginal = new Map<string, string>();
     for (const asset of archivedAssets) {
-      const localPath = `/user/images/${sluggedName}/${asset.assetId}.${asset.ext}`;
+      // Use the actual filename from assets table, which contains the nanoid
+      const filenameBase = asset.asset?.filename
+        ? asset.asset.filename.replace(/\.[^/.]+$/, '') // Remove extension
+        : asset.assetId;
+      const localPath = `/user/images/${sluggedName}/${filenameBase}.${asset.ext}`;
       localToOriginal.set(localPath, asset.originalUrl!);
     }
 

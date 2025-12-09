@@ -225,7 +225,11 @@ export class CardImportService {
         console.log(`[Card Import] Created asset record with URL: ${assetUrl}`);
 
         // Create card_asset association
-        const isMain = assetInfo.descriptor.name === 'main';
+        // Use isMain from descriptor if available, fallback to name-based detection
+        const descriptorAny = assetInfo.descriptor as unknown as Record<string, unknown>;
+        const isMain = descriptorAny.isMain === true ||
+          assetInfo.descriptor.name === 'main' ||
+          (assetInfo.descriptor.type === 'icon' && tags.includes('portrait-override'));
         this.cardAssetRepo.create({
           cardId: card.meta.id,
           assetId: asset.id,
@@ -270,6 +274,18 @@ export class CardImportService {
       this.cardRepo.update(card.meta.id, {
         data: data.card,
       });
+    }
+
+    // Ensure there's a main icon - if no icon has isMain, mark the first icon as main
+    const importedAssets = this.cardAssetRepo.listByCard(card.meta.id);
+    const icons = importedAssets.filter(a => a.type === 'icon');
+    const hasMainIcon = icons.some(a => a.isMain);
+
+    if (!hasMainIcon && icons.length > 0) {
+      // No main icon found, mark the first icon as main
+      const firstIcon = icons[0]!;
+      this.cardAssetRepo.setMain(card.meta.id, firstIcon.id);
+      warnings.push('Main icon not found, using first available icon');
     }
 
     console.log(`[Card Import] Import completed successfully`);
@@ -511,5 +527,110 @@ export class CardImportService {
       }
       order++;
     }
+  }
+
+  /**
+   * Create main icon asset from PNG container image
+   * The PNG container IS the primary character image for PNG format cards
+   */
+  async createMainIconFromPng(
+    cardId: string,
+    pngBuffer: Buffer,
+    options: { storagePath: string }
+  ): Promise<void> {
+    // Check if a main icon already exists
+    const existingAssets = this.cardAssetRepo.listByCard(cardId);
+    const hasMainIcon = existingAssets.some(a => a.type === 'icon' && a.isMain);
+
+    if (hasMainIcon) {
+      console.log('[Card Import] Card already has main icon, skipping PNG container');
+      return;
+    }
+
+    // Priority:
+    // 1. Stripped PNG container (clean, no metadata)
+    // 2. Existing icon named 'main'
+    // 3. First available icon
+    // 4. None - leave it
+
+    let iconBuffer: Buffer | undefined;
+    let iconExt = 'png';
+
+    // 1. Try stripped PNG container
+    try {
+      const { removeAllTextChunks } = await import('@character-foundry/png');
+      iconBuffer = Buffer.from(removeAllTextChunks(pngBuffer));
+      console.log('[Card Import] Using stripped PNG container as main icon');
+    } catch (err) {
+      console.warn('[Card Import] Failed to strip PNG metadata:', err);
+
+      // 2. Look for existing icon named 'main'
+      const mainIcon = existingAssets.find(a => a.type === 'icon' && a.name === 'main');
+      if (mainIcon) {
+        // Already exists, just mark it as main if not already
+        if (!mainIcon.isMain) {
+          this.cardAssetRepo.setMain(cardId, mainIcon.id);
+          console.log('[Card Import] Marked existing main icon as isMain');
+        }
+        return;
+      }
+
+      // 3. Use first available icon
+      const firstIcon = existingAssets.find(a => a.type === 'icon');
+      if (firstIcon) {
+        this.cardAssetRepo.setMain(cardId, firstIcon.id);
+        console.log('[Card Import] Using first icon as main:', firstIcon.name);
+        return;
+      }
+
+      // 4. None exist - leave it
+      console.log('[Card Import] No icon available for main, leaving empty');
+      return;
+    }
+
+    // Save the stripped PNG as main icon
+    const assetId = nanoid();
+    const filename = `${assetId}.${iconExt}`;
+    const cardStorageDir = join(options.storagePath, cardId);
+    await fs.mkdir(cardStorageDir, { recursive: true });
+    const assetPath = join(cardStorageDir, filename);
+
+    await fs.writeFile(assetPath, iconBuffer);
+
+    // Get image dimensions
+    let width: number | undefined;
+    let height: number | undefined;
+    try {
+      const metadata = await sharp(iconBuffer).metadata();
+      width = metadata.width;
+      height = metadata.height;
+    } catch {
+      // Ignore metadata errors
+    }
+
+    // Create asset record
+    const assetUrl = `/storage/${cardId}/${filename}`;
+    const asset = this.assetRepo.create({
+      filename,
+      mimetype: `image/${iconExt}`,
+      size: iconBuffer.length,
+      width,
+      height,
+      url: assetUrl,
+    });
+
+    // Create card_asset association as main icon
+    this.cardAssetRepo.create({
+      cardId,
+      assetId: asset.id,
+      type: 'icon',
+      name: 'main',
+      ext: iconExt,
+      order: 0,
+      isMain: true,
+      tags: ['portrait-override'],
+    });
+
+    console.log(`[Card Import] Created main icon from PNG container: ${assetUrl}`);
   }
 }

@@ -193,34 +193,51 @@ export async function exportCardAsVoxta(card: Card): Promise<Blob> {
     } as CCv3Data;
   }
 
-  // Collect assets from IndexedDB, excluding main icon
-  // Voxta should NOT have main icon in Assets folder - it uses thumbnail.xxx at character root
+  // Collect assets from IndexedDB
+  // Include main icon - the voxta writer will use it as thumbnail only, not add to Assets folder
   const assets: VoxtaWriteAsset[] = [];
   const storedAssets = await localDB.getAssetsByCard(card.meta.id);
   console.log(`[client-export] Found ${storedAssets.length} assets for Voxta export`);
 
-  // Add all stored assets EXCEPT main icon
+  // Add all stored assets including main icon (writer handles thumbnail vs Assets placement)
   for (const asset of storedAssets) {
     if (asset.data) {
-      // Skip main icon - Voxta handles thumbnail separately, not in Assets folder
-      if (asset.type === 'icon' && (asset.isMain || asset.name === 'main')) {
-        console.log('[client-export] Skipping main icon for Voxta export');
-        continue;
-      }
       assets.push({
         type: asset.type as VoxtaWriteAsset['type'],
         name: asset.name,
         ext: asset.ext,
         data: dataURLToUint8Array(asset.data),
+        isMain: asset.isMain,
       });
     }
   }
 
-  // NOTE: Do NOT add fallback main icon for Voxta exports.
-  // Voxta uses thumbnail.xxx at character root level, not Assets/main.xxx
-  // Main icon is only for CHARX/PNG exports.
+  // If no icon asset exists, try to use the wrapper image as main icon for thumbnail
+  const hasIcon = storedAssets.some(a => a.type === 'icon');
+  if (!hasIcon) {
+    let imageData = await localDB.getImage(card.meta.id, 'icon');
+    if (!imageData) {
+      imageData = await localDB.getImage(card.meta.id, 'thumbnail');
+    }
 
-  console.log(`[client-export] Exporting ${assets.length} assets to Voxta (main icon excluded)`);
+    if (imageData) {
+      const buffer = dataURLToUint8Array(imageData);
+      let ext = 'png';
+      if (imageData.startsWith('data:image/webp')) ext = 'webp';
+      else if (imageData.startsWith('data:image/jpeg')) ext = 'jpg';
+
+      assets.push({
+        type: 'icon',
+        name: 'main',
+        ext,
+        data: buffer,
+        isMain: true,
+      });
+      console.log('[client-export] Added wrapper image as main icon for Voxta thumbnail');
+    }
+  }
+
+  console.log(`[client-export] Exporting ${assets.length} assets to Voxta`);
 
   // Build Voxta package (takes CCv3Data directly, converts internally)
   const result = buildVoxtaPackage(v3Data, assets);

@@ -623,6 +623,20 @@ export async function importExportRoutes(fastify: FastifyInstance) {
       }
     }
 
+    // For PNG imports: Create main icon asset from the PNG container image
+    // The PNG container IS the primary character image, not a fallback
+    if (originalImage && originalImage.length > 0) {
+      try {
+        await cardImportService.createMainIconFromPng(card.meta.id, originalImage, {
+          storagePath: config.storagePath,
+        });
+        fastify.log.info({ cardId: card.meta.id }, 'Created main icon asset from PNG container');
+      } catch (err) {
+        fastify.log.error({ error: err }, 'Failed to create main icon from PNG');
+        warnings.push('Failed to create main icon from PNG container');
+      }
+    }
+
     fastify.log.info({
       url,
       cardId: card.meta.id,
@@ -987,6 +1001,20 @@ export async function importExportRoutes(fastify: FastifyInstance) {
       }
     }
 
+    // For PNG imports: Create main icon asset from the PNG container image
+    // The PNG container IS the primary character image, not a fallback
+    if (originalImage && originalImage.length > 0) {
+      try {
+        await cardImportService.createMainIconFromPng(card.meta.id, originalImage, {
+          storagePath: config.storagePath,
+        });
+        fastify.log.info({ cardId: card.meta.id }, 'Created main icon asset from PNG container');
+      } catch (err) {
+        fastify.log.error({ error: err }, 'Failed to create main icon from PNG');
+        warnings.push('Failed to create main icon from PNG container');
+      }
+    }
+
     // Debug: Verify lorebook is in the created card
     const createdCardData = card.data as any;
     const finalHasLorebook = createdCardData.character_book?.entries?.length > 0;
@@ -1326,10 +1354,16 @@ export async function importExportRoutes(fastify: FastifyInstance) {
         }
 
         // Restore original URLs for archived images (JSON export should use external URLs)
-        const cardAssets = cardAssetRepo.listByCard(request.params.id);
-        const archivedAssets = cardAssets
+        const cardAssetsForRestore = cardAssetRepo.listByCardWithDetails(request.params.id);
+        const archivedAssets = cardAssetsForRestore
           .filter(a => a.originalUrl)
-          .map(a => ({ assetId: a.assetId, ext: a.ext, originalUrl: a.originalUrl! }));
+          .map(a => ({
+            assetId: a.assetId,
+            ext: a.ext,
+            originalUrl: a.originalUrl!,
+            filename: a.asset?.filename,
+            name: a.name,
+          }));
 
         if (archivedAssets.length > 0) {
           const characterName = (exportData.name as string) ||
@@ -1430,16 +1464,22 @@ export async function importExportRoutes(fastify: FastifyInstance) {
           }
 
           // Convert local /user/images/ URLs to embeded:// URLs for archived images
-          const cardAssets = cardAssetRepo.listByCard(request.params.id);
-          const archivedAssets = cardAssets
+          const cardAssetsForEmbed = cardAssetRepo.listByCardWithDetails(request.params.id);
+          const archivedAssetsForEmbed = cardAssetsForEmbed
             .filter(a => a.originalUrl)
-            .map(a => ({ assetId: a.assetId, ext: a.ext, originalUrl: a.originalUrl! }));
+            .map(a => ({
+              assetId: a.assetId,
+              ext: a.ext,
+              originalUrl: a.originalUrl!,
+              filename: a.asset?.filename,
+              name: a.name,
+            }));
 
-          if (archivedAssets.length > 0) {
+          if (archivedAssetsForEmbed.length > 0) {
             const characterName = charxData.data?.name || card.meta.name || 'character';
             const { cardData: convertedData, embeddedAssets } = convertToEmbeddedUrls(
               charxData as unknown as Record<string, unknown>,
-              archivedAssets,
+              archivedAssetsForEmbed,
               characterName
             );
             charxData = convertedData as unknown as CCv3Data;
@@ -1447,7 +1487,7 @@ export async function importExportRoutes(fastify: FastifyInstance) {
             // Add embedded archived images to the assets list
             for (const embedded of embeddedAssets) {
               // Find the corresponding asset record
-              const cardAsset = cardAssets.find(a => a.assetId === embedded.assetId);
+              const cardAsset = cardAssetsForEmbed.find(a => a.assetId === embedded.assetId);
               if (cardAsset) {
                 const now = new Date().toISOString();
                 // Look up the full asset details
@@ -1483,7 +1523,7 @@ export async function importExportRoutes(fastify: FastifyInstance) {
 
             fastify.log.info({
               cardId: request.params.id,
-              count: archivedAssets.length,
+              count: archivedAssetsForEmbed.length,
             }, 'Converted archived image URLs to embedded format for CHARX export');
           }
 
@@ -1572,6 +1612,47 @@ export async function importExportRoutes(fastify: FastifyInstance) {
         try {
           let assets = cardAssetRepo.listByCardWithDetails(request.params.id);
 
+          // If no main icon asset exists, use the card's uploaded PNG as the icon (same as CHARX export)
+          const hasMainIcon = assets.some(a => a.type === 'icon' && a.isMain);
+          if (!hasMainIcon) {
+            const originalImage = cardRepo.getOriginalImage(request.params.id);
+            if (originalImage) {
+              // Save the original image to storage temporarily for Voxta build
+              const iconFilename = `${request.params.id}-icon.png`;
+              const iconPath = join(config.storagePath, request.params.id, iconFilename);
+
+              // Ensure directory exists
+              await fs.mkdir(join(config.storagePath, request.params.id), { recursive: true });
+              await fs.writeFile(iconPath, originalImage);
+
+              const now = new Date().toISOString();
+
+              // Add as a virtual asset for Voxta build (will become thumbnail)
+              assets.push({
+                id: `temp-icon-${request.params.id}`,
+                cardId: request.params.id,
+                assetId: `temp-asset-${request.params.id}`,
+                type: 'icon',
+                name: 'main',
+                ext: 'png',
+                order: 0,
+                isMain: true,
+                createdAt: now,
+                updatedAt: now,
+                asset: {
+                  id: `temp-asset-${request.params.id}`,
+                  filename: iconFilename,
+                  mimetype: 'image/png',
+                  size: originalImage.length,
+                  url: `/storage/${request.params.id}/${iconFilename}`,
+                  createdAt: now,
+                },
+              });
+
+              fastify.log.info({ cardId: request.params.id }, 'Using card original image as main icon for Voxta export');
+            }
+          }
+
           // Convert standard macros to Voxta format (add spaces)
           // This applies to all cards being exported to Voxta, not just existing Voxta cards
           let voxtaData = convertCardMacros(
@@ -1581,12 +1662,18 @@ export async function importExportRoutes(fastify: FastifyInstance) {
           fastify.log.info({ cardId: request.params.id }, 'Converted standard macros to Voxta format for Voxta export');
 
           // Convert local /user/images/ URLs to embeded:// URLs for archived images
-          const cardAssets = cardAssetRepo.listByCard(request.params.id);
-          const archivedAssets = cardAssets
+          const voxtaCardAssets = cardAssetRepo.listByCardWithDetails(request.params.id);
+          const voxtaArchivedAssets = voxtaCardAssets
             .filter(a => a.originalUrl)
-            .map(a => ({ assetId: a.assetId, ext: a.ext, originalUrl: a.originalUrl! }));
+            .map(a => ({
+              assetId: a.assetId,
+              ext: a.ext,
+              originalUrl: a.originalUrl!,
+              filename: a.asset?.filename,
+              name: a.name,
+            }));
 
-          if (archivedAssets.length > 0) {
+          if (voxtaArchivedAssets.length > 0) {
             const voxtaObj = voxtaData as unknown as Record<string, unknown>;
             const characterName = voxtaObj.data
               ? (voxtaObj.data as Record<string, unknown>).name as string
@@ -1594,14 +1681,14 @@ export async function importExportRoutes(fastify: FastifyInstance) {
               || card.meta.name || 'character';
             const { cardData: convertedData, embeddedAssets } = convertToEmbeddedUrls(
               voxtaData as unknown as Record<string, unknown>,
-              archivedAssets,
+              voxtaArchivedAssets,
               characterName
             );
             voxtaData = convertedData as unknown as import('@character-foundry/schemas').CCv3Data;
 
             // Add embedded archived images to the assets list
             for (const embedded of embeddedAssets) {
-              const cardAsset = cardAssets.find(a => a.assetId === embedded.assetId);
+              const cardAsset = voxtaCardAssets.find(a => a.assetId === embedded.assetId);
               if (cardAsset) {
                 const now = new Date().toISOString();
                 const fullAsset = assets.find(a => a.assetId === embedded.assetId);
@@ -1635,7 +1722,7 @@ export async function importExportRoutes(fastify: FastifyInstance) {
 
             fastify.log.info({
               cardId: request.params.id,
-              count: archivedAssets.length,
+              count: voxtaArchivedAssets.length,
             }, 'Converted archived image URLs to embedded format for Voxta export');
           }
 
@@ -1709,10 +1796,16 @@ export async function importExportRoutes(fastify: FastifyInstance) {
           }
 
           // Restore original URLs for archived images (PNG export should use external URLs)
-          const pngCardAssets = cardAssetRepo.listByCard(request.params.id);
+          const pngCardAssets = cardAssetRepo.listByCardWithDetails(request.params.id);
           const pngArchivedAssets = pngCardAssets
             .filter(a => a.originalUrl)
-            .map(a => ({ assetId: a.assetId, ext: a.ext, originalUrl: a.originalUrl! }));
+            .map(a => ({
+              assetId: a.assetId,
+              ext: a.ext,
+              originalUrl: a.originalUrl!,
+              filename: a.asset?.filename,
+              name: a.name,
+            }));
 
           if (pngArchivedAssets.length > 0) {
             const characterName = (pngCardData.name as string) ||
