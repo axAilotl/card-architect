@@ -168,6 +168,10 @@ export async function exportCardAsCHARX(card: Card): Promise<Blob> {
 
 /**
  * Export card as Voxta package (.voxpkg)
+ *
+ * IMPORTANT: Voxta packages should NOT include a main icon in the Assets folder.
+ * Voxta handles thumbnails separately at the character root level (thumbnail.xxx).
+ * Main icon is only for CHARX/PNG exports.
  */
 export async function exportCardAsVoxta(card: Card): Promise<Blob> {
   // Get card data - convert to V3 if needed
@@ -189,14 +193,20 @@ export async function exportCardAsVoxta(card: Card): Promise<Blob> {
     } as CCv3Data;
   }
 
-  // Collect assets from IndexedDB
+  // Collect assets from IndexedDB, excluding main icon
+  // Voxta should NOT have main icon in Assets folder - it uses thumbnail.xxx at character root
   const assets: VoxtaWriteAsset[] = [];
   const storedAssets = await localDB.getAssetsByCard(card.meta.id);
   console.log(`[client-export] Found ${storedAssets.length} assets for Voxta export`);
 
-  // Add all stored assets
+  // Add all stored assets EXCEPT main icon
   for (const asset of storedAssets) {
     if (asset.data) {
+      // Skip main icon - Voxta handles thumbnail separately, not in Assets folder
+      if (asset.type === 'icon' && (asset.isMain || asset.name === 'main')) {
+        console.log('[client-export] Skipping main icon for Voxta export');
+        continue;
+      }
       assets.push({
         type: asset.type as VoxtaWriteAsset['type'],
         name: asset.name,
@@ -206,30 +216,11 @@ export async function exportCardAsVoxta(card: Card): Promise<Blob> {
     }
   }
 
-  // If no icon asset, fallback to wrapper image
-  const hasIcon = storedAssets.some(a => a.type === 'icon' || a.isMain);
-  if (!hasIcon) {
-    // Get the wrapper icon image as fallback
-    let imageData = await localDB.getImage(card.meta.id, 'icon');
-    if (!imageData) {
-      imageData = await localDB.getImage(card.meta.id, 'thumbnail');
-    }
+  // NOTE: Do NOT add fallback main icon for Voxta exports.
+  // Voxta uses thumbnail.xxx at character root level, not Assets/main.xxx
+  // Main icon is only for CHARX/PNG exports.
 
-    if (imageData) {
-      const buffer = dataURLToUint8Array(imageData);
-      let ext = 'png';
-      if (imageData.startsWith('data:image/webp')) ext = 'webp';
-      else if (imageData.startsWith('data:image/jpeg')) ext = 'jpg';
-
-      assets.push({
-        type: 'icon',
-        name: 'main',
-        ext,
-        data: buffer,
-      });
-      console.log('[client-export] Added wrapper image as fallback icon for Voxta');
-    }
-  }
+  console.log(`[client-export] Exporting ${assets.length} assets to Voxta (main icon excluded)`);
 
   // Build Voxta package (takes CCv3Data directly, converts internally)
   const result = buildVoxtaPackage(v3Data, assets);
