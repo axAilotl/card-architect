@@ -11,6 +11,20 @@ import { SettingsModal } from '../../components/shared/SettingsModal';
 import { useFederationStore } from '../../modules/federation/lib/federation-store';
 import type { CardSyncState } from '../../modules/federation/lib/types';
 
+/**
+ * Generate a UUID that works in non-secure contexts (HTTP)
+ */
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 interface CardGridProps {
   onCardClick: (cardId: string) => void;
 }
@@ -308,7 +322,7 @@ export function CardGrid({ onCardClick }: CardGridProps) {
                 for (const asset of result.assets) {
                   console.log(`[CardGrid] Saving asset: ${asset.name}.${asset.ext} (${asset.type}) for card ${result.card.meta.id}`);
                   await localDB.saveAsset({
-                    id: crypto.randomUUID(),
+                    id: generateUUID(),
                     cardId: result.card.meta.id,
                     name: asset.name,
                     type: asset.type as 'icon' | 'background' | 'emotion' | 'sound' | 'workflow' | 'lorebook' | 'custom' | 'package-original',
@@ -374,7 +388,7 @@ export function CardGrid({ onCardClick }: CardGridProps) {
                 if (result.assets && result.assets.length > 0) {
                   for (const asset of result.assets) {
                     await localDB.saveAsset({
-                      id: crypto.randomUUID(),
+                      id: generateUUID(),
                       cardId: result.card.meta.id,
                       name: asset.name,
                       type: asset.type as 'icon' | 'background' | 'emotion' | 'sound' | 'workflow' | 'lorebook' | 'custom' | 'package-original',
@@ -408,7 +422,7 @@ export function CardGrid({ onCardClick }: CardGridProps) {
             if (result.assets && result.assets.length > 0) {
               for (const asset of result.assets) {
                 await localDB.saveAsset({
-                  id: crypto.randomUUID(),
+                  id: generateUUID(),
                   cardId: result.card.meta.id,
                   name: asset.name,
                   type: asset.type as 'icon' | 'background' | 'emotion' | 'sound' | 'workflow' | 'lorebook' | 'custom' | 'package-original',

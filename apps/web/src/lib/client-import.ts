@@ -10,6 +10,22 @@ import { parseCard as parseCardLoader, getContainerFormat, type ExtractedAsset a
 import { readVoxta as extractVoxtaPackage, voxtaToCCv3 } from '@character-foundry/voxta';
 import type { Card, CCv2Data, CCv3Data, CollectionData, CollectionMember } from './types';
 
+/**
+ * Generate a UUID that works in non-secure contexts (HTTP)
+ * Falls back to a random string if crypto.randomUUID is not available
+ */
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  // Fallback for non-secure contexts
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 // Asset extracted from CHARX/Voxta for storing in IndexedDB
 export interface ExtractedAsset {
   name: string;
@@ -178,7 +194,7 @@ function createCard(
   spec: 'v2' | 'v3',
   options?: { packageId?: string }
 ): Card {
-  const id = crypto.randomUUID();
+  const id = generateUUID();
   const now = new Date().toISOString();
 
   // Extract name from data
@@ -226,7 +242,7 @@ function createCollectionCard(
   },
   members: CollectionMember[]
 ): Card {
-  const id = crypto.randomUUID();
+  const id = generateUUID();
   const now = new Date().toISOString();
 
   const collectionData: CollectionData = {
