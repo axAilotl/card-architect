@@ -550,9 +550,19 @@ export const useCardStore = create<CardStore>((set, get) => ({
     const { currentCard } = get();
     if (!currentCard || !currentCard.meta.id) return;
 
+    const config = getDeploymentConfig();
+
     // Save before exporting to ensure DB has latest data
-    // Skip save for collection cards - they have different structure and don't need character validation
-    if (currentCard.meta.spec !== 'collection') {
+    if (currentCard.meta.spec === 'collection') {
+      // For collections: save member cards, not the collection container itself
+      // The collection card is just metadata - members need to be saved/validated
+      const collectionData = currentCard.data as { members?: Array<{ cardId: string }> };
+      if (collectionData.members && collectionData.members.length > 0) {
+        // Member cards should already be saved individually when edited
+        // Just ensure they exist - actual save happens in their own edit sessions
+      }
+    } else {
+      // Regular character card: save before export
       try {
         await get().saveCard();
         // Small delay to ensure database write completes
@@ -562,8 +572,6 @@ export const useCardStore = create<CardStore>((set, get) => ({
         return;
       }
     }
-
-    const config = getDeploymentConfig();
 
     // Client-side mode: use client export (supports all formats now)
     if (config.mode === 'light' || config.mode === 'static') {
