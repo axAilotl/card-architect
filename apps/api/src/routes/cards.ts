@@ -137,21 +137,24 @@ export async function cardRoutes(fastify: FastifyInstance) {
     if (body.data) {
       const spec = existing.meta.spec;
 
-      // Normalize lorebook entries before validation
-      // Handle both wrapped ({spec, data}) and unwrapped formats
-      const dataObj = body.data as Record<string, unknown>;
-      if ('data' in dataObj && typeof dataObj.data === 'object' && dataObj.data) {
-        normalizeLorebookEntries(dataObj.data as Record<string, unknown>);
-      } else {
-        normalizeLorebookEntries(dataObj);
-      }
+      // Skip validation for collection cards - they have different structure
+      if (spec !== 'collection') {
+        // Normalize lorebook entries before validation
+        // Handle both wrapped ({spec, data}) and unwrapped formats
+        const dataObj = body.data as Record<string, unknown>;
+        if ('data' in dataObj && typeof dataObj.data === 'object' && dataObj.data) {
+          normalizeLorebookEntries(dataObj.data as Record<string, unknown>);
+        } else {
+          normalizeLorebookEntries(dataObj);
+        }
 
-      const validation = spec === 'v3' ? validateV3(body.data) : validateV2(body.data);
+        const validation = spec === 'v3' ? validateV3(body.data) : validateV2(body.data);
 
-      if (!validation.valid) {
-        fastify.log.error({ errors: validation.errors, spec }, 'Card validation failed');
-        reply.code(400);
-        return { error: 'Validation failed', errors: validation.errors };
+        if (!validation.valid) {
+          fastify.log.error({ errors: validation.errors, spec }, 'Card validation failed');
+          reply.code(400);
+          return { error: 'Validation failed', errors: validation.errors };
+        }
       }
     }
 
