@@ -50,6 +50,7 @@
     "npm": ">=10.0.0"
   },
   "dependencies": {
+    "@character-foundry/character-foundry": "^0.1.0",
     "@character-foundry/charx": "^0.0.3",
     "@character-foundry/core": "^0.0.2",
     "@character-foundry/federation": "^0.1.5",
