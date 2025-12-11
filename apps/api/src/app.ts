@@ -71,6 +71,25 @@ export async function build(opts: FastifyServerOptions = {}) {
     prefix: '/storage/',
   });
 
+  // Global error handler - standardizes error responses
+  fastify.setErrorHandler((error, request, reply) => {
+    const statusCode = error.statusCode || 500;
+
+    // Log the error (skip 4xx client errors at error level)
+    if (statusCode >= 500) {
+      fastify.log.error({ err: error, url: request.url }, 'Server error');
+    } else {
+      fastify.log.warn({ err: error, url: request.url }, 'Client error');
+    }
+
+    // Standardized error response
+    reply.status(statusCode).send({
+      error: error.message || 'Internal Server Error',
+      statusCode,
+      ...(process.env.NODE_ENV !== 'production' && { stack: error.stack }),
+    });
+  });
+
   // Health check
   fastify.get('/health', async () => {
     return { status: 'ok', timestamp: new Date().toISOString() };

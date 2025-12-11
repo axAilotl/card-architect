@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
 import { nanoid } from 'nanoid';
-import type { Card, CardMeta, CardVersion, Spec, CardAsset, CardAssetWithDetails, Asset } from '../types/index.js';
+import type { Card, CardMeta, CardUpdate, CardVersion, Spec, CardAsset, CardAssetWithDetails, Asset } from '../types/index.js';
 
 export class CardRepository {
   constructor(private db: Database.Database) {}
@@ -106,7 +106,7 @@ export class CardRepository {
   /**
    * Update a card
    */
-  update(id: string, updates: Partial<Card>): Card | null {
+  update(id: string, updates: CardUpdate): Card | null {
     const existing = this.get(id);
     if (!existing) return null;
 

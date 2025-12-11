@@ -53,6 +53,14 @@ export interface Card {
 }
 
 /**
+ * Card update payload - allows partial meta updates
+ */
+export interface CardUpdate {
+  meta?: Partial<CardMeta>;
+  data?: CCv2Data | CCv3Data;
+}
+
+/**
  * Card version for history tracking
  */
 export interface CardVersion {

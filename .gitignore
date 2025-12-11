@@ -46,11 +46,15 @@ Thumbs.db
 coverage/
 .nyc_output/
 testing/
+playwright-report/
+test-results/
 
 # Documentation (keep local only)
 # docs/
 docs/internal/
 AGENTS.md
+*_TODO.md
+*_CODE_REVIEW.md
 
 # Temporary
 tmp/
