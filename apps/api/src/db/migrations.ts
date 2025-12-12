@@ -360,6 +360,53 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 8,
+    name: 'add_lorebook_spec',
+    up: (db: Database.Database) => {
+      // Add 'lorebook' to allowed spec values
+
+      // 1. Create new table with updated schema
+      db.exec(`
+        CREATE TABLE cards_new (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          spec TEXT NOT NULL CHECK (spec IN ('v2', 'v3', 'collection', 'lorebook')),
+          data TEXT NOT NULL,
+          tags TEXT,
+          creator TEXT,
+          character_version TEXT,
+          rating TEXT CHECK (rating IN ('SFW', 'NSFW')),
+          original_image BLOB,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          package_id TEXT,
+          member_count INTEGER
+        )
+      `);
+
+      // 2. Copy data from old table
+      db.exec(`
+        INSERT INTO cards_new (id, name, spec, data, tags, creator, character_version, rating, original_image, created_at, updated_at, package_id, member_count)
+        SELECT id, name, spec, data, tags, creator, character_version, rating, original_image, created_at, updated_at, package_id, member_count
+        FROM cards
+      `);
+
+      // 3. Drop old table
+      db.exec('DROP TABLE cards');
+
+      // 4. Rename new table
+      db.exec('ALTER TABLE cards_new RENAME TO cards');
+
+      // 5. Recreate indexes
+      db.exec(`
+        CREATE INDEX idx_cards_name ON cards(name);
+        CREATE INDEX idx_cards_spec ON cards(spec);
+        CREATE INDEX idx_cards_updated_at ON cards(updated_at);
+        CREATE INDEX idx_cards_package_id ON cards(package_id);
+      `);
+    },
+  },
 ];
 
 /**

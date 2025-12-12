@@ -18,7 +18,7 @@ export type { CCv2Data, CCv3Data } from '@character-foundry/schemas';
 /**
  * Card specification version
  */
-export type Spec = 'v2' | 'v3' | 'chara_card_v2' | 'chara_card_v3' | 'collection';
+export type Spec = 'v2' | 'v3' | 'chara_card_v2' | 'chara_card_v3' | 'collection' | 'lorebook';
 
 // ============================================================================
 // CARD MANAGEMENT TYPES

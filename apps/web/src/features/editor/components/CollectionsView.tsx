@@ -37,7 +37,7 @@ async function getCard(cardId: string): Promise<Card | null> {
 async function listCards(): Promise<Card[]> {
   if (useServerApi) {
     const result = await api.listCards();
-    return result.data || [];
+    return result.data?.items || [];
   }
   return localDB.listCards();
 }

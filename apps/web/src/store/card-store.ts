@@ -26,6 +26,7 @@ interface CardStore {
   createSnapshot: (message?: string) => Promise<void>;
   loadCard: (id: string) => Promise<void>;
   createNewCard: () => Promise<void>;
+  createNewLorebook: () => Promise<void>;
   importCard: (file: File) => Promise<string | null>;
   importVoxtaPackage: (file: File) => Promise<string | null>;
   importCardFromURL: (url: string) => Promise<string | null>;
@@ -301,6 +302,53 @@ export const useCardStore = create<CardStore>((set, get) => ({
           post_history_instructions: '',
           alternate_greetings: [],
           group_only_greetings: [],
+        },
+      } as CCv3Data,
+    };
+
+    set({ currentCard: newCard, isDirty: true });
+
+    // Immediately save to API to get a real ID
+    await get().saveCard();
+  },
+
+  // Create new standalone lorebook
+  createNewLorebook: async () => {
+    const newCard: Card = {
+      meta: {
+        id: '',
+        name: 'New Lorebook',
+        spec: 'lorebook',
+        tags: ['LORE'],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      data: {
+        spec: 'chara_card_v3',
+        spec_version: '3.0',
+        data: {
+          name: 'New Lorebook',
+          description: '',
+          personality: '',
+          scenario: '',
+          first_mes: '',
+          mes_example: '',
+          creator: '',
+          character_version: '1.0',
+          tags: ['LORE'],
+          system_prompt: '',
+          post_history_instructions: '',
+          alternate_greetings: [],
+          group_only_greetings: [],
+          character_book: {
+            name: 'New Lorebook',
+            description: '',
+            scan_depth: 100,
+            token_budget: 500,
+            recursive_scanning: false,
+            extensions: {},
+            entries: [],
+          },
         },
       } as CCv3Data,
     };

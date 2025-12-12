@@ -28,11 +28,11 @@ export class ServerPersistenceAdapter implements PersistenceAdapter {
 
   async listCards(query?: string): Promise<CardListItem[]> {
     const { data, error } = await api.listCards(query);
-    if (error || !data) {
+    if (error || !data?.items) {
       console.error('[ServerAdapter] listCards error:', error);
       return [];
     }
-    return data.map((card) => ({
+    return data.items.map((card: Card) => ({
       id: card.meta.id,
       name: card.meta.name,
       spec: card.meta.spec,

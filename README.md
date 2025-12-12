@@ -11,6 +11,10 @@
 - **Voxta Support** - Import/Export `.voxpkg` files with full asset and metadata preservation
 - **Real-time Token Counting** - Per-field and global token estimates using Hugging Face tokenizers
 - **Lorebook Editor** - Complete CCv3 character book with all fields (keywords, secondary, priority, selective AND/NOT, probability, constant, insertion order/position)
+- **Standalone Lorebooks** - Create, import, and manage lorebooks independently from character cards
+  - Import from SillyTavern, Agnai, RisuAI, and Wyvern formats
+  - Filter dashboard by lorebook type
+  - Import lorebooks directly into character cards
 - **Always-Saving** - Autosave to IndexedDB with background sync to SQLite
 - **Version History** - Manual snapshots with restore capability
 - **Import/Export** - JSON, PNG (tEXt embed), CHARX, and Voxta support with automatic format normalization
@@ -164,12 +168,13 @@ Card Architect is a monorepo with:
 
 **External Dependencies** (from `@character-foundry/*` on GitHub Packages):
 - `@character-foundry/schemas` - Shared TypeScript types + validation
-- `@character-foundry/core` - Core utilities (binary, base64, etc.)
+- `@character-foundry/core` - Core utilities (binary, base64, ZIP, data URLs)
 - `@character-foundry/png` - PNG tEXt/zTXt chunk reading/writing
 - `@character-foundry/charx` - CHARX format reader/writer/validator
 - `@character-foundry/voxta` - Voxta .voxpkg format handling
+- `@character-foundry/lorebook` - Lorebook parsing/serialization (SillyTavern, Agnai, RisuAI, Wyvern)
 - `@character-foundry/tokenizers` - Token counting
-- `@character-foundry/loader` - Universal card loader
+- `@character-foundry/loader` - Universal card loader with format auto-detection
 - `@character-foundry/federation` - Federation protocol
 
 ### Tech Stack
@@ -231,6 +236,13 @@ Feature flags are derived from folder names: `comfyui` → `comfyuiEnabled`
 2. Select multiple files (JSON, PNG, CHARX, or VOXPKG)
 3. All cards will be imported at once
 4. See import summary showing success/failure count
+
+**Importing Lorebooks:**
+1. Click **"Import"** or drag-and-drop a lorebook file
+2. Supported formats: SillyTavern World Info, Agnai, RisuAI, Wyvern
+3. Lorebooks are imported as standalone cards (spec: `lorebook`)
+4. Filter by "Lorebooks" in the dashboard to find them
+5. Import a lorebook into a character via the Lorebook Editor's "Import Lorebook" button
 
 ### Exporting Cards
 

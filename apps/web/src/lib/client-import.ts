@@ -8,6 +8,7 @@
 import { isPNG } from '@character-foundry/png';
 import { parseCard as parseCardLoader, getContainerFormat, type ExtractedAsset as LoaderAsset } from '@character-foundry/loader';
 import { readVoxta as extractVoxtaPackage, voxtaToCCv3 } from '@character-foundry/voxta';
+import { parseLorebook, detectLorebookFormat } from '@character-foundry/lorebook';
 import type { Card, CCv2Data, CCv3Data, CollectionData, CollectionMember } from './types';
 
 /**
@@ -223,6 +224,51 @@ function createCard(
       packageId: options?.packageId,
     },
     data,
+  };
+}
+
+/**
+ * Create a Lorebook card from imported lorebook data
+ */
+function createLorebookCard(
+  book: import('@character-foundry/lorebook').ParsedLorebook['book'],
+  fileName: string
+): Card {
+  const id = generateUUID();
+  const now = new Date().toISOString();
+  const name = book.name || fileName.replace(/\.[^/.]+$/, '') || 'Imported Lorebook';
+
+  const lorebookData: CCv3Data = {
+    spec: 'chara_card_v3',
+    spec_version: '3.0',
+    data: {
+      name,
+      description: book.description || '',
+      personality: '',
+      scenario: '',
+      first_mes: '',
+      mes_example: '',
+      creator: '',
+      character_version: '1.0',
+      tags: ['LORE'],
+      system_prompt: '',
+      post_history_instructions: '',
+      alternate_greetings: [],
+      group_only_greetings: [],
+      character_book: book,
+    },
+  };
+
+  return {
+    meta: {
+      id,
+      name,
+      spec: 'lorebook',
+      tags: ['LORE'],
+      createdAt: now,
+      updatedAt: now,
+    },
+    data: lorebookData,
   };
 }
 
@@ -631,22 +677,50 @@ export async function importCardClientSide(file: File): Promise<ClientImportResu
   }
 
   if (fileName.endsWith('.json')) {
-    // JSON file
+    // JSON file - could be character card or standalone lorebook
     try {
       const text = new TextDecoder().decode(buffer);
       const json = JSON.parse(text);
 
-      // Detect spec version
+      // Check for character card spec first (definitive identification)
       if (json.spec === 'chara_card_v3') {
         const card = createCard(json as CCv3Data, 'v3');
         return { card };
-      } else if (json.spec === 'chara_card_v2' || json.name) {
-        // V2 or legacy format
+      }
+
+      if (json.spec === 'chara_card_v2') {
         const card = createCard(json as CCv2Data, 'v2');
         return { card };
-      } else {
-        throw new Error('JSON does not appear to be a character card');
       }
+
+      // Check if it's a standalone lorebook (SillyTavern, Agnai, RisuAI, Wyvern)
+      // Do this BEFORE checking for json.name, as lorebooks can have names too
+      const lorebookFormat = detectLorebookFormat(json);
+      if (lorebookFormat !== 'unknown') {
+        // This is a standalone lorebook file
+        const parsed = parseLorebook(buffer);
+        const lorebookCard = createLorebookCard(parsed.book, fileName);
+        return { card: lorebookCard };
+      }
+
+      // Legacy V2 format (has name but no spec)
+      if (json.name && (json.description !== undefined || json.personality !== undefined || json.first_mes !== undefined)) {
+        const card = createCard(json as CCv2Data, 'v2');
+        return { card };
+      }
+
+      // Try parsing as lorebook as final fallback
+      try {
+        const parsed = parseLorebook(buffer);
+        if (parsed.book && parsed.book.entries && parsed.book.entries.length > 0) {
+          const lorebookCard = createLorebookCard(parsed.book, fileName);
+          return { card: lorebookCard };
+        }
+      } catch {
+        // Not a lorebook either
+      }
+
+      throw new Error('JSON does not appear to be a character card or lorebook');
     } catch (err) {
       if (err instanceof SyntaxError) {
         throw new Error('Invalid JSON file');

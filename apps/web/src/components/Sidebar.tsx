@@ -24,8 +24,8 @@ export function Sidebar() {
       setCards(localCards);
     } else {
       const { data } = await api.listCards();
-      if (data) {
-        setCards(data);
+      if (data?.items) {
+        setCards(data.items);
       }
     }
     setLoading(false);
