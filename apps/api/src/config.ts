@@ -31,7 +31,7 @@ export const config = {
     corsOrigins: process.env.CORS_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173',
     // Rate limiting
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',
-    rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX || '100', 10), // requests per window
+    rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX || '1000', 10), // requests per window
     rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10), // 1 minute
     // SSRF protection
     ssrfProtectionEnabled: process.env.SSRF_PROTECTION_ENABLED !== 'false',

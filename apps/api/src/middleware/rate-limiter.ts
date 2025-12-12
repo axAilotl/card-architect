@@ -121,7 +121,7 @@ export async function registerRateLimiter(fastify: FastifyInstance): Promise<voi
       const retryAfter = Math.ceil((result.resetTime - Date.now()) / 1000);
       reply.header('Retry-After', retryAfter.toString());
 
-      fastify.log.warn({ ip, retryAfter }, 'Rate limit exceeded');
+      fastify.log.warn({ ip, url: request.url, retryAfter }, 'Rate limit exceeded');
 
       reply.code(429).send({
         error: 'Too Many Requests',
