@@ -33,6 +33,7 @@ interface AIPromptSettings {
 // Simplified ComfyUI settings - iframe-based integration
 interface ComfyUISettings {
   serverUrl: string;
+  quietMode: boolean; // Don't show confirmation panel, just save silently
   // Legacy fields kept for migration compatibility (will be ignored)
   activeWorkflowId?: string | null;
   activePromptId?: string | null;
@@ -257,6 +258,7 @@ interface SettingsStore {
 
   // ComfyUI actions (simplified - iframe-based integration)
   setComfyUIServerUrl: (url: string) => void;
+  setComfyUIQuietMode: (enabled: boolean) => void;
 
   // AI prompt actions
   setTagsSystemPrompt: (prompt: string) => void;
@@ -310,6 +312,7 @@ const DEFAULT_WWWYZZERDD: WwwyzzerddSettings = {
 // Simplified ComfyUI settings - iframe-based integration
 const DEFAULT_COMFYUI: ComfyUISettings = {
   serverUrl: 'http://127.0.0.1:8188',
+  quietMode: false,
 };
 
 const DEFAULT_AI_PROMPTS: AIPromptSettings = {
@@ -435,6 +438,10 @@ export const useSettingsStore = create<SettingsStore>()(
         set((state) => ({
           comfyUI: { ...state.comfyUI, serverUrl },
         })),
+      setComfyUIQuietMode: (quietMode) =>
+        set((state) => ({
+          comfyUI: { ...state.comfyUI, quietMode },
+        })),
 
       // AI prompt actions
       setTagsSystemPrompt: (tagsSystemPrompt) =>
@@ -452,10 +459,12 @@ export const useSettingsStore = create<SettingsStore>()(
       // Custom merge to handle settings migration (legacy ComfyUI fields are ignored)
       merge: (persistedState, currentState) => {
         const persisted = persistedState as Partial<SettingsStore>;
-        // For comfyUI, only keep serverUrl from persisted state (ignore legacy fields)
+        // For comfyUI, only keep serverUrl and quietMode from persisted state (ignore legacy fields)
+        const persistedComfy = persisted.comfyUI as { serverUrl?: string; quietMode?: boolean } | undefined;
         const comfyUI = {
           ...currentState.comfyUI,
-          serverUrl: (persisted.comfyUI as { serverUrl?: string })?.serverUrl || currentState.comfyUI.serverUrl,
+          serverUrl: persistedComfy?.serverUrl || currentState.comfyUI.serverUrl,
+          quietMode: persistedComfy?.quietMode ?? currentState.comfyUI.quietMode,
         };
         return {
           ...currentState,

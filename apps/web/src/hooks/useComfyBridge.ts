@@ -5,12 +5,18 @@
  * The ComfyUI instance must have the bridge extension installed to send these messages.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 export interface ComfyImagePayload {
   filename: string;
   subfolder: string;
   type: string;
+}
+
+export interface SavedComfyImage {
+  filename: string;
+  assetId: string;
+  savedAt: Date;
 }
 
 interface ComfyBridgeMessage {
@@ -29,23 +35,38 @@ function isComfyBridgeMessage(data: unknown): data is ComfyBridgeMessage {
   );
 }
 
+interface UseComfyBridgeOptions {
+  /** Callback to auto-save images when received */
+  onImageReceived?: (image: ComfyImagePayload) => Promise<string | null>;
+}
+
 /**
  * Hook that listens for image generation events from ComfyUI iframe
  *
  * @param trustedOrigin - The ComfyUI server URL to trust (validates message origin)
+ * @param options - Optional configuration including auto-save callback
  * @returns pendingImage - The most recent generated image info, or null
  * @returns imageHistory - Array of all received images in this session
+ * @returns savedImages - Array of successfully saved images
  * @returns clearPending - Function to clear the pending image
  * @returns clearHistory - Function to clear all history
  */
-export function useComfyBridge(trustedOrigin: string | null) {
+export function useComfyBridge(trustedOrigin: string | null, options?: UseComfyBridgeOptions) {
   const [pendingImage, setPendingImage] = useState<ComfyImagePayload | null>(null);
   const [imageHistory, setImageHistory] = useState<ComfyImagePayload[]>([]);
+  const [savedImages, setSavedImages] = useState<SavedComfyImage[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const onImageReceivedRef = useRef(options?.onImageReceived);
+
+  // Keep ref updated
+  useEffect(() => {
+    onImageReceivedRef.current = options?.onImageReceived;
+  }, [options?.onImageReceived]);
 
   useEffect(() => {
     if (!trustedOrigin) return;
 
-    const handler = (event: MessageEvent) => {
+    const handler = async (event: MessageEvent) => {
       // Normalize origins for comparison (remove trailing slash, handle protocol)
       const cleanTrustedOrigin = trustedOrigin.replace(/\/$/, '');
 
@@ -75,6 +96,25 @@ export function useComfyBridge(trustedOrigin: string | null) {
       // Update state
       setPendingImage(payload);
       setImageHistory((prev) => [payload, ...prev].slice(0, 50)); // Keep last 50
+
+      // Auto-save if callback is provided
+      if (onImageReceivedRef.current) {
+        setIsSaving(true);
+        try {
+          const assetId = await onImageReceivedRef.current(payload);
+          if (assetId) {
+            setSavedImages((prev) => [
+              { filename: payload.filename, assetId, savedAt: new Date() },
+              ...prev,
+            ].slice(0, 50));
+            console.log('[ComfyBridge] Auto-saved image as asset:', assetId);
+          }
+        } catch (err) {
+          console.error('[ComfyBridge] Failed to auto-save image:', err);
+        } finally {
+          setIsSaving(false);
+        }
+      }
     };
 
     window.addEventListener('message', handler);
@@ -89,10 +129,17 @@ export function useComfyBridge(trustedOrigin: string | null) {
     setImageHistory([]);
   }, []);
 
+  const clearSavedImages = useCallback(() => {
+    setSavedImages([]);
+  }, []);
+
   return {
     pendingImage,
     imageHistory,
+    savedImages,
+    isSaving,
     clearPending,
     clearHistory,
+    clearSavedImages,
   };
 }

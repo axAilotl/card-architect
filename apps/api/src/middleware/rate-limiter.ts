@@ -92,8 +92,20 @@ export async function registerRateLimiter(fastify: FastifyInstance): Promise<voi
   }, 'Rate limiter enabled');
 
   fastify.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
-    // Skip rate limiting for health checks
+    // Skip rate limiting for health checks and static assets
     if (request.url === '/health') {
+      return;
+    }
+
+    // Skip rate limiting for image/asset requests (high-frequency, low-risk)
+    const url = request.url.split('?')[0]; // Remove query params
+    if (
+      url.startsWith('/storage/') ||
+      url.startsWith('/api/assets/') ||
+      url.endsWith('/image') ||
+      url.endsWith('/thumbnail') ||
+      url.startsWith('/api/comfyui/image')
+    ) {
       return;
     }
 

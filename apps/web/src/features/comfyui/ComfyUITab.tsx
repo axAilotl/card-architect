@@ -3,12 +3,13 @@
  *
  * Embeds ComfyUI in an iframe and captures generated images via postMessage bridge.
  * Users work directly in ComfyUI's native interface.
+ * Images are automatically saved to card assets with 'comfyui' tag.
  */
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useCardStore } from '../../store/card-store';
 import { useSettingsStore } from '../../store/settings-store';
-import { useComfyBridge, type ComfyImagePayload } from '../../hooks/useComfyBridge';
+import { useComfyBridge, type ComfyImagePayload, type SavedComfyImage } from '../../hooks/useComfyBridge';
 import { getDeploymentConfig } from '../../config/deployment';
 
 /**
@@ -38,171 +39,60 @@ function SetupInstructions() {
 }
 
 /**
- * Save image overlay - appears when an image is captured from ComfyUI
+ * Saved images panel - shows auto-saved images from ComfyUI
  */
-interface SaveImageOverlayProps {
-  image: ComfyImagePayload;
-  comfyUrl: string;
-  cardId: string;
-  onSaved: () => void;
-  onDismiss: () => void;
-}
-
-function SaveImageOverlay({ image, comfyUrl, cardId, onSaved, onDismiss }: SaveImageOverlayProps) {
-  const [saving, setSaving] = useState(false);
-  const [assetType, setAssetType] = useState<'icon' | 'background' | 'user_avatar' | 'emotion'>('icon');
-
-  // Construct image URL via our proxy (to avoid CORS issues)
-  const imageUrl = `/api/comfyui/image?serverUrl=${encodeURIComponent(comfyUrl)}&filename=${encodeURIComponent(image.filename)}&subfolder=${encodeURIComponent(image.subfolder)}&type=${encodeURIComponent(image.type)}`;
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      // Fetch the image through our proxy
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
-
-      // Upload to card assets
-      const formData = new FormData();
-      formData.append('file', blob, `${image.filename}`);
-      formData.append('type', assetType);
-
-      const uploadResponse = await fetch(`/api/cards/${cardId}/assets`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (uploadResponse.ok) {
-        onSaved();
-      } else {
-        console.error('Failed to save asset:', await uploadResponse.text());
-      }
-    } catch (error) {
-      console.error('Failed to save image:', error);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed bottom-4 right-4 z-50 bg-dark-surface border border-dark-border rounded-lg shadow-xl p-4 w-80">
-      <div className="flex items-start gap-3">
-        {/* Image preview */}
-        <div className="w-20 h-20 bg-dark-bg rounded overflow-hidden flex-shrink-0">
-          <img
-            src={imageUrl}
-            alt="Generated"
-            className="w-full h-full object-cover"
-          />
-        </div>
-
-        {/* Controls */}
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium mb-2 truncate" title={image.filename}>
-            {image.filename}
-          </p>
-
-          <select
-            value={assetType}
-            onChange={(e) => setAssetType(e.target.value as typeof assetType)}
-            className="w-full bg-dark-bg border border-dark-border rounded px-2 py-1 text-sm mb-2"
-          >
-            <option value="icon">Icon</option>
-            <option value="background">Background</option>
-            <option value="user_avatar">User Avatar</option>
-            <option value="emotion">Emotion</option>
-          </select>
-
-          <div className="flex gap-2">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex-1 px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:opacity-50"
-            >
-              {saving ? 'Saving...' : 'Save'}
-            </button>
-            <button
-              onClick={onDismiss}
-              className="px-3 py-1.5 bg-dark-border text-dark-text text-sm rounded hover:bg-dark-muted/30"
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Image history panel - shows recently captured images
- */
-interface ImageHistoryPanelProps {
-  images: ComfyImagePayload[];
-  comfyUrl: string;
-  cardId: string;
+interface SavedImagesPanelProps {
+  savedImages: SavedComfyImage[];
+  isSaving: boolean;
   onClear: () => void;
 }
 
-function ImageHistoryPanel({ images, comfyUrl, cardId, onClear }: ImageHistoryPanelProps) {
-  const [saving, setSaving] = useState<string | null>(null);
-
-  if (images.length === 0) return null;
-
-  const handleSave = async (image: ComfyImagePayload, assetType: string) => {
-    setSaving(image.filename);
-    try {
-      const imageUrl = `/api/comfyui/image?serverUrl=${encodeURIComponent(comfyUrl)}&filename=${encodeURIComponent(image.filename)}&subfolder=${encodeURIComponent(image.subfolder)}&type=${encodeURIComponent(image.type)}`;
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
-
-      const formData = new FormData();
-      formData.append('file', blob, image.filename);
-      formData.append('type', assetType);
-
-      await fetch(`/api/cards/${cardId}/assets`, {
-        method: 'POST',
-        body: formData,
-      });
-    } catch (error) {
-      console.error('Failed to save:', error);
-    } finally {
-      setSaving(null);
-    }
-  };
+function SavedImagesPanel({ savedImages, isSaving, onClear }: SavedImagesPanelProps) {
+  if (savedImages.length === 0 && !isSaving) return null;
 
   return (
     <div className="absolute bottom-4 left-4 z-40 bg-dark-surface/95 border border-dark-border rounded-lg p-3 max-w-md">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium text-dark-muted">Recent ({images.length})</span>
-        <button
-          onClick={onClear}
-          className="text-xs text-dark-muted hover:text-dark-text"
-        >
-          Clear
-        </button>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-green-400">
+            {isSaving ? 'Saving...' : `${savedImages.length} saved to assets`}
+          </span>
+          {isSaving && (
+            <div className="w-3 h-3 border-2 border-green-400 border-t-transparent rounded-full animate-spin" />
+          )}
+        </div>
+        {savedImages.length > 0 && (
+          <button
+            onClick={onClear}
+            className="text-xs text-dark-muted hover:text-dark-text"
+          >
+            Clear
+          </button>
+        )}
       </div>
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {images.slice(0, 10).map((img, idx) => {
-          const imageUrl = `/api/comfyui/image?serverUrl=${encodeURIComponent(comfyUrl)}&filename=${encodeURIComponent(img.filename)}&subfolder=${encodeURIComponent(img.subfolder)}&type=${encodeURIComponent(img.type)}`;
-          return (
-            <div key={`${img.filename}-${idx}`} className="relative group flex-shrink-0">
-              <div className="w-16 h-16 bg-dark-bg rounded overflow-hidden">
-                <img src={imageUrl} alt="" className="w-full h-full object-cover" />
+      {savedImages.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {savedImages.slice(0, 10).map((img, idx) => (
+            <div key={`${img.assetId}-${idx}`} className="relative flex-shrink-0">
+              <div className="w-16 h-16 bg-dark-bg rounded overflow-hidden border-2 border-green-500/50">
+                <img
+                  src={`/api/assets/${img.assetId}/thumbnail?size=128`}
+                  alt={img.filename}
+                  className="w-full h-full object-cover"
+                />
               </div>
-              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                <button
-                  onClick={() => handleSave(img, 'icon')}
-                  disabled={saving === img.filename}
-                  className="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 disabled:opacity-50"
-                >
-                  {saving === img.filename ? '...' : 'Save'}
-                </button>
+              <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                </svg>
               </div>
             </div>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      )}
+      <p className="text-xs text-dark-muted mt-2">
+        Go to Assets tab to manage or bulk delete
+      </p>
     </div>
   );
 }
@@ -213,9 +103,50 @@ function ImageHistoryPanel({ images, comfyUrl, cardId, onClear }: ImageHistoryPa
 export function ComfyUITab() {
   const { currentCard } = useCardStore();
   const comfyUrl = useSettingsStore((state) => state.comfyUI.serverUrl);
-  const { pendingImage, imageHistory, clearPending, clearHistory } = useComfyBridge(comfyUrl);
+  const quietMode = useSettingsStore((state) => state.comfyUI.quietMode);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [iframeError, setIframeError] = useState(false);
+
+  // Auto-save callback - saves images to assets automatically
+  const handleImageReceived = useCallback(async (image: ComfyImagePayload): Promise<string | null> => {
+    if (!currentCard || !comfyUrl) return null;
+
+    try {
+      // Fetch the image through our proxy
+      const imageUrl = `/api/comfyui/image?serverUrl=${encodeURIComponent(comfyUrl)}&filename=${encodeURIComponent(image.filename)}&subfolder=${encodeURIComponent(image.subfolder)}&type=${encodeURIComponent(image.type)}`;
+      const response = await fetch(imageUrl);
+      if (!response.ok) {
+        console.error('[ComfyUI] Failed to fetch image from proxy:', response.status);
+        return null;
+      }
+      const blob = await response.blob();
+
+      // Upload to card assets with 'comfyui' tag
+      const uploadUrl = `/api/cards/${currentCard.meta.id}/assets/upload?type=custom&name=${encodeURIComponent(image.filename)}&tags=comfyui`;
+      const formData = new FormData();
+      formData.append('file', blob, image.filename);
+
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!uploadResponse.ok) {
+        console.error('[ComfyUI] Failed to upload asset:', await uploadResponse.text());
+        return null;
+      }
+
+      const result = await uploadResponse.json();
+      return result.asset?.asset?.id || result.asset?.assetId || null;
+    } catch (error) {
+      console.error('[ComfyUI] Error auto-saving image:', error);
+      return null;
+    }
+  }, [currentCard, comfyUrl]);
+
+  const { savedImages, isSaving, clearSavedImages } = useComfyBridge(comfyUrl, {
+    onImageReceived: handleImageReceived,
+  });
 
   // Check deployment mode
   const config = getDeploymentConfig();
@@ -268,9 +199,15 @@ export function ComfyUITab() {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {imageHistory.length > 0 && (
-            <span className="text-xs text-dark-muted">
-              {imageHistory.length} captured
+          {!quietMode && savedImages.length > 0 && (
+            <span className="text-xs text-green-400">
+              {savedImages.length} saved
+            </span>
+          )}
+          {!quietMode && isSaving && (
+            <span className="text-xs text-yellow-400 flex items-center gap-1">
+              <div className="w-2 h-2 border border-yellow-400 border-t-transparent rounded-full animate-spin" />
+              Saving...
             </span>
           )}
           <button
@@ -311,25 +248,15 @@ export function ComfyUITab() {
           />
         )}
 
-        {/* Image history panel */}
-        <ImageHistoryPanel
-          images={imageHistory}
-          comfyUrl={comfyUrl}
-          cardId={currentCard.meta.id}
-          onClear={clearHistory}
-        />
+        {/* Saved images panel - shows auto-saved images (hidden in quiet mode) */}
+        {!quietMode && (
+          <SavedImagesPanel
+            savedImages={savedImages}
+            isSaving={isSaving}
+            onClear={clearSavedImages}
+          />
+        )}
       </div>
-
-      {/* Save overlay for most recent image */}
-      {pendingImage && (
-        <SaveImageOverlay
-          image={pendingImage}
-          comfyUrl={comfyUrl}
-          cardId={currentCard.meta.id}
-          onSaved={clearPending}
-          onDismiss={clearPending}
-        />
-      )}
     </div>
   );
 }

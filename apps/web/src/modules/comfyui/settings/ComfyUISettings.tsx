@@ -6,7 +6,7 @@
 
 import { useState } from 'react';
 import { useSettingsStore } from '../../../store/settings-store';
-import { COMFY_BRIDGE_EXTENSION_CODE, COMFY_BRIDGE_PATH } from '../../../lib/comfy-bridge-extension';
+import { COMFY_BRIDGE_EXTENSION_CODE } from '../../../lib/comfy-bridge-extension';
 
 export function ComfyUISettings() {
   const [testing, setTesting] = useState(false);
@@ -15,6 +15,8 @@ export function ComfyUISettings() {
 
   const comfyUrl = useSettingsStore((state) => state.comfyUI.serverUrl);
   const setComfyUrl = useSettingsStore((state) => state.setComfyUIServerUrl);
+  const quietMode = useSettingsStore((state) => state.comfyUI.quietMode);
+  const setQuietMode = useSettingsStore((state) => state.setComfyUIQuietMode);
 
   const testConnection = async () => {
     if (!comfyUrl) {
@@ -121,6 +123,23 @@ export function ComfyUISettings() {
             {testResult.message}
           </div>
         )}
+
+        {/* Quiet Mode */}
+        <div className="flex items-center gap-3 pt-2">
+          <input
+            type="checkbox"
+            id="comfy-quiet-mode"
+            checked={quietMode}
+            onChange={(e) => setQuietMode(e.target.checked)}
+            className="w-4 h-4 rounded border-dark-border bg-dark-card"
+          />
+          <label htmlFor="comfy-quiet-mode" className="text-sm">
+            <span className="font-medium">Quiet Mode</span>
+            <span className="text-dark-muted ml-2">
+              - Save images silently without showing confirmation panel
+            </span>
+          </label>
+        </div>
       </div>
 
       {/* CORS Instructions */}
@@ -141,39 +160,48 @@ export function ComfyUISettings() {
 
       {/* Bridge Extension */}
       <div className="border border-dark-border rounded-lg p-6 space-y-4">
-        <h4 className="font-medium">Bridge Extension</h4>
+        <h4 className="font-medium">Bridge Extension (Custom Node)</h4>
         <p className="text-sm text-dark-muted">
-          To capture generated images, install this extension in your ComfyUI instance:
+          To capture generated images, install the bridge as a ComfyUI custom node:
         </p>
 
+        <div className="bg-blue-900/20 border border-blue-700 rounded p-3">
+          <p className="text-sm text-blue-100">
+            <strong>Installation Steps:</strong>
+          </p>
+          <ol className="text-sm text-blue-200 mt-2 space-y-1 list-decimal list-inside">
+            <li>Create folder: <code className="bg-dark-bg px-1 rounded">ComfyUI/custom_nodes/character-architect-bridge/</code></li>
+            <li>Create subfolder: <code className="bg-dark-bg px-1 rounded">js/</code> inside it</li>
+            <li>Create <code className="bg-dark-bg px-1 rounded">__init__.py</code> with the Python code below</li>
+            <li>Create <code className="bg-dark-bg px-1 rounded">js/bridge.js</code> with the JavaScript code below</li>
+            <li>Restart ComfyUI</li>
+          </ol>
+        </div>
+
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">Installation Path:</span>
-            <code className="text-xs bg-dark-bg px-2 py-1 rounded">{COMFY_BRIDGE_PATH}</code>
+          <div>
+            <span className="text-sm font-medium">__init__.py:</span>
+            <pre className="bg-dark-bg border border-dark-border rounded p-3 text-xs mt-1 text-dark-muted">
+{`WEB_DIRECTORY = "./js"
+NODE_CLASS_MAPPINGS = {}
+NODE_DISPLAY_NAME_MAPPINGS = {}
+__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]`}
+            </pre>
           </div>
 
-          <div className="relative">
-            <pre className="bg-dark-bg border border-dark-border rounded p-4 text-xs overflow-auto max-h-64 text-dark-muted">
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">js/bridge.js:</span>
+              <button
+                onClick={copyExtensionCode}
+                className="px-2 py-1 bg-dark-border text-dark-text text-xs rounded hover:bg-dark-muted/30"
+              >
+                {copied ? 'Copied!' : 'Copy JS'}
+              </button>
+            </div>
+            <pre className="bg-dark-bg border border-dark-border rounded p-3 text-xs mt-1 overflow-auto max-h-48 text-dark-muted">
               {COMFY_BRIDGE_EXTENSION_CODE}
             </pre>
-            <button
-              onClick={copyExtensionCode}
-              className="absolute top-2 right-2 px-3 py-1 bg-dark-border text-dark-text text-xs rounded hover:bg-dark-muted/30"
-            >
-              {copied ? 'Copied!' : 'Copy'}
-            </button>
-          </div>
-
-          <div className="bg-blue-900/20 border border-blue-700 rounded p-3">
-            <p className="text-sm text-blue-100">
-              <strong>Installation Steps:</strong>
-            </p>
-            <ol className="text-sm text-blue-200 mt-2 space-y-1 list-decimal list-inside">
-              <li>Copy the code above</li>
-              <li>Create file: <code className="bg-dark-bg px-1 rounded">{COMFY_BRIDGE_PATH}</code></li>
-              <li>Paste the code and save</li>
-              <li>Restart ComfyUI</li>
-            </ol>
           </div>
         </div>
       </div>

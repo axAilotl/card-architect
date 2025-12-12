@@ -82,6 +82,15 @@ export function Header({ onBack }: HeaderProps) {
     return data.name || 'Untitled';
   };
 
+  // Get card type label for header title
+  const getCardTypeLabel = () => {
+    if (!currentCard) return 'Card Architect';
+    const spec = currentCard.meta.spec;
+    if (spec === 'collection') return 'Collection';
+    if (spec === 'lorebook') return 'Lorebook';
+    return 'Character';
+  };
+
   // Get character avatar URL - use thumbnail endpoint for fast loading
   const getAvatarUrl = () => {
     if (!currentCard?.meta?.id) return null;
@@ -340,7 +349,7 @@ export function Header({ onBack }: HeaderProps) {
 
         <div className="flex items-center gap-2">
           <img src="/logo.png" alt="Card Architect" className="w-6 h-6" />
-          <h1 className="text-lg font-semibold text-dark-muted">Card Architect</h1>
+          <h1 className="text-lg font-semibold text-dark-muted">{getCardTypeLabel()}</h1>
         </div>
 
         {avatarUrl && (

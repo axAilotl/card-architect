@@ -792,8 +792,20 @@ export function CardGrid({ onCardClick }: CardGridProps) {
   };
 
   // Calculate total pages
-  const totalFilteredCards = getFilteredCards().length;
-  const totalPages = Math.ceil(totalFilteredCards / cardsPerPage);
+  const config = getDeploymentConfig();
+  const isClientMode = config.mode === 'light' || config.mode === 'static';
+  
+  let totalPages = 0;
+  let totalFilteredCards = 0;
+
+  if (isClientMode) {
+    totalFilteredCards = getFilteredCards().length;
+    totalPages = Math.ceil(totalFilteredCards / cardsPerPage);
+  } else {
+    // In server mode, totalCards comes from the API response
+    totalFilteredCards = totalCards;
+    totalPages = Math.ceil(totalCards / cardsPerPage);
+  }
 
   // Reset to page 1 when filter/search/count changes
   useEffect(() => {
