@@ -45,8 +45,8 @@ export class CardService {
   /**
    * List cards with optional search and pagination
    */
-  list(query?: string, page?: number): Card[] {
-    return this.cardRepo.list(query, page ?? 1);
+  list(query?: string, page?: number, limit?: number): { items: Card[]; total: number } {
+    return this.cardRepo.list(query, page ?? 1, limit ?? 50);
   }
 
   /**
@@ -95,7 +95,8 @@ export class CardService {
    * Validate card data based on spec
    */
   validateCard(data: unknown, spec: string): CardValidationResult {
-    if (spec === 'collection') {
+    // Skip validation for collection and lorebook cards (they use v3 structure internally)
+    if (spec === 'collection' || spec === 'lorebook') {
       return { valid: true };
     }
     const validation = spec === 'v3' ? validateV3(data) : validateV2(data);
@@ -112,8 +113,8 @@ export class CardService {
   create(input: CreateCardInput): { card: Card } | { error: string; errors?: unknown[] } {
     const spec = this.detectSpec(input.meta);
 
-    // Skip validation for collection cards
-    if (spec !== 'collection') {
+    // Skip validation for collection and lorebook cards
+    if (spec !== 'collection' && spec !== 'lorebook') {
       const validation = this.validateCard(input.data, spec);
       if (!validation.valid) {
         return { error: 'Validation failed', errors: validation.errors };
@@ -163,8 +164,8 @@ export class CardService {
     if (input.data) {
       const spec = existing.meta.spec;
 
-      // Skip validation for collection cards
-      if (spec !== 'collection') {
+      // Skip validation for collection and lorebook cards
+      if (spec !== 'collection' && spec !== 'lorebook') {
         // Normalize lorebook entries before validation
         this.normalizeData(input.data);
 

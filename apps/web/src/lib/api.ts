@@ -57,12 +57,13 @@ class ApiClient {
   }
 
   // Cards
-  async listCards(query?: string, page = 1) {
+  async listCards(query?: string, page = 1, limit = 50) {
     const params = new URLSearchParams();
     if (query) params.set('query', query);
     params.set('page', page.toString());
+    params.set('limit', limit.toString());
 
-    return this.request<Card[]>(`/cards?${params}`);
+    return this.request<{ items: Card[]; total: number }>(`/cards?${params}`);
   }
 
   async getCard(id: string) {

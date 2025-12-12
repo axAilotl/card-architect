@@ -9,9 +9,13 @@ export async function cardRoutes(fastify: FastifyInstance) {
 
   // List cards
   fastify.get('/cards', async (request) => {
-    const { query, page } = request.query as { query?: string; page?: string };
-    const cards = cardService.list(query, page ? parseInt(page, 10) : undefined);
-    return cards;
+    const { query, page, limit } = request.query as { query?: string; page?: string; limit?: string };
+    const result = cardService.list(
+      query,
+      page ? parseInt(page, 10) : undefined,
+      limit ? parseInt(limit, 10) : undefined
+    );
+    return result;
   });
 
   // Get single card

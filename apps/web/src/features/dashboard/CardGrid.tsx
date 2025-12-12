@@ -30,9 +30,7 @@ interface CardGridProps {
 }
 
 type SortOption = 'edited' | 'newest' | 'oldest' | 'name';
-type FilterOption = 'all' | 'collection' | 'voxta' | 'charx' | 'v3' | 'v2';
-
-const CARDS_PER_PAGE = 50;
+type FilterOption = 'all' | 'collection' | 'lorebook' | 'voxta' | 'charx' | 'v3' | 'v2';
 
 export function CardGrid({ onCardClick }: CardGridProps) {
   const [cards, setCards] = useState<Card[]>([]);
@@ -47,15 +45,18 @@ export function CardGrid({ onCardClick }: CardGridProps) {
   const [showImportMenu, setShowImportMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const { importCard, importCardFromURL, createNewCard } = useCardStore();
+  const [cardsPerPage, setCardsPerPage] = useState(20);
+  const { importCard, importCardFromURL, createNewCard, createNewLorebook } = useCardStore();
 
   // Federation sync states (only for full mode)
   const { syncStates, initialize: initFederation, initialized: federationInitialized, pollPlatformSyncState, settings: federationSettings } = useFederationStore();
   const [cardSyncMap, setCardSyncMap] = useState<Map<string, CardSyncState>>(new Map());
 
+  const [totalCards, setTotalCards] = useState(0);
+
   useEffect(() => {
     loadCards();
-  }, []);
+  }, [currentPage, cardsPerPage, searchQuery]);
 
   // Initialize federation and track sync states (only for full mode)
   useEffect(() => {
@@ -116,6 +117,7 @@ export function CardGrid({ onCardClick }: CardGridProps) {
         const localCards = await localDB.listCards();
         console.log('[CardGrid] Found', localCards.length, 'cards in IndexedDB');
         setCards(localCards);
+        setTotalCards(localCards.length);
 
         // Load cached images for each card
         const images = new Map<string, string>();
@@ -129,15 +131,19 @@ export function CardGrid({ onCardClick }: CardGridProps) {
         setCachedImages(images);
       } else {
         // Server mode: load from API
-        const response = await api.listCards();
+        const response = await api.listCards(searchQuery, currentPage, cardsPerPage);
         if (response.data) {
-          setCards(response.data);
+          // Safety check: ensure items is an array
+          setCards(Array.isArray(response.data.items) ? response.data.items : []);
+          setTotalCards(response.data.total || 0);
         } else if (response.error) {
           console.error('API error:', response.error);
+          setCards([]); // Fallback to empty
         }
       }
     } catch (error) {
       console.error('Failed to load cards:', error);
+      setCards([]); // Fallback to empty
     } finally {
       setLoading(false);
     }
@@ -570,6 +576,27 @@ export function CardGrid({ onCardClick }: CardGridProps) {
     }
   };
 
+  const handleNewLorebook = async () => {
+    try {
+      // Create and save the lorebook to get a real ID
+      await createNewLorebook();
+
+      const newCard = useCardStore.getState().currentCard;
+      if (newCard?.meta.id) {
+        // Reload cards to show the new lorebook in the grid
+        await loadCards();
+        // Navigate to edit view
+        onCardClick(newCard.meta.id);
+      } else {
+        console.error('New lorebook was not created properly');
+        alert('Failed to create new lorebook');
+      }
+    } catch (error) {
+      console.error('Failed to create new lorebook:', error);
+      alert('Failed to create new lorebook');
+    }
+  };
+
   const getCardName = (card: Card) => {
     const data = extractCardData(card);
     return data.name || 'Untitled Card';
@@ -712,6 +739,7 @@ export function CardGrid({ onCardClick }: CardGridProps) {
     if (filterBy !== 'all') {
       filtered = filtered.filter(card => {
         if (filterBy === 'collection') return card.meta.spec === 'collection';
+        if (filterBy === 'lorebook') return card.meta.spec === 'lorebook';
         const cardType = getCardType(card);
         if (filterBy === 'voxta') return cardType === 'voxta';
         if (filterBy === 'charx') return cardType === 'charx';
@@ -726,7 +754,7 @@ export function CardGrid({ onCardClick }: CardGridProps) {
 
   const getSortedCards = () => {
     const filtered = getFilteredCards();
-    const sorted = [...filtered];
+    const sorted = [...(filtered || [])]; // Safety fallback
     switch (sortBy) {
       case 'newest':
         sorted.sort((a, b) => new Date(b.meta.createdAt).getTime() - new Date(a.meta.createdAt).getTime());
@@ -750,19 +778,27 @@ export function CardGrid({ onCardClick }: CardGridProps) {
 
   // Get paginated cards
   const getPaginatedCards = () => {
+    const config = getDeploymentConfig();
     const sorted = getSortedCards();
-    const startIndex = (currentPage - 1) * CARDS_PER_PAGE;
-    return sorted.slice(startIndex, startIndex + CARDS_PER_PAGE);
+
+    // In server mode, we already have paginated data in 'cards'
+    if (config.mode !== 'light' && config.mode !== 'static') {
+      return sorted;
+    }
+
+    // In client mode, we need to slice
+    const startIndex = (currentPage - 1) * cardsPerPage;
+    return sorted.slice(startIndex, startIndex + cardsPerPage);
   };
 
   // Calculate total pages
   const totalFilteredCards = getFilteredCards().length;
-  const totalPages = Math.ceil(totalFilteredCards / CARDS_PER_PAGE);
+  const totalPages = Math.ceil(totalFilteredCards / cardsPerPage);
 
-  // Reset to page 1 when filter/search changes
+  // Reset to page 1 when filter/search/count changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterBy]);
+  }, [searchQuery, filterBy, cardsPerPage]);
 
   if (loading) {
     return (
@@ -783,8 +819,8 @@ export function CardGrid({ onCardClick }: CardGridProps) {
             <div>
               <h1 className="text-2xl font-bold">Character Architect</h1>
               <p className="text-sm text-dark-muted">
-                {cards.length} {cards.length === 1 ? 'card' : 'cards'}
-                {totalFilteredCards !== cards.length && ` (${totalFilteredCards} shown)`}
+                {totalCards} {totalCards === 1 ? 'card' : 'cards'}
+                {searchQuery && ` (${totalFilteredCards} matching search)`}
               </p>
             </div>
           </div>
@@ -862,6 +898,9 @@ export function CardGrid({ onCardClick }: CardGridProps) {
             <button onClick={handleNewCard} className="btn-primary">
               New Card
             </button>
+            <button onClick={handleNewLorebook} className="btn-secondary">
+              Add Lorebook
+            </button>
           </div>
         </div>
 
@@ -890,6 +929,7 @@ export function CardGrid({ onCardClick }: CardGridProps) {
               >
                 <option value="all">All Types</option>
                 <option value="collection">Collections</option>
+                <option value="lorebook">Lorebooks</option>
                 <option value="voxta">Voxta</option>
                 <option value="charx">CharX</option>
                 <option value="v3">V3 (Standard)</option>
@@ -910,6 +950,22 @@ export function CardGrid({ onCardClick }: CardGridProps) {
                 <option value="newest">Newest</option>
                 <option value="oldest">Oldest</option>
                 <option value="name">Name</option>
+              </select>
+            </div>
+
+            <div className="h-4 w-px bg-dark-border" />
+
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-dark-muted">Count:</span>
+              <select
+                value={cardsPerPage}
+                onChange={(e) => setCardsPerPage(Number(e.target.value))}
+                className="px-2 py-1 bg-dark-bg border border-dark-border rounded text-sm text-dark-text hover:bg-dark-surface transition-colors cursor-pointer"
+              >
+                <option value={20}>20</option>
+                <option value={40}>40</option>
+                <option value={60}>60</option>
+                <option value={80}>80</option>
               </select>
             </div>
 

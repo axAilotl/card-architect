@@ -8,7 +8,20 @@ export class CardRepository {
   /**
    * List all cards with optional filtering
    */
-  list(query?: string, page = 1, limit = 50): Card[] {
+  list(query?: string, page = 1, limit = 50): { items: Card[]; total: number } {
+    // 1. Get total count
+    let countSql = 'SELECT COUNT(*) as total FROM cards';
+    const countParams: unknown[] = [];
+
+    if (query) {
+      countSql += ' WHERE name LIKE ? OR tags LIKE ?';
+      countParams.push(`%${query}%`, `%${query}%`);
+    }
+
+    const countStmt = this.db.prepare(countSql);
+    const { total } = countStmt.get(...countParams) as { total: number };
+
+    // 2. Get paginated items
     let sql = `
       SELECT c.*,
              (SELECT COUNT(*) FROM card_assets WHERE card_id = c.id) as asset_count
@@ -27,7 +40,10 @@ export class CardRepository {
     const stmt = this.db.prepare(sql);
     const rows = stmt.all(...params) as unknown[];
 
-    return rows.map((row) => this.rowToCard(row));
+    return {
+      items: rows.map((row) => this.rowToCard(row)),
+      total,
+    };
   }
 
   /**
