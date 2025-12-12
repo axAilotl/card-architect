@@ -15,6 +15,7 @@ import type {
   ExportOptions,
 } from './types.js';
 import { detectSpec } from '@character-foundry/schemas';
+import { detectLorebookFormat, parseLorebook } from '@character-foundry/lorebook';
 import { validateV2, validateV3 } from '../utils/validation.js';
 import {
   isVoxtaCard,
@@ -136,7 +137,63 @@ export class JSONHandler extends BaseFormatHandler {
       }
     }
 
-    // Detect spec
+    // Check if it's a standalone lorebook before checking for character card spec
+    const lorebookFormat = detectLorebookFormat(cardData as Record<string, unknown>);
+    if (lorebookFormat !== 'unknown') {
+      logger.info({ format: lorebookFormat, filename }, 'Detected standalone lorebook');
+
+      try {
+        const parsed = parseLorebook(buffer);
+        const lorebookName = parsed.book?.name || filename?.replace(/\.[^/.]+$/, '') || 'Imported Lorebook';
+
+        // Wrap the lorebook in a CCv3-like structure
+        const lorebookCardData = {
+          spec: 'chara_card_v3',
+          spec_version: '3.0',
+          data: {
+            name: lorebookName,
+            description: parsed.book?.description || '',
+            personality: '',
+            scenario: '',
+            first_mes: '',
+            mes_example: '',
+            creator: '',
+            character_version: '1.0',
+            tags: ['LORE'],
+            system_prompt: '',
+            post_history_instructions: '',
+            alternate_greetings: [],
+            group_only_greetings: [],
+            character_book: parsed.book,
+          },
+        };
+
+        logger.info(
+          { lorebookName, entryCount: parsed.book?.entries?.length || 0, filename },
+          'Successfully parsed standalone lorebook'
+        );
+
+        return {
+          success: true,
+          cardIds: [],
+          assetsImported: 0,
+          warnings,
+          ...({
+            _parsedData: lorebookCardData,
+            _spec: 'lorebook',
+            _isLorebook: true,
+          } as unknown as Record<string, unknown>),
+        };
+      } catch (err) {
+        logger.error({ error: err, filename }, 'Failed to parse lorebook');
+        return this.importFailure(
+          `Failed to parse lorebook: ${err instanceof Error ? err.message : String(err)}`,
+          warnings
+        );
+      }
+    }
+
+    // Detect spec for character cards
     const spec = detectSpec(cardData);
     if (!spec) {
       const obj = cardData as Record<string, unknown>;

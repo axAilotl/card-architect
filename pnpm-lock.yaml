@@ -107,6 +107,9 @@ importers:
       '@character-foundry/loader':
         specifier: 0.1.8
         version: 0.1.8
+      '@character-foundry/lorebook':
+        specifier: ^0.0.2
+        version: 0.0.2
       '@character-foundry/png':
         specifier: ^0.0.3
         version: 0.0.3

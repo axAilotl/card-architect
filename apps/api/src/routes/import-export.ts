@@ -17,6 +17,7 @@ import {
 } from '../utils/file-handlers.js';
 import { validateCharxExport, applyExportFixes } from '../utils/charx-validator.js';
 import { detectSpec, type CCv2Data, type CCv3Data } from '@character-foundry/schemas';
+import { detectLorebookFormat, parseLorebook } from '@character-foundry/lorebook';
 import { validateV2, validateV3 } from '../utils/validation.js';
 import type { CharxExportSettings } from '../types/index.js';
 import { config } from '../config.js';
@@ -270,29 +271,62 @@ export async function importExportRoutes(fastify: FastifyInstance) {
     }
 
     let cardData: unknown;
-    let spec: 'v2' | 'v3' = 'v2';
+    let spec: 'v2' | 'v3' | 'lorebook' = 'v2';
     let originalImage: Buffer | undefined;
+    let isLorebook = false;
 
     // Detect format
     if (mimetype === 'application/json' || mimetype === 'text/json') {
       try {
         cardData = JSON.parse(buffer.toString('utf-8'));
-        const detectedSpec = detectSpec(cardData);
-        if (!detectedSpec) {
-          const obj = cardData as Record<string, unknown>;
-          fastify.log.error({
-            url,
-            keys: Object.keys(obj).slice(0, 10),
-            hasSpec: 'spec' in obj,
-            specValue: obj.spec,
-          }, 'Failed to detect spec for JSON card from URL');
-          reply.code(400);
-          return {
-            error: 'Invalid card format: unable to detect v2 or v3 spec. The JSON structure does not match expected character card formats.',
-            details: 'Expected either: (1) v3 format with "spec":"chara_card_v3" and "data" object, (2) v2 format with "spec":"chara_card_v2" and "data" object, or (3) legacy v2 with direct "name" field.'
+
+        // Check for standalone lorebook first
+        const lorebookFormat = detectLorebookFormat(cardData as Record<string, unknown>);
+        if (lorebookFormat !== 'unknown') {
+          fastify.log.info({ format: lorebookFormat, url }, 'Detected standalone lorebook from URL');
+          const parsed = parseLorebook(buffer);
+          const lorebookName = parsed.book?.name || filename?.replace(/\.[^/.]+$/, '') || 'Imported Lorebook';
+
+          cardData = {
+            spec: 'chara_card_v3',
+            spec_version: '3.0',
+            data: {
+              name: lorebookName,
+              description: parsed.book?.description || '',
+              personality: '',
+              scenario: '',
+              first_mes: '',
+              mes_example: '',
+              creator: '',
+              character_version: '1.0',
+              tags: ['LORE'],
+              system_prompt: '',
+              post_history_instructions: '',
+              alternate_greetings: [],
+              group_only_greetings: [],
+              character_book: parsed.book,
+            },
           };
+          spec = 'lorebook';
+          isLorebook = true;
+        } else {
+          const detectedSpec = detectSpec(cardData);
+          if (!detectedSpec) {
+            const obj = cardData as Record<string, unknown>;
+            fastify.log.error({
+              url,
+              keys: Object.keys(obj).slice(0, 10),
+              hasSpec: 'spec' in obj,
+              specValue: obj.spec,
+            }, 'Failed to detect spec for JSON card from URL');
+            reply.code(400);
+            return {
+              error: 'Invalid card format: unable to detect v2 or v3 spec. The JSON structure does not match expected character card formats.',
+              details: 'Expected either: (1) v3 format with "spec":"chara_card_v3" and "data" object, (2) v2 format with "spec":"chara_card_v2" and "data" object, or (3) legacy v2 with direct "name" field.'
+            };
+          }
+          spec = detectedSpec;
         }
-        spec = detectedSpec;
       } catch (err) {
         fastify.log.error({ error: err, url }, 'Failed to parse JSON from URL');
         reply.code(400);
@@ -345,31 +379,40 @@ export async function importExportRoutes(fastify: FastifyInstance) {
     }
 
     // Normalize spec values and data BEFORE validation
-    normalizeCardData(cardData, spec);
-
-    // Validate card data
-    const validation = spec === 'v3' ? validateV3(cardData) : validateV2(cardData);
-    if (!validation.valid) {
-      fastify.log.error({
-        spec,
-        url,
-        errors: validation.errors,
-        keys: Object.keys(cardData as Record<string, unknown>).slice(0, 10),
-      }, 'Card validation failed for URL import');
-      reply.code(400);
-      return { error: 'Card validation failed', errors: validation.errors };
+    if (!isLorebook) {
+      normalizeCardData(cardData, spec as 'v2' | 'v3');
     }
 
-    warnings.push(...validation.errors.filter((e) => e.severity !== 'error').map((e) => e.message));
+    // Validate card data (skip for lorebooks since they don't need v2/v3 validation)
+    if (!isLorebook) {
+      const validation = spec === 'v3' ? validateV3(cardData) : validateV2(cardData);
+      if (!validation.valid) {
+        fastify.log.error({
+          spec,
+          url,
+          errors: validation.errors,
+          keys: Object.keys(cardData as Record<string, unknown>).slice(0, 10),
+        }, 'Card validation failed for URL import');
+        reply.code(400);
+        return { error: 'Card validation failed', errors: validation.errors };
+      }
+      warnings.push(...validation.errors.filter((e) => e.severity !== 'error').map((e) => e.message));
+    }
 
     // Extract name and prepare card data for storage
     let name = 'Untitled';
     let storageData: CCv2Data | CCv3Data;
 
     if (cardData && typeof cardData === 'object') {
-      // ... (existing logic to determine storageData and name) ...
+      // Handle lorebook cards (v3-like structure with lorebook spec)
+      if (isLorebook && 'data' in cardData && typeof cardData.data === 'object' && cardData.data) {
+        const lorebookData = cardData as CCv3Data;
+        name = lorebookData.data.name || 'Imported Lorebook';
+        storageData = lorebookData;
+        fastify.log.info({ name, spec: 'lorebook' }, 'Importing lorebook card from URL');
+      }
       // Handle wrapped v2 cards (CharacterHub format)
-      if (spec === 'v2' && 'data' in cardData && typeof cardData.data === 'object' && cardData.data) {
+      else if (spec === 'v2' && 'data' in cardData && typeof cardData.data === 'object' && cardData.data) {
         const wrappedData = cardData.data as CCv2Data;
         name = wrappedData.name || 'Untitled';
         storageData = cardData as any;
@@ -536,8 +579,9 @@ export async function importExportRoutes(fastify: FastifyInstance) {
     }
 
     let cardData: unknown;
-    let spec: 'v2' | 'v3' = 'v2';
+    let spec: 'v2' | 'v3' | 'lorebook' = 'v2';
     let originalImage: Buffer | undefined;
+    let isLorebook = false;
 
     // Check for PNG format (Magic bytes: 89 50 4E 47)
     const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47;
@@ -654,41 +698,81 @@ export async function importExportRoutes(fastify: FastifyInstance) {
         }
       }
 
-      // If we reached here, cardData is set. 
-      // We need to set 'spec' for validation
-      const detectedSpec = detectSpec(cardData);
-      if (!detectedSpec) {
-          reply.code(400);
-          return { error: 'Found JSON data but could not detect valid card spec.' };
+      // If we reached here, cardData is set.
+      // Check for standalone lorebook first
+      const lorebookFormat = detectLorebookFormat(cardData as Record<string, unknown>);
+      if (lorebookFormat !== 'unknown') {
+        fastify.log.info({ format: lorebookFormat, filename: data.filename }, 'Detected standalone lorebook');
+        const parsed = parseLorebook(buffer);
+        const lorebookName = parsed.book?.name || data.filename?.replace(/\.[^/.]+$/, '') || 'Imported Lorebook';
+
+        cardData = {
+          spec: 'chara_card_v3',
+          spec_version: '3.0',
+          data: {
+            name: lorebookName,
+            description: parsed.book?.description || '',
+            personality: '',
+            scenario: '',
+            first_mes: '',
+            mes_example: '',
+            creator: '',
+            character_version: '1.0',
+            tags: ['LORE'],
+            system_prompt: '',
+            post_history_instructions: '',
+            alternate_greetings: [],
+            group_only_greetings: [],
+            character_book: parsed.book,
+          },
+        };
+        spec = 'lorebook';
+        isLorebook = true;
+      } else {
+        // Not a lorebook, detect card spec
+        const detectedSpec = detectSpec(cardData);
+        if (!detectedSpec) {
+            reply.code(400);
+            return { error: 'Found JSON data but could not detect valid card spec.' };
+        }
+        spec = detectedSpec;
       }
-      spec = detectedSpec;
     }
 
-    // Normalize spec values and data BEFORE validation
-    normalizeCardData(cardData, spec);
-
-    // Validate card data
-    const validation = spec === 'v3' ? validateV3(cardData) : validateV2(cardData);
-    if (!validation.valid) {
-      fastify.log.error({
-        spec,
-        errors: validation.errors,
-        keys: Object.keys(cardData as Record<string, unknown>).slice(0, 10),
-      }, 'Card validation failed');
-      reply.code(400);
-      return { error: 'Card validation failed', errors: validation.errors };
+    // Normalize spec values and data BEFORE validation (skip for lorebooks)
+    if (!isLorebook) {
+      normalizeCardData(cardData, spec as 'v2' | 'v3');
     }
 
-    warnings.push(...validation.errors.filter((e) => e.severity !== 'error').map((e) => e.message));
+    // Validate card data (skip for lorebooks)
+    if (!isLorebook) {
+      const validation = spec === 'v3' ? validateV3(cardData) : validateV2(cardData);
+      if (!validation.valid) {
+        fastify.log.error({
+          spec,
+          errors: validation.errors,
+          keys: Object.keys(cardData as Record<string, unknown>).slice(0, 10),
+        }, 'Card validation failed');
+        reply.code(400);
+        return { error: 'Card validation failed', errors: validation.errors };
+      }
+      warnings.push(...validation.errors.filter((e) => e.severity !== 'error').map((e) => e.message));
+    }
 
     // Extract name and prepare card data for storage
     let name = 'Untitled';
     let storageData: CCv2Data | CCv3Data;
 
     if (cardData && typeof cardData === 'object') {
-      // ... (existing logic to determine storageData and name) ...
+      // Handle lorebook cards (v3-like structure with lorebook spec)
+      if (isLorebook && 'data' in cardData && typeof cardData.data === 'object' && cardData.data) {
+        const lorebookData = cardData as CCv3Data;
+        name = lorebookData.data.name || 'Imported Lorebook';
+        storageData = lorebookData;
+        fastify.log.info({ name, spec: 'lorebook' }, 'Importing lorebook card');
+      }
       // Handle wrapped v2 cards (CharacterHub format)
-      if (spec === 'v2' && 'data' in cardData && typeof cardData.data === 'object' && cardData.data) {
+      else if (spec === 'v2' && 'data' in cardData && typeof cardData.data === 'object' && cardData.data) {
         const wrappedData = cardData.data as CCv2Data;
         name = wrappedData.name || 'Untitled';
 
@@ -933,8 +1017,9 @@ export async function importExportRoutes(fastify: FastifyInstance) {
 
         // Regular JSON/PNG import
         let cardData: unknown;
-        let spec: 'v2' | 'v3' = 'v2';
+        let spec: 'v2' | 'v3' | 'lorebook' = 'v2';
         let originalImage: Buffer | undefined;
+        let isLorebook = false;
 
         // Check for PNG format (Magic bytes: 89 50 4E 47)
         const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47;
@@ -977,16 +1062,47 @@ export async function importExportRoutes(fastify: FastifyInstance) {
           // Try JSON
           try {
             cardData = JSON.parse(buffer.toString('utf-8'));
-            const detectedSpec = detectSpec(cardData);
-            if (!detectedSpec) {
-              results.push({
-                filename,
-                success: false,
-                error: 'Invalid card format: unable to detect v2 or v3 spec',
-              });
-              continue;
+
+            // Check for standalone lorebook first
+            const lorebookFormat = detectLorebookFormat(cardData as Record<string, unknown>);
+            if (lorebookFormat !== 'unknown') {
+              const parsed = parseLorebook(buffer);
+              const lorebookName = parsed.book?.name || filename?.replace(/\.[^/.]+$/, '') || 'Imported Lorebook';
+
+              cardData = {
+                spec: 'chara_card_v3',
+                spec_version: '3.0',
+                data: {
+                  name: lorebookName,
+                  description: parsed.book?.description || '',
+                  personality: '',
+                  scenario: '',
+                  first_mes: '',
+                  mes_example: '',
+                  creator: '',
+                  character_version: '1.0',
+                  tags: ['LORE'],
+                  system_prompt: '',
+                  post_history_instructions: '',
+                  alternate_greetings: [],
+                  group_only_greetings: [],
+                  character_book: parsed.book,
+                },
+              };
+              spec = 'lorebook';
+              isLorebook = true;
+            } else {
+              const detectedSpec = detectSpec(cardData);
+              if (!detectedSpec) {
+                results.push({
+                  filename,
+                  success: false,
+                  error: 'Invalid card format: unable to detect v2 or v3 spec',
+                });
+                continue;
+              }
+              spec = detectedSpec;
             }
-            spec = detectedSpec;
           } catch (err) {
             results.push({
               filename,
@@ -997,28 +1113,35 @@ export async function importExportRoutes(fastify: FastifyInstance) {
           }
         }
 
-        // Normalize and validate
-        normalizeCardData(cardData, spec);
+        // Normalize and validate (skip for lorebooks)
+        if (!isLorebook) {
+          normalizeCardData(cardData, spec as 'v2' | 'v3');
 
-        const validation = spec === 'v3' ? validateV3(cardData) : validateV2(cardData);
-        if (!validation.valid) {
-          results.push({
-            filename,
-            success: false,
-            error: 'Card validation failed',
-            warnings: validation.errors.map(e => e.message),
-          });
-          continue;
+          const validation = spec === 'v3' ? validateV3(cardData) : validateV2(cardData);
+          if (!validation.valid) {
+            results.push({
+              filename,
+              success: false,
+              error: 'Card validation failed',
+              warnings: validation.errors.map(e => e.message),
+            });
+            continue;
+          }
+
+          warnings.push(...validation.errors.filter((e) => e.severity !== 'error').map((e) => e.message));
         }
-
-        warnings.push(...validation.errors.filter((e) => e.severity !== 'error').map((e) => e.message));
 
         // Extract name and create card
         let name = 'Untitled';
         let storageData: CCv2Data | CCv3Data;
 
         if (cardData && typeof cardData === 'object') {
-          if (spec === 'v2' && 'data' in cardData && typeof cardData.data === 'object' && cardData.data) {
+          // Handle lorebook cards (v3-like structure with lorebook spec)
+          if (isLorebook && 'data' in cardData && typeof cardData.data === 'object' && cardData.data) {
+            const lorebookData = cardData as CCv3Data;
+            name = lorebookData.data.name || 'Imported Lorebook';
+            storageData = lorebookData;
+          } else if (spec === 'v2' && 'data' in cardData && typeof cardData.data === 'object' && cardData.data) {
             const wrappedData = cardData.data as CCv2Data;
             name = wrappedData.name || 'Untitled';
             storageData = cardData as any;
@@ -1069,7 +1192,10 @@ export async function importExportRoutes(fastify: FastifyInstance) {
         // Extract tags from card data
         let tags: string[] = [];
         try {
-          if (spec === 'v3' && 'data' in storageData && storageData.data && typeof storageData.data === 'object') {
+          if (isLorebook && 'data' in storageData && storageData.data && typeof storageData.data === 'object') {
+            const extracted = (storageData.data as any).tags;
+            tags = Array.isArray(extracted) ? extracted : ['LORE'];
+          } else if (spec === 'v3' && 'data' in storageData && storageData.data && typeof storageData.data === 'object') {
             const extracted = (storageData.data as any).tags;
             tags = Array.isArray(extracted) ? extracted : [];
           } else if (spec === 'v2' && 'data' in storageData && storageData.data && typeof storageData.data === 'object') {
