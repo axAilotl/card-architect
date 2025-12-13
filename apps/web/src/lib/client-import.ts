@@ -428,6 +428,11 @@ async function processVoxtaCharacter(
     console.log(`[client-import] Extracted ${extractedAssets.length} Voxta assets`);
   }
 
+  // Set assetCount on meta for LITE mode (no database)
+  if (extractedAssets.length > 0) {
+    card.meta.assetCount = extractedAssets.length;
+  }
+
   return {
     card,
     fullImageDataUrl,
@@ -615,7 +620,8 @@ function convertLoaderAsset(asset: LoaderAsset): ExtractedAsset {
     mimetype,
     data: uint8ArrayToDataURL(bytes, mimetype),
     size: bytes.length,
-    isMain: asset.isMain ?? (asset.type === 'icon'),
+    // Icon type is always main, regardless of what loader says
+    isMain: asset.isMain === true || asset.type === 'icon',
   };
 }
 
@@ -635,9 +641,10 @@ export async function importCardClientSide(file: File): Promise<ClientImportResu
       console.log(`[client-import] Using unified loader for ${containerFormat} file`);
       const result = parseCardLoader(buffer, { extractAssets: true });
 
-      // Create card from parsed data
-      const card = createCard(result.card, 'v3');
-      console.log(`[client-import] Parsed card: ${card.meta.name}, spec: ${result.spec}, source: ${result.sourceFormat}`);
+      // Create card from parsed data - use actual spec from loader (v2 or v3)
+      const spec = result.spec === 'v2' ? 'v2' : 'v3';
+      const card = createCard(result.card, spec);
+      console.log(`[client-import] Parsed card: ${card.meta.name}, spec: ${spec}, source: ${result.sourceFormat}`);
 
       // Process images - use the isMain icon asset (loader strips tEXt chunks for PNG containers)
       let fullImageDataUrl: string | undefined;
@@ -660,9 +667,15 @@ export async function importCardClientSide(file: File): Promise<ClientImportResu
         }
       }
 
-      // Convert all assets
-      const extractedAssets: ExtractedAsset[] = result.assets.map(convertLoaderAsset);
-      console.log(`[client-import] Extracted ${extractedAssets.length} assets from ${containerFormat.toUpperCase()}`);
+      // Convert all assets, but filter out the main icon (it's the card image, not an asset)
+      const allAssets: ExtractedAsset[] = result.assets.map(convertLoaderAsset);
+      const extractedAssets = allAssets.filter(a => !a.isMain);
+      console.log(`[client-import] Extracted ${extractedAssets.length} assets from ${containerFormat.toUpperCase()} (filtered ${allAssets.length - extractedAssets.length} main icons)`);
+
+      // Set assetCount on meta for LITE mode (no database)
+      if (extractedAssets.length > 0) {
+        card.meta.assetCount = extractedAssets.length;
+      }
 
       return {
         card,
